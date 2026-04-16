@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4.2.2
+
+      - uses: actions/setup-go@v5.3.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build
+        run: go build ./...
+
+      - name: Test
+        run: go test ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: License check
+        run: |
+          go install github.com/google/go-licenses@latest
+          go-licenses check ./... \
+            --allowed_licenses=MIT,ISC,BSD-2-Clause,BSD-3-Clause,Apache-2.0,MPL-2.0
+
+      - name: GoReleaser check
+        uses: goreleaser/goreleaser-action@v6.3.0
+        with:
+          version: latest
+          args: check

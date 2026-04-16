@@ -1,0 +1,64 @@
+version: 2
+
+project_name: kuma-migrator
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - main: .
+    binary: kuma-migrator
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.Commit}}
+      - -X main.date={{.Date}}
+
+archives:
+  - name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        formats: ["zip"]
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^ci:'
+      - Merge pull request
+      - Merge branch
+
+brews:
+  - name: kuma-migrator
+    repository:
+      owner: bcollard
+      name: homebrew-kuma-migrator
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    homepage: https://github.com/bcollard/kuma-migrator
+    description: Migrate Kuma and Kong Mesh YAML policy manifests across all supported API versions
+    license: Apache-2.0
+    commit_author:
+      name: goreleaserbot
+      email: bot@goreleaser.com

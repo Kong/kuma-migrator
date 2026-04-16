@@ -1,0 +1,26 @@
+# Compiled binaries
+bin/
+dist/
+
+# Go toolchain
+*.test
+*.out
+coverage.txt
+
+# macOS
+.DS_Store
+
+# Editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Reference codebases (large, not part of this project)
+reference/
+
+# Internal Claude context
+.claude/
+PROMPTS.md
+NEXT.md
+
