@@ -53,10 +53,10 @@ changelog:
 homebrew_casks:
   - name: kuma-migrator
     repository:
-      owner: bcollard
+      owner: Kong
       name: homebrew-kuma-migrator
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
-    homepage: https://github.com/bcollard/kuma-migrator
+    homepage: https://github.com/Kong/kuma-migrator
     description: Migrate Kuma and Kong Mesh YAML policy manifests across all supported API versions
     license: Apache-2.0
     commit_author:

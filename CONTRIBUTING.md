@@ -32,7 +32,7 @@ Please be respectful and constructive in all interactions.
 ## Reporting Bugs
 
 Before opening an issue, search
-[existing issues](https://github.com/bcollard/kuma-migrator/issues) to avoid
+[existing issues](https://github.com/Kong/kuma-migrator/issues) to avoid
 duplicates.
 
 When filing a bug report please include:
@@ -61,7 +61,7 @@ Open an issue with the prefix `[feature]` in the title. Describe:
 **Requirements**: Go 1.24+, `kubectl`, `kumactl` (for manual extract testing)
 
 ```bash
-git clone https://github.com/bcollard/kuma-migrator.git
+git clone https://github.com/Kong/kuma-migrator.git
 cd kuma-migrator
 go mod download
 make test    # run the full test suite

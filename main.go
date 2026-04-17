@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/bcollard/kuma-migrator/cmd"
+	"github.com/Kong/kuma-migrator/cmd"
 )
 
 // version is injected at build time via -ldflags "-X main.version=<tag>".

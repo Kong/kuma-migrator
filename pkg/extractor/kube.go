@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/bcollard/kuma-migrator/pkg/resource"
+	"github.com/Kong/kuma-migrator/pkg/resource"
 )
 
 // ExtractViaKubectl extracts all kuma.io/v1alpha1 resources from the cluster

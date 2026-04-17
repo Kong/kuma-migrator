@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/bcollard/kuma-migrator/pkg/extractor"
+	"github.com/Kong/kuma-migrator/pkg/extractor"
 	"github.com/spf13/cobra"
 )
 

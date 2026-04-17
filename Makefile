@@ -1,5 +1,5 @@
 BINARY     := kuma-migrator
-MODULE     := github.com/bcollard/kuma-migrator
+MODULE     := github.com/Kong/kuma-migrator
 VERSION    ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS    := -ldflags "-s -w -X main.version=$(VERSION)"
 BUILD_DIR  := ./dist

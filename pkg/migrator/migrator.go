@@ -8,8 +8,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/bcollard/kuma-migrator/pkg/config"
-	"github.com/bcollard/kuma-migrator/pkg/resource"
+	"github.com/Kong/kuma-migrator/pkg/config"
+	"github.com/Kong/kuma-migrator/pkg/resource"
 	"sigs.k8s.io/yaml"
 )
 

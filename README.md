@@ -47,14 +47,14 @@ Supported platforms: macOS Apple Silicon (`arm64`), macOS Intel (`amd64`),
 Linux `amd64`, Linux `arm64`.
 
 ```bash
-brew tap bcollard/kuma-migrator
+brew tap Kong/kuma-migrator
 brew install --cask kuma-migrator
 ```
 
 Or as a one-liner:
 
 ```bash
-brew install --cask bcollard/kuma-migrator/kuma-migrator
+brew install --cask Kong/kuma-migrator/kuma-migrator
 ```
 
 Upgrade to the latest version at any time:
@@ -66,7 +66,7 @@ brew upgrade --cask kuma-migrator
 ### Pre-built binaries
 
 Download the binary for your platform from the
-[GitHub Releases](https://github.com/bcollard/kuma-migrator/releases) page.
+[GitHub Releases](https://github.com/Kong/kuma-migrator/releases) page.
 Archives are provided for:
 
 | Platform | Architecture |
@@ -78,7 +78,7 @@ Archives are provided for:
 ### From source
 
 ```bash
-git clone https://github.com/bcollard/kuma-migrator.git
+git clone https://github.com/Kong/kuma-migrator.git
 cd kuma-migrator
 make build
 # binary at ./dist/kuma-migrator

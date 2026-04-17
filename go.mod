@@ -1,4 +1,4 @@
-module github.com/bcollard/kuma-migrator
+module github.com/Kong/kuma-migrator
 
 go 1.24
 
