@@ -1,6 +1,7 @@
 # Compiled binaries
 bin/
 dist/
+dist/kuma-migrator
 
 # Go toolchain
 *.test

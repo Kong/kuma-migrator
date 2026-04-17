@@ -1,13 +1,15 @@
 package migrator
 
 import (
-	"bytes"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 
+	"github.com/bcollard/kuma-migrator/pkg/config"
+	"github.com/bcollard/kuma-migrator/pkg/resource"
 	"sigs.k8s.io/yaml"
 )
 
@@ -15,18 +17,22 @@ import (
 
 // DocChange captures what happened to a single YAML document within a file.
 type DocChange struct {
-	InputKind string   // e.g. "Timeout", "MeshGatewayRoute"
-	InputName string   // resource name
-	Scenario  Scenario // detected migration scenario
-	Warnings  []string // per-document warnings
-	ErrMsg    string   // non-empty if transformation failed
+	InputKind      string   // e.g. "Timeout", "MeshGatewayRoute"
+	InputName      string   // resource name
+	InputNamespace string   // metadata.namespace (empty for cluster-scoped or Universal resources)
+	Scenario       Scenario // detected migration scenario
+	Warnings       []string // per-document warnings
+	ErrMsg         string   // non-empty if transformation failed
 }
 
 // FileReport captures the transformation results for a single YAML file.
 type FileReport struct {
-	FileName   string
-	Label      string // e.g. "MIGRATED LEGACY", "ALREADY MIGRATED", "SKIP", "ERROR"
-	HasError   bool
+	FileName      string
+	Label         string // e.g. "MIGRATED LEGACY", "ALREADY MIGRATED", "SKIP", "ERROR"
+	Subfolder     string // output subdirectory (e.g. "resiliency", "mesh")
+	CPModeDir     string // CP mode prefix from input path (e.g. "global", "zone", "standalone")
+	OutputCPModeDir string // effective output CP mode dir (may differ from CPModeDir for GW resources from global)
+	HasError      bool
 	Changes    []DocChange
 	EnvVarHits []EnvVarHit
 	AnnotHits  []AnnotationHit
@@ -89,10 +95,11 @@ func runMigration(inputDir, outputDir string, writeFiles bool) (*MigrationReport
 		return nil, fmt.Errorf("create output directory %q: %w", outputDir, err)
 	}
 
-	entries, err := os.ReadDir(inputDir)
+	cfg, err := config.Load()
 	if err != nil {
-		return nil, fmt.Errorf("read input directory %q: %w", inputDir, err)
+		return nil, fmt.Errorf("load config: %w", err)
 	}
+	skipSet := cfg.SkipSet()
 
 	report := &MigrationReport{
 		InputDir:  inputDir,
@@ -100,18 +107,36 @@ func runMigration(inputDir, outputDir string, writeFiles bool) (*MigrationReport
 	}
 	allHits := map[string]EnvVarHit{}
 
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
+	err = filepath.WalkDir(inputDir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
 		}
-		name := entry.Name()
-		if ext := strings.ToLower(filepath.Ext(name)); ext != ".yaml" && ext != ".yml" {
-			continue
+		if d.IsDir() {
+			return nil
+		}
+		if ext := strings.ToLower(filepath.Ext(d.Name())); ext != ".yaml" && ext != ".yml" {
+			return nil
+		}
+
+		// Detect CP mode from the first directory component of the relative path.
+		// e.g. "<inputDir>/global/resiliency/file.yaml"    → cpModeDir = "global"
+		//      "<inputDir>/zone-eu-west/resiliency/file.yaml" → cpModeDir = "zone-eu-west"
+		cpModeDir := ""
+		if rel, relErr := filepath.Rel(inputDir, path); relErr == nil {
+			parts := strings.SplitN(filepath.ToSlash(rel), "/", 2)
+			if len(parts) >= 2 {
+				first := parts[0]
+				switch {
+				case first == "global", first == "standalone", first == "unknown":
+					cpModeDir = first
+				case first == "zone" || strings.HasPrefix(first, "zone-"):
+					cpModeDir = first
+				}
+			}
 		}
 
 		report.TotalFiles++
-		outputPath := filepath.Join(outputDir, name)
-		fr := processFile(filepath.Join(inputDir, name), outputPath, writeFiles)
+		fr := processFile(path, outputDir, cpModeDir, writeFiles, skipSet)
 		report.Files = append(report.Files, fr)
 
 		for _, h := range fr.EnvVarHits {
@@ -129,6 +154,10 @@ func runMigration(inputDir, outputDir string, writeFiles bool) (*MigrationReport
 		case labelError, labelPartialError:
 			report.ErrorCount++
 		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("walk input directory %q: %w", inputDir, err)
 	}
 
 	// Deduplicate and sort address mappings.
@@ -173,9 +202,19 @@ const (
 	labelPartialError = "PARTIAL ERROR"
 )
 
-func processFile(inputPath, outputPath string, writeFile bool) FileReport {
+// isGatewayAPIOutputKind reports whether kind is a Gateway API output kind that must
+// be applied to zone clusters (not to the Global CP).
+func isGatewayAPIOutputKind(kind string) bool {
+	switch kind {
+	case "Gateway", "HTTPRoute", "TCPRoute", "GatewayClass", "ReferenceGrant":
+		return true
+	}
+	return false
+}
+
+func processFile(inputPath, outputDir, cpModeDir string, writeFile bool, skipSet map[string]bool) FileReport {
 	name := filepath.Base(inputPath)
-	fr := FileReport{FileName: name}
+	fr := FileReport{FileName: name, CPModeDir: cpModeDir, OutputCPModeDir: cpModeDir}
 
 	data, err := os.ReadFile(inputPath)
 	if err != nil {
@@ -196,7 +235,14 @@ func processFile(inputPath, outputPath string, writeFile bool) FileReport {
 
 	for _, doc := range docs {
 		kind, name2 := probeKindName(doc)
-		dc := DocChange{InputKind: kind, InputName: name2}
+		dc := DocChange{InputKind: kind, InputName: name2, InputNamespace: probeNamespace(doc)}
+
+		if skipSet[kind] {
+			dc.Scenario = ScenarioSkipped
+			fr.Changes = append(fr.Changes, dc)
+			foundSkipped = true
+			continue
+		}
 
 		results, warnings, scenario, tErr := TransformDocument(doc)
 		dc.Scenario = scenario
@@ -240,12 +286,45 @@ func processFile(inputPath, outputPath string, writeFile bool) FileReport {
 		}
 	}
 
+	// Determine the primary subfolder from the first output document.
+	if len(outputDocs) > 0 {
+		kind, _ := probeKindName(outputDocs[0])
+		fr.Subfolder = resource.KindSubfolder(kind)
+	}
+
 	if writeFile {
-		out := bytes.Join(outputDocs, []byte("\n---\n"))
-		if err := os.WriteFile(outputPath, out, 0644); err != nil {
-			fr.Label = labelError
-			fr.HasError = true
-			return fr
+		for _, doc := range outputDocs {
+			kind, _ := probeKindName(doc)
+			sub := resource.KindSubfolder(kind)
+			// Gateway API output kinds (Gateway, HTTPRoute, TCPRoute, GatewayClass, …) are
+			// Kubernetes-native resources applied to zone clusters, never to the Global CP.
+			// When the source file came from the global/ input folder, redirect the output to
+			// all-zones/ so it is clear where to apply.
+			effectiveCPModeDir := cpModeDir
+			if cpModeDir == "global" && isGatewayAPIOutputKind(kind) {
+				effectiveCPModeDir = "all-zones"
+			}
+			var dir string
+			if effectiveCPModeDir != "" {
+				dir = filepath.Join(outputDir, effectiveCPModeDir, sub)
+			} else {
+				dir = filepath.Join(outputDir, sub)
+			}
+			if err := os.MkdirAll(dir, 0755); err != nil {
+				fr.Label = labelError
+				fr.HasError = true
+				return fr
+			}
+			fname := outputDocFilename(doc)
+			if err := os.WriteFile(filepath.Join(dir, fname), append(doc, '\n'), 0644); err != nil {
+				fr.Label = labelError
+				fr.HasError = true
+				return fr
+			}
+			// Track that output went to all-zones (for report apply-path accuracy).
+			if effectiveCPModeDir != cpModeDir {
+				fr.OutputCPModeDir = effectiveCPModeDir
+			}
 		}
 	}
 
@@ -303,11 +382,11 @@ func printReportToStdout(r *MigrationReport) {
 		case labelPartialError:
 			fmt.Printf("[PARTIAL ERROR]    %s (some documents could not be migrated)\n", fr.FileName)
 		case labelMigratedLegacy:
-			fmt.Printf("[MIGRATED A]       %s\n", fr.FileName)
+			fmt.Printf("[MIGRATED LEGACY]  %s\n", fr.FileName)
 		case labelMigratedSubset:
-			fmt.Printf("[MIGRATED B]       %s\n", fr.FileName)
+			fmt.Printf("[MIGRATED SUBSET]  %s\n", fr.FileName)
 		case labelMigratedRules:
-			fmt.Printf("[MIGRATED D]       %s\n", fr.FileName)
+			fmt.Printf("[MIGRATED RULES]   %s\n", fr.FileName)
 		case labelMigratedMesh:
 			fmt.Printf("[MIGRATED MESH]    %s\n", fr.FileName)
 		case labelMigratedES:

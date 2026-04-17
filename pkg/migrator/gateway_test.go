@@ -59,8 +59,8 @@ spec:
 	}
 
 	spec := gw["spec"].(map[string]interface{})
-	if spec["gatewayClassName"] != "kuma" {
-		t.Errorf("expected gatewayClassName=kuma, got %v", spec["gatewayClassName"])
+	if spec["gatewayClassName"] != "gateways.kuma.io/controller" {
+		t.Errorf("expected gatewayClassName=gateways.kuma.io/controller, got %v", spec["gatewayClassName"])
 	}
 
 	listeners := spec["listeners"].([]interface{})

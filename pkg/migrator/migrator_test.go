@@ -95,8 +95,8 @@ spec: {}
 	if !strings.Contains(body, "Dry run") {
 		t.Error("expected 'Dry run' notice in plan report")
 	}
-	if !strings.Contains(body, "MeshService Mode") {
-		t.Error("expected MeshService Mode advisory section in report")
+	if !strings.Contains(body, "meshServices") {
+		t.Error("expected meshServices advisory in report")
 	}
 	if !strings.Contains(body, "Exclusive") {
 		t.Error("expected Exclusive mode mentioned in report")
@@ -126,10 +126,10 @@ conf:
 		t.Fatalf("Migrate returned error: %v", err)
 	}
 
-	// Migrated YAML must exist.
-	outYAML := filepath.Join(out, "timeout.yaml")
+	// Migrated YAML must exist in the resiliency subfolder.
+	outYAML := filepath.Join(out, "resiliency", "MeshTimeout-my-timeout.yaml")
 	if _, err := os.Stat(outYAML); os.IsNotExist(err) {
-		t.Fatal("expected timeout.yaml to be written to output dir")
+		t.Fatalf("expected %s to be written", outYAML)
 	}
 
 	// Report must exist.
@@ -159,7 +159,7 @@ conf:
 		t.Fatalf("Migrate: %v", err)
 	}
 
-	data, err := os.ReadFile(filepath.Join(out, "timeout.yaml"))
+	data, err := os.ReadFile(filepath.Join(out, "resiliency", "MeshTimeout-my-timeout.yaml"))
 	if err != nil {
 		t.Fatalf("read output: %v", err)
 	}
@@ -395,7 +395,7 @@ spec:
 		t.Fatalf("Migrate: %v", err)
 	}
 
-	data, err := os.ReadFile(filepath.Join(out, "mesh.yaml"))
+	data, err := os.ReadFile(filepath.Join(out, "mesh", "Mesh-kong-mesh-system-default.yaml"))
 	if err != nil {
 		t.Fatalf("read output: %v", err)
 	}
@@ -437,8 +437,8 @@ conf:
 		t.Fatalf("read report: %v", err)
 	}
 	body := string(content)
-	if !strings.Contains(body, "MeshService Mode") {
-		t.Error("expected MeshService Mode section in migration report")
+	if !strings.Contains(body, "meshServices") {
+		t.Error("expected meshServices advisory in migration report")
 	}
 	if !strings.Contains(body, "Exclusive") {
 		t.Error("expected Exclusive mode mentioned in migration report")

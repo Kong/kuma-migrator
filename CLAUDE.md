@@ -49,7 +49,22 @@ calls `GET <cpURL>/_resources` to discover all writable resource types (`readOnl
 lists mesh names via `kumactl get meshes -o yaml`, then calls
 `kumactl get <path> [--mesh <mesh>] -o yaml` for each type × mesh combination.
 
-Key files: `pkg/extractor/kube.go`, `pkg/extractor/kumactl.go`, `pkg/extractor/extractor.go`.
+Both modes detect the CP mode at runtime (`GET <cpURL>/config` for kumactl; `KUMA_MODE` env var
+on the CP Deployment for kubectl) and apply a zone filter: on a Zone CP, only resources with
+`kuma.io/origin: zone` are extracted (resources synced from the Global CP carry `kuma.io/origin: global`
+and are skipped). Unknown mode falls back to extracting everything.
+
+Key files: `pkg/extractor/kube.go`, `pkg/extractor/kumactl.go`, `pkg/extractor/extractor.go`,
+`pkg/extractor/cpmode.go`.
+
+### Kuma resource labels relevant to extraction and migration
+
+| Label | Values | Meaning |
+|---|---|---|
+| `kuma.io/origin` | `global` / `zone` | Set by CP. `global` = synced from Global CP; `zone` = created locally in this zone. |
+| `kuma.io/policy-role` | `system` / `producer` / `consumer` / `workload-owner` | Set by CP based on namespace + spec shape. Does **not** affect extraction filtering (origin label covers this). Must be **preserved** by migration transforms — Subset/Passthrough/Rules scenarios do preserve it; Legacy (Universal-format) inputs don't carry it. |
+
+`kuma.io/policy-role` priority order (low → high): `system` → `producer` → `consumer` → `workload-owner`.
 
 ## Supported Scenarios (all implemented)
 

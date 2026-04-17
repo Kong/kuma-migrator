@@ -167,7 +167,7 @@ spec:
 	}
 }
 
-func TestTransformDocument_ScenarioC_MeshMetricDeprecation(t *testing.T) {
+func TestTransformDocument_ScenarioPassthrough_MeshMetricDeprecation(t *testing.T) {
 	// A ScenarioPassthrough MeshMetric (already migrated targetRef) with sidecar.regex should
 	// trigger the deprecation post-pass auto-fix.
 	input := `

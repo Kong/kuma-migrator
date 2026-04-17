@@ -88,8 +88,13 @@ func TransformMeshGateway(raw []byte) ([][]byte, []string, error) {
 			"port":     int(l.Port),
 			"protocol": strings.ToUpper(l.Protocol),
 		}
-		if l.Hostname != "" {
+		// Bare "*" is invalid in Gateway API (spec requires *.domain.com format or no field
+		// at all to mean "any hostname"). Omitting the field is the correct equivalent.
+		if l.Hostname != "" && l.Hostname != "*" {
 			listener["hostname"] = l.Hostname
+		} else if l.Hostname == "*" {
+			warnings = append(warnings, fmt.Sprintf(
+				"Gateway %q listener %q: hostname=* is not valid in Gateway API — field omitted (listener will accept any hostname)", name, lName))
 		}
 
 		if l.TLS != nil {
@@ -142,7 +147,7 @@ func TransformMeshGateway(raw []byte) ([][]byte, []string, error) {
 		"kind":       "Gateway",
 		"metadata":   meta,
 		"spec": map[string]interface{}{
-			"gatewayClassName": "kuma",
+			"gatewayClassName": "gateways.kuma.io/controller",
 			"listeners":        listeners,
 		},
 	}

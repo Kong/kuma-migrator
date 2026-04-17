@@ -29,6 +29,8 @@ func ExtractViaKumactl(contextName, outputDir string) error {
 		return fmt.Errorf("create output directory: %w", err)
 	}
 
+	skipSet := loadSkipSet()
+
 	cpURL, resolvedCtx, err := resolveKumactlContext(contextName)
 	if err != nil {
 		return err
@@ -36,12 +38,40 @@ func ExtractViaKumactl(contextName, outputDir string) error {
 	fmt.Printf("Context:       %s\n", resolvedCtx)
 	fmt.Printf("Control plane: %s\n", cpURL)
 
-	// Discover all writable resource types from the CP API.
-	types, err := listKumaResourceTypes(cpURL)
+	cpMode, zoneName := detectKumactlCPMode(cpURL)
+	dirLabel := cpModeDirectoryLabel(cpMode, zoneName)
+	switch cpMode {
+	case CPModeZone:
+		fmt.Printf("CP mode:       zone (%s)\n", zoneName)
+		fmt.Printf("[WARN] Extracting from a Zone CP. Only resources with kuma.io/origin: zone will be kept.\n")
+		fmt.Printf("       For a complete policy set, also run extract against the Global CP.\n")
+		fmt.Printf("[INFO] MeshGatewayInstance and MeshGatewayConfig are zone-local and will be extracted here.\n")
+		fmt.Printf("[INFO] MeshGateway and route CRDs (MeshHTTPRoute, MeshTCPRoute, MeshGatewayRoute):\n")
+		fmt.Printf("       - If created on the Global CP: synced here with kuma.io/origin: global → skipped (extract from Global CP).\n")
+		fmt.Printf("       - If created directly on this Zone CP: no origin label → extracted here.\n")
+	case CPModeGlobal:
+		fmt.Printf("CP mode:       %s\n", cpMode)
+		zones := listZoneNamesKumactl(resolvedCtx)
+		if len(zones) > 0 {
+			fmt.Printf("Attached zones: %s\n", strings.Join(zones, ", "))
+		}
+		fmt.Printf("[INFO] MeshGateway and route CRDs created on the Global CP are extracted here.\n")
+		fmt.Printf("[INFO] MeshGatewayInstance and MeshGatewayConfig are zone-local and skipped here.\n")
+		fmt.Printf("       Run extract against each Zone CP to capture gateway instances.\n")
+	case CPModeStandalone:
+		fmt.Printf("CP mode:       %s\n", cpMode)
+	default:
+		fmt.Printf("CP mode:       unknown (could not reach /config) — extracting all resources\n")
+	}
+
+	effectiveOutDir := filepath.Join(outputDir, dirLabel)
+
+	// Discover all writable resource types from the CP API, excluding skip-list kinds.
+	types, err := listKumaResourceTypes(cpURL, skipSet)
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Found %d writable resource type(s)\n", len(types))
+	fmt.Printf("Found %d writable resource type(s) (skip-list excluded)\n", len(types))
 
 	// Collect all Mesh names — needed to iterate Mesh-scoped resources.
 	meshNames, err := listMeshNames(resolvedCtx)
@@ -53,22 +83,81 @@ func ExtractViaKumactl(contextName, outputDir string) error {
 	for _, rt := range types {
 		if rt.Scope == "Mesh" {
 			for _, mesh := range meshNames {
-				n, err := dumpKumactlResources(resolvedCtx, rt, mesh, outputDir)
+				n, err := dumpKumactlResources(resolvedCtx, rt, mesh, effectiveOutDir, skipSet, cpMode)
 				if err != nil {
 					fmt.Printf("  [WARN] %s (mesh %s): %v\n", rt.Path, mesh, err)
 				}
 				total += n
 			}
 		} else {
-			n, err := dumpKumactlResources(resolvedCtx, rt, "", outputDir)
+			n, err := dumpKumactlResources(resolvedCtx, rt, "", effectiveOutDir, skipSet, cpMode)
 			if err != nil {
 				fmt.Printf("  [WARN] %s: %v\n", rt.Path, err)
 			}
 			total += n
 		}
 	}
-	fmt.Printf("\nExtracted %d resource(s) to %s\n", total, outputDir)
+	fmt.Printf("\nExtracted %d resource(s) to %s\n", total, effectiveOutDir)
 	return nil
+}
+
+// listZoneNamesKumactl returns the names of all Zone resources via kumactl.
+func listZoneNamesKumactl(kumactlCtx string) []string {
+	out, err := kumactl(kumactlCtx, "get", "zones", "-o", "yaml")
+	if err != nil {
+		return nil
+	}
+	// Response is a Kuma list: top-level "items" array, each item has a "name" field.
+	var list struct {
+		Items []struct {
+			Name string `yaml:"name"`
+		} `yaml:"items"`
+	}
+	if err := yaml.Unmarshal(out, &list); err != nil {
+		return nil
+	}
+	var names []string
+	for _, item := range list.Items {
+		if item.Name != "" {
+			names = append(names, item.Name)
+		}
+	}
+	return names
+}
+
+// ---- CP mode detection ------------------------------------------------------
+
+// detectKumactlCPMode calls GET <cpURL>/config and returns the lower-cased CP mode
+// ("global", "zone", "standalone") and, for zone CPs, the zone name from
+// multizone.zone.name. Returns ("", "") on any error so callers treat it as
+// unknown and fall back to extracting everything.
+func detectKumactlCPMode(cpURL string) (mode, zoneName string) {
+	url := strings.TrimRight(cpURL, "/") + "/config"
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Get(url)
+	if err != nil {
+		return "", ""
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", ""
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", ""
+	}
+	var cfg struct {
+		Mode       string `json:"mode"`
+		Multizone  struct {
+			Zone struct {
+				Name string `json:"name"`
+			} `json:"zone"`
+		} `json:"multizone"`
+	}
+	if err := json.Unmarshal(body, &cfg); err != nil {
+		return "", ""
+	}
+	return strings.ToLower(cfg.Mode), cfg.Multizone.Zone.Name
 }
 
 // ---- CP resource-type discovery ---------------------------------------------
@@ -86,7 +175,7 @@ type resourceTypeList struct {
 
 // listKumaResourceTypes calls GET <cpURL>/_resources and returns all types
 // where readOnly is false. ReadOnly resources (Insights, etc.) are skipped.
-func listKumaResourceTypes(cpURL string) ([]resourceTypeEntry, error) {
+func listKumaResourceTypes(cpURL string, skipSet map[string]bool) ([]resourceTypeEntry, error) {
 	url := strings.TrimRight(cpURL, "/") + "/_resources"
 
 	client := &http.Client{Timeout: 15 * time.Second}
@@ -112,7 +201,7 @@ func listKumaResourceTypes(cpURL string) ([]resourceTypeEntry, error) {
 
 	var result []resourceTypeEntry
 	for _, rt := range list.Resources {
-		if !rt.ReadOnly {
+		if !rt.ReadOnly && !skipSet[rt.Name] {
 			result = append(result, rt)
 		}
 	}
@@ -169,7 +258,7 @@ func parseMeshNamesFromYAML(data []byte) []string {
 
 // dumpKumactlResources fetches all instances of a resource type (optionally scoped
 // to a mesh) and writes one YAML file per resource to outputDir.
-func dumpKumactlResources(kumactlCtx string, rt resourceTypeEntry, mesh, outputDir string) (int, error) {
+func dumpKumactlResources(kumactlCtx string, rt resourceTypeEntry, mesh, outputDir string, skipSet map[string]bool, cpMode string) (int, error) {
 	args := []string{"get", rt.Path, "-o", "yaml"}
 	if mesh != "" {
 		args = append(args, "--mesh", mesh)
@@ -184,7 +273,7 @@ func dumpKumactlResources(kumactlCtx string, rt resourceTypeEntry, mesh, outputD
 		return 0, err
 	}
 
-	n, err := writeResourceFiles(out, outputDir)
+	n, err := writeResourceFiles(out, outputDir, skipSet, cpMode)
 	return n, err
 }
 

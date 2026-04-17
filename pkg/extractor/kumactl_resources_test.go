@@ -20,7 +20,7 @@ func TestListKumaResourceTypes_FiltersReadOnly(t *testing.T) {
 	}
 	srv := fakeResourcesServer(t, payload)
 
-	types, err := listKumaResourceTypes(srv.URL)
+	types, err := listKumaResourceTypes(srv.URL, map[string]bool{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -53,7 +53,7 @@ func TestListKumaResourceTypes_ScopePreserved(t *testing.T) {
 	}
 	srv := fakeResourcesServer(t, payload)
 
-	types, err := listKumaResourceTypes(srv.URL)
+	types, err := listKumaResourceTypes(srv.URL, map[string]bool{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -77,7 +77,7 @@ func TestListKumaResourceTypes_PathPreserved(t *testing.T) {
 	}
 	srv := fakeResourcesServer(t, payload)
 
-	types, err := listKumaResourceTypes(srv.URL)
+	types, err := listKumaResourceTypes(srv.URL, map[string]bool{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -92,7 +92,7 @@ func TestListKumaResourceTypes_ServerError(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	_, err := listKumaResourceTypes(srv.URL)
+	_, err := listKumaResourceTypes(srv.URL, map[string]bool{})
 	if err == nil {
 		t.Fatal("expected error on server 500")
 	}
@@ -105,7 +105,7 @@ func TestListKumaResourceTypes_InvalidJSON(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	_, err := listKumaResourceTypes(srv.URL)
+	_, err := listKumaResourceTypes(srv.URL, map[string]bool{})
 	if err == nil {
 		t.Fatal("expected error on invalid JSON")
 	}
@@ -115,12 +115,32 @@ func TestListKumaResourceTypes_EmptyList(t *testing.T) {
 	payload := resourceTypeList{Resources: []resourceTypeEntry{}}
 	srv := fakeResourcesServer(t, payload)
 
-	types, err := listKumaResourceTypes(srv.URL)
+	types, err := listKumaResourceTypes(srv.URL, map[string]bool{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if len(types) != 0 {
 		t.Errorf("expected empty result, got %d entries", len(types))
+	}
+}
+
+func TestListKumaResourceTypes_SkipListFiltersKinds(t *testing.T) {
+	payload := resourceTypeList{
+		Resources: []resourceTypeEntry{
+			{Name: "MeshTimeout", Path: "meshtimeouts", Scope: "Mesh", ReadOnly: false},
+			{Name: "Dataplane", Path: "dataplanes", Scope: "Mesh", ReadOnly: false},
+			{Name: "Zone", Path: "zones", Scope: "Global", ReadOnly: false},
+		},
+	}
+	srv := fakeResourcesServer(t, payload)
+
+	skipSet := map[string]bool{"Dataplane": true, "Zone": true}
+	types, err := listKumaResourceTypes(srv.URL, skipSet)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(types) != 1 || types[0].Name != "MeshTimeout" {
+		t.Errorf("expected only MeshTimeout after skip filtering, got %v", types)
 	}
 }
 

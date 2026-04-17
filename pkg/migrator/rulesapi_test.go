@@ -155,7 +155,7 @@ spec:
 	}
 }
 
-func TestDetectScenario_ScenarioB_TakesPrecedenceOverD(t *testing.T) {
+func TestDetectScenario_SubsetTakesPrecedenceOverRules(t *testing.T) {
 	// from[] with service-identity tags → ScenarioSubset (not D)
 	input := `
 apiVersion: kuma.io/v1alpha1
@@ -183,7 +183,7 @@ spec:
 	}
 }
 
-func TestTransformScenarioB_AppliesFromToRules(t *testing.T) {
+func TestTransformScenarioSubset_AppliesFromToRules(t *testing.T) {
 	// ScenarioSubset policy that also has from[] (with service tags) should
 	// convert tags AND then migrate from[] → rules[].
 	input := `

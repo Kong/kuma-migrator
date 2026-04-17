@@ -3,6 +3,7 @@ package migrator
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"sigs.k8s.io/yaml"
@@ -237,6 +238,25 @@ func TransformMeshTCPRoute(raw []byte) ([][]byte, []string, error) {
 
 // ---- Conversion helpers ------------------------------------------------------
 
+// kumaTagToServiceRef parses a kuma.io/service tag-style name (e.g. "backend_demo_svc_3001")
+// into Gateway API Service reference fields. Returns the parsed name, namespace (may be ""),
+// and port as an integer (0 when not present or not parseable).
+// If the tag does not match the K8s _svc_ pattern it is returned as-is for the name with
+// no namespace or port.
+func kumaTagToServiceRef(tag string) (name, namespace string, port int) {
+	svcName, svcNS := ParseKumaServiceTag(tag)
+	if svcName == "" {
+		return tag, "", 0 // wildcard or unparseable
+	}
+	const marker = "_svc_"
+	if idx := strings.LastIndex(tag, marker); idx != -1 {
+		if p, err := strconv.Atoi(tag[idx+len(marker):]); err == nil {
+			return svcName, svcNS, p
+		}
+	}
+	return svcName, svcNS, 0
+}
+
 // buildRouteParentRef converts spec.targetRef into a Gateway API parentRef.
 func buildRouteParentRef(ref oldRouteTargetRef, routeName string) (map[string]interface{}, []string) {
 	var warnings []string
@@ -267,10 +287,19 @@ func buildRouteParentRef(ref oldRouteTargetRef, routeName string) (map[string]in
 		parentRef["group"] = ""
 		parentRef["kind"] = "Service"
 		if ref.Name != "" {
-			parentRef["name"] = ref.Name
-		}
-		if ref.Namespace != "" {
-			parentRef["namespace"] = ref.Namespace
+			svcName, svcNS, svcPort := kumaTagToServiceRef(ref.Name)
+			parentRef["name"] = svcName
+			if svcNS != "" {
+				parentRef["namespace"] = svcNS
+			} else if ref.Namespace != "" {
+				parentRef["namespace"] = ref.Namespace
+			}
+			if svcPort != 0 {
+				parentRef["port"] = svcPort
+			} else {
+				warnings = append(warnings, fmt.Sprintf(
+					"Route %q: parentRef Service %q has no port — set parentRefs[0].port manually", routeName, ref.Name))
+			}
 		}
 		warnings = append(warnings, fmt.Sprintf(
 			"Route %q: spec.targetRef.kind=MeshService maps to parentRef.kind=Service (GAMMA). "+
@@ -427,6 +456,24 @@ func convertSingleBackendRef(ref map[string]interface{}, routeName string, toIdx
 			default:
 				result["kind"] = v
 			}
+		case "name":
+			// The name may be a kuma.io/service tag (e.g. "backend_demo_svc_3001").
+			// Parse it into Service name, namespace, and port.
+			if nameStr, ok := v.(string); ok {
+				svcName, svcNS, svcPort := kumaTagToServiceRef(nameStr)
+				result["name"] = svcName
+				if svcNS != "" {
+					result["namespace"] = svcNS
+				}
+				if svcPort != 0 {
+					result["port"] = svcPort
+				} else {
+					*warnings = append(*warnings, fmt.Sprintf(
+						"Route %q to[%d].rules[%d]: backendRef name %q has no port — set port manually", routeName, toIdx, ruleIdx, nameStr))
+				}
+			} else {
+				result[k] = v
+			}
 		case "tags":
 			// Tags are not applicable to Gateway API Service backendRefs — drop them.
 			*warnings = append(*warnings, fmt.Sprintf(
@@ -444,10 +491,16 @@ func backendRefFromTargetRef(ref oldRouteTargetRef) map[string]interface{} {
 	result := map[string]interface{}{
 		"kind":  "Service",
 		"group": "",
-		"name":  ref.Name,
 	}
-	if ref.Namespace != "" {
+	svcName, svcNS, svcPort := kumaTagToServiceRef(ref.Name)
+	result["name"] = svcName
+	if svcNS != "" {
+		result["namespace"] = svcNS
+	} else if ref.Namespace != "" {
 		result["namespace"] = ref.Namespace
+	}
+	if svcPort != 0 {
+		result["port"] = svcPort
 	}
 	return result
 }

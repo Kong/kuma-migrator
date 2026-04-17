@@ -11,7 +11,7 @@ import (
 // These test the full pipeline (detect → transform → marshal) for the scenarios
 // most likely to appear in real clusters, including producer/consumer patterns.
 
-func TestTransformDocument_ScenarioB_Producer(t *testing.T) {
+func TestTransformDocument_ScenarioSubset_Producer(t *testing.T) {
 	// Producer policy: applied in the same namespace as the targeted MeshService.
 	// spec.targetRef uses MeshSubset → Dataplane (top-level).
 	// to[].targetRef uses MeshSubset with same namespace → MeshService name/namespace.
@@ -93,7 +93,7 @@ spec:
 	}
 }
 
-func TestTransformDocument_ScenarioB_Consumer(t *testing.T) {
+func TestTransformDocument_ScenarioSubset_Consumer(t *testing.T) {
 	// Consumer policy: applied in a different namespace from the targeted MeshService.
 	// spec.targetRef → Dataplane with labels (different namespace, warns).
 	// to[].targetRef → MeshService with kuma.io/display-name labels (consumer pattern).
@@ -184,7 +184,7 @@ spec:
 	}
 }
 
-func TestTransformDocument_ScenarioB_NoTopLevelTargetRef(t *testing.T) {
+func TestTransformDocument_ScenarioSubset_NoTopLevelTargetRef(t *testing.T) {
 	// Producer-style policy with no spec.targetRef (common in producer/consumer model).
 	// Only to[] is present; spec.targetRef should remain absent in output.
 	input := `
@@ -244,7 +244,7 @@ spec:
 	}
 }
 
-func TestTransformDocument_ScenarioA_WildcardSources(t *testing.T) {
+func TestTransformDocument_ScenarioLegacy_WildcardSources(t *testing.T) {
 	// Wildcard sources → spec.targetRef: kind: Mesh (equivalent to no spec.targetRef).
 	input := `
 type: Timeout
@@ -281,7 +281,7 @@ conf:
 	}
 }
 
-func TestTransformDocument_ScenarioA_SpecificService(t *testing.T) {
+func TestTransformDocument_ScenarioLegacy_SpecificService(t *testing.T) {
 	// Specific service in sources → spec.targetRef: kind: Dataplane.
 	// destinations → to[]: kind: MeshService.
 	input := `
@@ -345,7 +345,7 @@ conf:
 	}
 }
 
-func TestTransformDocument_ScenarioB_DisplayNameNotServiceName(t *testing.T) {
+func TestTransformDocument_ScenarioSubset_DisplayNameNotServiceName(t *testing.T) {
 	// Explicit regression: cross-namespace MeshService labels must use
 	// kuma.io/display-name, NOT k8s.kuma.io/service-name.
 	input := `
@@ -401,7 +401,7 @@ spec:
 	}
 }
 
-func TestTransformDocument_ScenarioC_PassThrough(t *testing.T) {
+func TestTransformDocument_ScenarioPassthrough_PassThrough(t *testing.T) {
 	input := `
 apiVersion: kuma.io/v1alpha1
 kind: MeshTimeout
