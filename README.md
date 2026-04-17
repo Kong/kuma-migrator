@@ -41,11 +41,39 @@ The tool also emits warnings for deprecated fields that require manual action:
 
 ## Installation
 
-### Homebrew
+### Homebrew (macOS and Linux)
+
+Supported platforms: macOS Apple Silicon (`arm64`), macOS Intel (`amd64`),
+Linux `amd64`, Linux `arm64`.
+
+```bash
+brew tap bcollard/kuma-migrator
+brew install kuma-migrator
+```
+
+Or as a one-liner:
 
 ```bash
 brew install bcollard/kuma-migrator/kuma-migrator
 ```
+
+Upgrade to the latest version at any time:
+
+```bash
+brew upgrade kuma-migrator
+```
+
+### Pre-built binaries
+
+Download the binary for your platform from the
+[GitHub Releases](https://github.com/bcollard/kuma-migrator/releases) page.
+Archives are provided for:
+
+| Platform | Architecture |
+|---|---|
+| Linux | `amd64`, `arm64` |
+| macOS | `amd64` (Intel), `arm64` (Apple Silicon) |
+| Windows | `amd64` |
 
 ### From source
 
