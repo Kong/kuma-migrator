@@ -402,9 +402,9 @@ metadata:
   name: allow-backend-to-redis
 spec:
   targetRef:
-    kind: MeshService
-    name: redis
-    namespace: kong-mesh-system
+    kind: Dataplane
+    labels:
+      kuma.io/display-name: redis
   from:
     - targetRef:
         kind: MeshService
