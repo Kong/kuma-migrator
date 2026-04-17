@@ -48,19 +48,19 @@ Linux `amd64`, Linux `arm64`.
 
 ```bash
 brew tap bcollard/kuma-migrator
-brew install kuma-migrator
+brew install --cask kuma-migrator
 ```
 
 Or as a one-liner:
 
 ```bash
-brew install bcollard/kuma-migrator/kuma-migrator
+brew install --cask bcollard/kuma-migrator/kuma-migrator
 ```
 
 Upgrade to the latest version at any time:
 
 ```bash
-brew upgrade kuma-migrator
+brew upgrade --cask kuma-migrator
 ```
 
 ### Pre-built binaries
