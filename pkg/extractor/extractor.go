@@ -8,6 +8,7 @@ import (
 
 	"github.com/Kong/kuma-migrator/pkg/config"
 	"github.com/Kong/kuma-migrator/pkg/resource"
+	"github.com/Kong/kuma-migrator/pkg/ui"
 	"sigs.k8s.io/yaml"
 )
 
@@ -139,15 +140,15 @@ func writeResourceFiles(data []byte, outputDir string, skipSet map[string]bool, 
 		sub := resource.KindSubfolder(kind)
 		dir := filepath.Join(outputDir, sub)
 		if err := os.MkdirAll(dir, 0755); err != nil {
-			fmt.Printf("  [WARN] mkdir %s: %v\n", dir, err)
+			ui.Warn(fmt.Sprintf("mkdir %s: %v", dir, err))
 			continue
 		}
 		outPath := filepath.Join(dir, filename)
 		if err := os.WriteFile(outPath, []byte(doc+"\n"), 0644); err != nil {
-			fmt.Printf("  [WARN] write %s: %v\n", outPath, err)
+			ui.Warn(fmt.Sprintf("write %s: %v", outPath, err))
 			continue
 		}
-		fmt.Printf("  → %s/%s\n", sub, filename)
+		ui.FileWritten(sub, filename)
 		count++
 	}
 	return count, nil
@@ -179,4 +180,32 @@ func isInsightKind(kind string) bool {
 // sanitize replaces characters that are problematic in file names.
 func sanitize(s string) string {
 	return strings.NewReplacer("/", "-", ":", "-", " ", "-").Replace(s)
+}
+
+// PrintCPModeInfo prints the CP mode banner and relevant notices.
+// Called from both ExtractViaKubectl and ExtractViaKumactl.
+func PrintCPModeInfo(cpMode, zoneName string, zones []string) {
+	switch cpMode {
+	case CPModeZone:
+		ui.KV("CP mode: ", fmt.Sprintf("zone (%s)", zoneName))
+		ui.Warn("Extracting from a Zone CP — only kuma.io/origin: zone resources will be kept.")
+		ui.WarnIndented("For a complete policy set, also run extract against the Global CP.")
+		ui.Info("MeshGatewayInstance and MeshGatewayConfig are zone-local and will be extracted here.")
+		ui.Info("MeshGateway and route CRDs (MeshHTTPRoute, MeshTCPRoute, MeshGatewayRoute):")
+		ui.InfoIndented("- Synced from Global CP with kuma.io/origin: global → skipped (extract from Global CP).")
+		ui.InfoIndented("- Created directly on this Zone CP with no origin label → extracted here.")
+	case CPModeGlobal:
+		ui.KV("CP mode: ", "global")
+		if len(zones) > 0 {
+			ui.KV("Attached zones: ", strings.Join(zones, ", "))
+		}
+		ui.Info("MeshGateway and route CRDs created on the Global CP are extracted here.")
+		ui.Info("MeshGatewayInstance and MeshGatewayConfig are zone-local and skipped here.")
+		ui.InfoIndented("Run extract against each Zone CP to capture gateway instances.")
+	case CPModeStandalone:
+		ui.KV("CP mode: ", "standalone")
+	default:
+		ui.KV("CP mode: ", "unknown")
+		ui.Warn("Could not detect CP mode — extracting all resources.")
+	}
 }

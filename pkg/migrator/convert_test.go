@@ -215,9 +215,21 @@ func TestConvertTargetRef(t *testing.T) {
 			wantWarn: true,
 		},
 
-		// --- Workload-only selectors (unchanged) ---
+		// --- Workload-only selectors ---
 		{
-			name: "MeshSubset with only non-service tags → unchanged (workload selector)",
+			name:     "MeshSubset with only non-service tags, top-level → Dataplane with labels",
+			topLevel: true,
+			input: TargetRef{Kind: "MeshSubset", Tags: map[string]string{
+				"env":     "prod",
+				"version": "v2",
+			}},
+			want: TargetRef{Kind: "Dataplane", Labels: map[string]string{
+				"env":     "prod",
+				"version": "v2",
+			}},
+		},
+		{
+			name: "MeshSubset with only non-service tags, from[]/to[] → unchanged (deprecation scanner will warn)",
 			input: TargetRef{Kind: "MeshSubset", Tags: map[string]string{
 				"env":     "prod",
 				"version": "v2",

@@ -119,8 +119,11 @@ func DetectScenario(raw []byte) (Scenario, error) {
 	}
 
 	// Check all targetRef nodes for service-identity tags → Scenario B.
+	// Also catch a top-level MeshSubset with only workload-selector tags: in Kuma 2.10+
+	// MeshSubset is deprecated even without service tags, and ConvertTargetRef will
+	// migrate it to Dataplane+labels.
 	if p.Spec != nil {
-		if probeRefHasServiceTag(p.Spec.TargetRef) {
+		if probeRefHasServiceTag(p.Spec.TargetRef) || probeRefIsMeshSubset(p.Spec.TargetRef) {
 			return ScenarioSubset, nil
 		}
 		for i := range p.Spec.To {
@@ -137,6 +140,12 @@ func DetectScenario(raw []byte) (Scenario, error) {
 
 	// All targetRefs are already migrated (or resource has no targetRef).
 	return ScenarioPassthrough, nil
+}
+
+// probeRefIsMeshSubset reports whether the ref uses the deprecated MeshSubset kind.
+// Used to ensure non-service-tag MeshSubset at spec.targetRef is migrated to Dataplane.
+func probeRefIsMeshSubset(ref *probeRef) bool {
+	return ref != nil && ref.Kind == "MeshSubset"
 }
 
 func probeRefHasServiceTag(ref *probeRef) bool {

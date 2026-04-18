@@ -105,8 +105,27 @@ func ConvertTargetRef(ref TargetRef, policyNamespace string, topLevel bool) (Tar
 		}
 	}
 
-	// No service-identity tag → pure workload selector, leave it alone.
+	// No service-identity tag.
 	if serviceTagKey == "" {
+		// At top-level (spec.targetRef): MeshSubset with only workload-selector tags is
+		// deprecated in Kuma 2.10+. Migrate to Dataplane with labels.
+		if topLevel {
+			labels := map[string]string{}
+			for k, v := range otherTags {
+				labels[k] = v
+			}
+			if namespaceFromTag != "" {
+				labels["k8s.kuma.io/namespace"] = namespaceFromTag
+			}
+			if zoneValue != "" {
+				labels["kuma.io/zone"] = zoneValue
+			}
+			if len(labels) == 0 {
+				return ref, "" // empty MeshSubset — nothing to convert
+			}
+			return TargetRef{Kind: "Dataplane", Labels: labels}, ""
+		}
+		// In to[]/from[] context: leave unchanged; the deprecation scanner will warn.
 		return ref, ""
 	}
 

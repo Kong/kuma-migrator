@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/Kong/kuma-migrator/pkg/resource"
+	"github.com/Kong/kuma-migrator/pkg/ui"
 )
 
 // ExtractViaKubectl extracts all kuma.io/v1alpha1 resources from the cluster
@@ -31,29 +32,15 @@ func ExtractViaKubectl(kubeContext, outputDir string) error {
 
 	cpMode, zoneName := detectKubeCPMode(kubeContext)
 	dirLabel := cpModeDirectoryLabel(cpMode, zoneName)
-	switch cpMode {
-	case CPModeZone:
-		fmt.Printf("CP mode:       zone (%s)\n", zoneName)
-		fmt.Printf("[WARN] Extracting from a Zone CP. Only resources with kuma.io/origin: zone will be kept.\n")
-		fmt.Printf("       For a complete policy set, also run extract against the Global CP.\n")
-		fmt.Printf("[INFO] MeshGatewayInstance and MeshGatewayConfig are zone-local and will be extracted here.\n")
-		fmt.Printf("[INFO] MeshGateway and route CRDs (MeshHTTPRoute, MeshTCPRoute, MeshGatewayRoute):\n")
-		fmt.Printf("       - If created on the Global CP: synced here with kuma.io/origin: global → skipped (extract from Global CP).\n")
-		fmt.Printf("       - If created directly on this Zone CP: no origin label → extracted here.\n")
-	case CPModeGlobal:
-		fmt.Printf("CP mode:       %s\n", cpMode)
-		zones := listZoneNamesKubectl(kubeContext)
-		if len(zones) > 0 {
-			fmt.Printf("Attached zones: %s\n", strings.Join(zones, ", "))
-		}
-		fmt.Printf("[INFO] MeshGateway and route CRDs created on the Global CP are extracted here.\n")
-		fmt.Printf("[INFO] MeshGatewayInstance and MeshGatewayConfig are zone-local and skipped here.\n")
-		fmt.Printf("       Run extract against each Zone CP to capture gateway instances.\n")
-	case CPModeStandalone:
-		fmt.Printf("CP mode:       %s\n", cpMode)
-	default:
-		fmt.Printf("CP mode:       unknown (could not detect KUMA_MODE) — extracting all resources\n")
+	var zones []string
+	if cpMode == CPModeGlobal {
+		zones = listZoneNamesKubectl(kubeContext)
 	}
+
+	ui.Header("extract")
+	ui.KV("Context", kubeContext)
+	PrintCPModeInfo(cpMode, zoneName, zones)
+	fmt.Println()
 
 	effectiveOutDir := filepath.Join(outputDir, dirLabel)
 
@@ -61,17 +48,18 @@ func ExtractViaKubectl(kubeContext, outputDir string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Found %d kuma.io/v1alpha1 CRD(s) (Insight kinds and skip-list excluded)\n", len(crds))
+	ui.Found(len(crds), "kuma.io/v1alpha1 CRD(s)")
+	fmt.Println()
 
 	total := 0
 	for _, crd := range crds {
 		n, err := dumpCRDInstances(kubeContext, crd, effectiveOutDir, cpMode)
 		if err != nil {
-			fmt.Printf("  [WARN] %s: %v\n", crd.Plural, err)
+			ui.Warn(fmt.Sprintf("%s: %v", crd.Plural, err))
 		}
 		total += n
 	}
-	fmt.Printf("\nExtracted %d resource(s) to %s\n", total, effectiveOutDir)
+	ui.ExtractDone(total, effectiveOutDir)
 	return nil
 }
 
@@ -283,7 +271,7 @@ func dumpCRDInstances(kubeContext string, crd crdEntry, outputDir string, cpMode
 			yamlBytes, err = kubectl(kubeContext, "get", crd.Plural, name, "-o", "yaml")
 		}
 		if err != nil {
-			fmt.Printf("  [WARN] get %s/%s: %v\n", kind, name, err)
+			ui.Warn(fmt.Sprintf("get %s/%s: %v", kind, name, err))
 			continue
 		}
 
@@ -297,15 +285,15 @@ func dumpCRDInstances(kubeContext string, crd crdEntry, outputDir string, cpMode
 		sub := resource.KindSubfolder(kind)
 		dir := filepath.Join(outputDir, sub)
 		if err := os.MkdirAll(dir, 0755); err != nil {
-			fmt.Printf("  [WARN] mkdir %s: %v\n", dir, err)
+			ui.Warn(fmt.Sprintf("mkdir %s: %v", dir, err))
 			continue
 		}
 		outPath := filepath.Join(dir, filename)
 		if err := os.WriteFile(outPath, yamlBytes, 0644); err != nil {
-			fmt.Printf("  [WARN] write %s: %v\n", outPath, err)
+			ui.Warn(fmt.Sprintf("write %s: %v", outPath, err))
 			continue
 		}
-		fmt.Printf("  → %s/%s\n", sub, filename)
+		ui.FileWritten(sub, filename)
 		count++
 	}
 	return count, nil

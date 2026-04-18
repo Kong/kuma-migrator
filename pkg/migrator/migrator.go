@@ -10,6 +10,7 @@ import (
 
 	"github.com/Kong/kuma-migrator/pkg/config"
 	"github.com/Kong/kuma-migrator/pkg/resource"
+	"github.com/Kong/kuma-migrator/pkg/ui"
 	"sigs.k8s.io/yaml"
 )
 
@@ -67,6 +68,7 @@ type MigrationReport struct {
 // The plan shows every change that would be made and all warnings, letting you
 // review before committing.
 func Plan(inputDir, outputDir string) error {
+	ui.Header("plan")
 	report, err := runMigration(inputDir, outputDir, false)
 	if err != nil {
 		return err
@@ -79,6 +81,7 @@ func Plan(inputDir, outputDir string) error {
 // Migrate reads all YAML files from inputDir, transforms them, writes the results
 // to outputDir, and writes a Markdown report to outputDir/migration-report.md.
 func Migrate(inputDir, outputDir string) error {
+	ui.Header("migrate")
 	report, err := runMigration(inputDir, outputDir, true)
 	if err != nil {
 		return err
@@ -378,82 +381,80 @@ func printReportToStdout(r *MigrationReport) {
 	for _, fr := range r.Files {
 		switch fr.Label {
 		case labelError:
-			fmt.Printf("[ERROR]            %s\n", fr.FileName)
+			ui.FileError(fr.FileName)
 		case labelPartialError:
-			fmt.Printf("[PARTIAL ERROR]    %s (some documents could not be migrated)\n", fr.FileName)
+			ui.FilePartialError(fr.FileName)
 		case labelMigratedLegacy:
-			fmt.Printf("[MIGRATED LEGACY]  %s\n", fr.FileName)
+			ui.FileMigrated("LEGACY", fr.FileName)
 		case labelMigratedSubset:
-			fmt.Printf("[MIGRATED SUBSET]  %s\n", fr.FileName)
+			ui.FileMigrated("SUBSET", fr.FileName)
 		case labelMigratedRules:
-			fmt.Printf("[MIGRATED RULES]   %s\n", fr.FileName)
+			ui.FileMigrated("RULES", fr.FileName)
 		case labelMigratedMesh:
-			fmt.Printf("[MIGRATED MESH]    %s\n", fr.FileName)
+			ui.FileMigrated("MESH", fr.FileName)
 		case labelMigratedES:
-			fmt.Printf("[MIGRATED ES]      %s\n", fr.FileName)
+			ui.FileMigrated("EXTERNAL SERVICE", fr.FileName)
 		case labelMigratedGW:
-			fmt.Printf("[MIGRATED GW]      %s\n", fr.FileName)
+			ui.FileMigrated("GATEWAY", fr.FileName)
 		case labelMigratedOPA:
-			fmt.Printf("[MIGRATED OPA]     %s\n", fr.FileName)
+			ui.FileMigrated("OPA", fr.FileName)
 		case labelAlreadyDone:
-			fmt.Printf("[ALREADY MIGRATED] %s\n", fr.FileName)
+			ui.FileAlreadyMigrated(fr.FileName)
 		case labelSkipped:
-			fmt.Printf("[SKIP]             %s: no recognised Kuma policy documents\n", fr.FileName)
+			ui.FileSkipped(fr.FileName, "no recognised Kuma policy documents")
 		default:
-			fmt.Printf("[SKIP]             %s: empty after parsing\n", fr.FileName)
+			ui.FileSkipped(fr.FileName, "empty after parsing")
 		}
 
 		for _, dc := range fr.Changes {
 			if dc.ErrMsg != "" {
-				fmt.Printf("  [ERROR] %s\n", dc.ErrMsg)
+				ui.DocError(dc.ErrMsg)
 			}
 			for _, w := range dc.Warnings {
-				fmt.Printf("  [WARN] %s\n", w)
+				ui.DocWarn(w)
 			}
 		}
 
 		if len(fr.EnvVarHits) > 0 {
-			fmt.Printf("  [WORKLOAD] legacy Kuma service addresses found in env vars:\n")
+			ui.DocWorkload("legacy Kuma service addresses found in env vars:")
 			for _, h := range fr.EnvVarHits {
-				fmt.Printf("    %s/%s (ns: %s) · container %q · %s=%q\n",
+				ui.DocWorkloadHit(fmt.Sprintf("%s/%s (ns: %s) · container %q · %s=%q",
 					h.WorkloadKind, h.WorkloadName, h.Namespace,
-					h.ContainerName, h.EnvVarName, h.RawValue)
+					h.ContainerName, h.EnvVarName, h.RawValue))
 			}
 		}
 
 		if len(fr.AnnotHits) > 0 {
-			fmt.Printf("  [ANNOTATION] deprecated boolean annotation values found:\n")
+			ui.DocAnnotation("deprecated boolean annotation values found:")
 			for _, h := range fr.AnnotHits {
-				fmt.Printf("    %s/%s (ns: %s) · %s=%q → %q\n",
-					h.Kind, h.Name, h.Namespace, h.AnnotationKey, h.OldValue, h.NewValue)
+				ui.DocAnnotationHit(fmt.Sprintf("%s/%s (ns: %s) · %s=%q → %q",
+					h.Kind, h.Name, h.Namespace, h.AnnotationKey, h.OldValue, h.NewValue))
 			}
 		}
 	}
 
-	fmt.Printf("\nSummary: %d file(s) processed — %d migrated, %d already migrated, %d skipped, %d error(s)\n",
-		r.TotalFiles, r.MigratedCount, r.AlreadyDoneCount, r.SkippedCount, r.ErrorCount)
+	ui.Summary(r.TotalFiles, r.MigratedCount, r.AlreadyDoneCount, r.SkippedCount, r.ErrorCount)
 
 	if len(r.AddressMappings) > 0 {
-		fmt.Println()
-		fmt.Println("Service address mapping — update env vars in your Deployments/StatefulSets:")
-		fmt.Println("  (replace the old kuma.io/service address with one of the new addresses below)")
-		fmt.Println("  Replace <zone> with your actual Kuma zone name for the mesh hostname.")
-		fmt.Println()
+		ui.SectionHeader("Service address mapping")
+		ui.SectionNote("Update env vars in your Deployments/StatefulSets:")
+		ui.SectionNote("replace the old kuma.io/service address with one of the new addresses below.")
+		ui.SectionNote("Replace <zone> with your actual Kuma zone name for the mesh hostname.")
 		for _, h := range r.AddressMappings {
-			fmt.Println(h.FormatMapping())
+			ui.SectionItem(h.FormatMapping())
 		}
 	}
 
 	if len(r.AnnotationHits) > 0 {
-		fmt.Println()
-		fmt.Println("Deprecated annotation values — update 'yes'/'no' to 'true'/'false' in your manifests:")
+		ui.SectionHeader("Deprecated annotation values")
+		ui.SectionNote("Update 'yes'/'no' to 'true'/'false' in your manifests:")
 		for _, h := range r.AnnotationHits {
 			ns := h.Namespace
 			if ns == "" {
 				ns = "<cluster-scoped>"
 			}
-			fmt.Printf("  %s/%s (ns: %s) · %s: %q → %q\n",
-				h.Kind, h.Name, ns, h.AnnotationKey, h.OldValue, h.NewValue)
+			ui.SectionItem(fmt.Sprintf("%s/%s (ns: %s) · %s: %q → %q",
+				h.Kind, h.Name, ns, h.AnnotationKey, h.OldValue, h.NewValue))
 		}
 	}
 }

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Kong/kuma-migrator/pkg/ui"
 	"sigs.k8s.io/yaml"
 )
 
@@ -35,34 +36,18 @@ func ExtractViaKumactl(contextName, outputDir string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Context:       %s\n", resolvedCtx)
-	fmt.Printf("Control plane: %s\n", cpURL)
+	ui.Header("extract")
+	ui.KV("Context", resolvedCtx)
+	ui.KV("Control plane", cpURL)
 
 	cpMode, zoneName := detectKumactlCPMode(cpURL)
 	dirLabel := cpModeDirectoryLabel(cpMode, zoneName)
-	switch cpMode {
-	case CPModeZone:
-		fmt.Printf("CP mode:       zone (%s)\n", zoneName)
-		fmt.Printf("[WARN] Extracting from a Zone CP. Only resources with kuma.io/origin: zone will be kept.\n")
-		fmt.Printf("       For a complete policy set, also run extract against the Global CP.\n")
-		fmt.Printf("[INFO] MeshGatewayInstance and MeshGatewayConfig are zone-local and will be extracted here.\n")
-		fmt.Printf("[INFO] MeshGateway and route CRDs (MeshHTTPRoute, MeshTCPRoute, MeshGatewayRoute):\n")
-		fmt.Printf("       - If created on the Global CP: synced here with kuma.io/origin: global → skipped (extract from Global CP).\n")
-		fmt.Printf("       - If created directly on this Zone CP: no origin label → extracted here.\n")
-	case CPModeGlobal:
-		fmt.Printf("CP mode:       %s\n", cpMode)
-		zones := listZoneNamesKumactl(resolvedCtx)
-		if len(zones) > 0 {
-			fmt.Printf("Attached zones: %s\n", strings.Join(zones, ", "))
-		}
-		fmt.Printf("[INFO] MeshGateway and route CRDs created on the Global CP are extracted here.\n")
-		fmt.Printf("[INFO] MeshGatewayInstance and MeshGatewayConfig are zone-local and skipped here.\n")
-		fmt.Printf("       Run extract against each Zone CP to capture gateway instances.\n")
-	case CPModeStandalone:
-		fmt.Printf("CP mode:       %s\n", cpMode)
-	default:
-		fmt.Printf("CP mode:       unknown (could not reach /config) — extracting all resources\n")
+	var zones []string
+	if cpMode == CPModeGlobal {
+		zones = listZoneNamesKumactl(resolvedCtx)
 	}
+	PrintCPModeInfo(cpMode, zoneName, zones)
+	fmt.Println()
 
 	effectiveOutDir := filepath.Join(outputDir, dirLabel)
 
@@ -71,7 +56,8 @@ func ExtractViaKumactl(contextName, outputDir string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Found %d writable resource type(s) (skip-list excluded)\n", len(types))
+	ui.Found(len(types), "writable resource type(s)")
+	fmt.Println()
 
 	// Collect all Mesh names — needed to iterate Mesh-scoped resources.
 	meshNames, err := listMeshNames(resolvedCtx)
@@ -85,19 +71,19 @@ func ExtractViaKumactl(contextName, outputDir string) error {
 			for _, mesh := range meshNames {
 				n, err := dumpKumactlResources(resolvedCtx, rt, mesh, effectiveOutDir, skipSet, cpMode)
 				if err != nil {
-					fmt.Printf("  [WARN] %s (mesh %s): %v\n", rt.Path, mesh, err)
+					ui.Warn(fmt.Sprintf("%s (mesh %s): %v", rt.Path, mesh, err))
 				}
 				total += n
 			}
 		} else {
 			n, err := dumpKumactlResources(resolvedCtx, rt, "", effectiveOutDir, skipSet, cpMode)
 			if err != nil {
-				fmt.Printf("  [WARN] %s: %v\n", rt.Path, err)
+				ui.Warn(fmt.Sprintf("%s: %v", rt.Path, err))
 			}
 			total += n
 		}
 	}
-	fmt.Printf("\nExtracted %d resource(s) to %s\n", total, effectiveOutDir)
+	ui.ExtractDone(total, effectiveOutDir)
 	return nil
 }
 

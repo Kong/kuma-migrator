@@ -21,7 +21,6 @@ coverage.txt
 reference/
 
 # Internal Claude context
-.claude/
 PROMPTS.md
 NEXT.md
 
