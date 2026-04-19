@@ -20,7 +20,7 @@ func TestListKumaResourceTypes_FiltersReadOnly(t *testing.T) {
 	}
 	srv := fakeResourcesServer(t, payload)
 
-	types, err := listKumaResourceTypes(srv.URL, map[string]bool{})
+	types, err := listKumaResourceTypes(srv.URL, map[string]bool{}, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -53,7 +53,7 @@ func TestListKumaResourceTypes_ScopePreserved(t *testing.T) {
 	}
 	srv := fakeResourcesServer(t, payload)
 
-	types, err := listKumaResourceTypes(srv.URL, map[string]bool{})
+	types, err := listKumaResourceTypes(srv.URL, map[string]bool{}, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -77,7 +77,7 @@ func TestListKumaResourceTypes_PathPreserved(t *testing.T) {
 	}
 	srv := fakeResourcesServer(t, payload)
 
-	types, err := listKumaResourceTypes(srv.URL, map[string]bool{})
+	types, err := listKumaResourceTypes(srv.URL, map[string]bool{}, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -92,7 +92,7 @@ func TestListKumaResourceTypes_ServerError(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	_, err := listKumaResourceTypes(srv.URL, map[string]bool{})
+	_, err := listKumaResourceTypes(srv.URL, map[string]bool{}, "")
 	if err == nil {
 		t.Fatal("expected error on server 500")
 	}
@@ -105,7 +105,7 @@ func TestListKumaResourceTypes_InvalidJSON(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	_, err := listKumaResourceTypes(srv.URL, map[string]bool{})
+	_, err := listKumaResourceTypes(srv.URL, map[string]bool{}, "")
 	if err == nil {
 		t.Fatal("expected error on invalid JSON")
 	}
@@ -115,7 +115,7 @@ func TestListKumaResourceTypes_EmptyList(t *testing.T) {
 	payload := resourceTypeList{Resources: []resourceTypeEntry{}}
 	srv := fakeResourcesServer(t, payload)
 
-	types, err := listKumaResourceTypes(srv.URL, map[string]bool{})
+	types, err := listKumaResourceTypes(srv.URL, map[string]bool{}, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -135,7 +135,7 @@ func TestListKumaResourceTypes_SkipListFiltersKinds(t *testing.T) {
 	srv := fakeResourcesServer(t, payload)
 
 	skipSet := map[string]bool{"Dataplane": true, "Zone": true}
-	types, err := listKumaResourceTypes(srv.URL, skipSet)
+	types, err := listKumaResourceTypes(srv.URL, skipSet, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -215,6 +215,42 @@ func TestIsEmptyResult_NotFound(t *testing.T) {
 func TestIsEmptyResult_RealError(t *testing.T) {
 	if isEmptyResult(fakeErr("connection refused")) {
 		t.Error("expected isEmptyResult=false for connection refused")
+	}
+}
+
+func TestListKumaResourceTypes_SendsBearerToken(t *testing.T) {
+	var gotAuthHeader string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuthHeader = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resourceTypeList{})
+	}))
+	t.Cleanup(srv.Close)
+
+	_, err := listKumaResourceTypes(srv.URL, map[string]bool{}, "kpat_mytoken123")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotAuthHeader != "Bearer kpat_mytoken123" {
+		t.Errorf("expected Authorization header %q, got %q", "Bearer kpat_mytoken123", gotAuthHeader)
+	}
+}
+
+func TestListKumaResourceTypes_NoTokenOmitsHeader(t *testing.T) {
+	var gotAuthHeader string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuthHeader = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resourceTypeList{})
+	}))
+	t.Cleanup(srv.Close)
+
+	_, err := listKumaResourceTypes(srv.URL, map[string]bool{}, "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotAuthHeader != "" {
+		t.Errorf("expected no Authorization header, got %q", gotAuthHeader)
 	}
 }
 

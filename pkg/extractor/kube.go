@@ -38,7 +38,7 @@ func ExtractViaKubectl(kubeContext, outputDir string) error {
 	}
 
 	ui.Header("extract")
-	ui.KV("Context", kubeContext)
+	ui.KV("Context:", kubeContext)
 	PrintCPModeInfo(cpMode, zoneName, zones)
 	fmt.Println()
 

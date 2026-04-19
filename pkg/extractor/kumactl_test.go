@@ -35,7 +35,7 @@ currentContext: prod-ctx
 `)
 	t.Setenv("KUMACTL_CONFIG", cfg)
 
-	cpURL, resolvedCtx, err := resolveKumactlContext("prod-ctx")
+	cpURL, resolvedCtx, _, err := resolveKumactlContext("prod-ctx")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -62,7 +62,7 @@ currentContext: local
 `)
 	t.Setenv("KUMACTL_CONFIG", cfg)
 
-	cpURL, resolvedCtx, err := resolveKumactlContext("")
+	cpURL, resolvedCtx, _, err := resolveKumactlContext("")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -95,7 +95,7 @@ currentContext: zone1
 	t.Setenv("KUMACTL_CONFIG", cfg)
 
 	// Request zone2 explicitly.
-	cpURL, _, err := resolveKumactlContext("zone2")
+	cpURL, _, _, err := resolveKumactlContext("zone2")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -118,7 +118,7 @@ currentContext: local
 `)
 	t.Setenv("KUMACTL_CONFIG", cfg)
 
-	_, _, err := resolveKumactlContext("nonexistent")
+	_, _, _, err := resolveKumactlContext("nonexistent")
 	if err == nil {
 		t.Fatal("expected error for unknown context")
 	}
@@ -127,7 +127,7 @@ currentContext: local
 func TestResolveKumactlContext_MissingConfigFile(t *testing.T) {
 	t.Setenv("KUMACTL_CONFIG", filepath.Join(t.TempDir(), "no-such-file.yaml"))
 
-	_, _, err := resolveKumactlContext("any")
+	_, _, _, err := resolveKumactlContext("any")
 	if err == nil {
 		t.Fatal("expected error when config file does not exist")
 	}
@@ -146,7 +146,7 @@ contexts:
 `)
 	t.Setenv("KUMACTL_CONFIG", cfg)
 
-	_, _, err := resolveKumactlContext("")
+	_, _, _, err := resolveKumactlContext("")
 	if err == nil {
 		t.Fatal("expected error when no context specified and no currentContext set")
 	}
@@ -167,7 +167,7 @@ currentContext: ctx1
 `)
 	t.Setenv("KUMACTL_CONFIG", cfg)
 
-	_, _, err := resolveKumactlContext("ctx1")
+	_, _, _, err := resolveKumactlContext("ctx1")
 	if err == nil {
 		t.Fatal("expected error when control plane name not found")
 	}

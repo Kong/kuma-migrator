@@ -32,15 +32,18 @@ func ExtractViaKumactl(contextName, outputDir string) error {
 
 	skipSet := loadSkipSet()
 
-	cpURL, resolvedCtx, err := resolveKumactlContext(contextName)
+	cpURL, resolvedCtx, bearerToken, err := resolveKumactlContext(contextName)
 	if err != nil {
 		return err
 	}
 	ui.Header("extract")
-	ui.KV("Context", resolvedCtx)
-	ui.KV("Control plane", cpURL)
+	ui.KV("Context:", resolvedCtx)
+	ui.KV("Control plane:", cpURL)
+	if isKonnectURL(cpURL) {
+		ui.KV("Platform:", "Kong Konnect (hosted)")
+	}
 
-	cpMode, zoneName := detectKumactlCPMode(cpURL)
+	cpMode, zoneName := detectKumactlCPMode(cpURL, bearerToken)
 	dirLabel := cpModeDirectoryLabel(cpMode, zoneName)
 	var zones []string
 	if cpMode == CPModeGlobal {
@@ -52,7 +55,7 @@ func ExtractViaKumactl(contextName, outputDir string) error {
 	effectiveOutDir := filepath.Join(outputDir, dirLabel)
 
 	// Discover all writable resource types from the CP API, excluding skip-list kinds.
-	types, err := listKumaResourceTypes(cpURL, skipSet)
+	types, err := listKumaResourceTypes(cpURL, skipSet, bearerToken)
 	if err != nil {
 		return err
 	}
@@ -113,28 +116,35 @@ func listZoneNamesKumactl(kumactlCtx string) []string {
 
 // ---- CP mode detection ------------------------------------------------------
 
-// detectKumactlCPMode calls GET <cpURL>/config and returns the lower-cased CP mode
-// ("global", "zone", "standalone") and, for zone CPs, the zone name from
-// multizone.zone.name. Returns ("", "") on any error so callers treat it as
-// unknown and fall back to extracting everything.
-func detectKumactlCPMode(cpURL string) (mode, zoneName string) {
+// isKonnectURL reports whether cpURL points to the Kong Konnect SaaS platform.
+// Konnect-hosted mesh CPs always use api.konghq.com as the host. They are always
+// global CPs — zone CPs are self-hosted and connect to them.
+func isKonnectURL(cpURL string) bool {
+	return strings.Contains(cpURL, "api.konghq.com")
+}
+
+// detectKumactlCPMode returns the lower-cased CP mode ("global", "zone", "standalone")
+// and, for zone CPs, the zone name.
+//
+// For Konnect-hosted CPs (api.konghq.com) the mode is always "global" — the /config
+// endpoint does not exist on Konnect so we detect it from the URL directly.
+//
+// For self-hosted CPs, calls GET <cpURL>/config (authenticated when bearerToken is set).
+// Returns ("", "") on any error so callers treat it as unknown and fall back to
+// extracting everything.
+func detectKumactlCPMode(cpURL, bearerToken string) (mode, zoneName string) {
+	if isKonnectURL(cpURL) {
+		return CPModeGlobal, ""
+	}
+
 	url := strings.TrimRight(cpURL, "/") + "/config"
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Get(url)
-	if err != nil {
-		return "", ""
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return "", ""
-	}
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
+	body, status, err := authenticatedGet(url, bearerToken, 10*time.Second)
+	if err != nil || status != http.StatusOK {
 		return "", ""
 	}
 	var cfg struct {
-		Mode       string `json:"mode"`
-		Multizone  struct {
+		Mode      string `json:"mode"`
+		Multizone struct {
 			Zone struct {
 				Name string `json:"name"`
 			} `json:"zone"`
@@ -161,23 +171,16 @@ type resourceTypeList struct {
 
 // listKumaResourceTypes calls GET <cpURL>/_resources and returns all types
 // where readOnly is false. ReadOnly resources (Insights, etc.) are skipped.
-func listKumaResourceTypes(cpURL string, skipSet map[string]bool) ([]resourceTypeEntry, error) {
+// bearerToken is added as an Authorization header when non-empty.
+func listKumaResourceTypes(cpURL string, skipSet map[string]bool, bearerToken string) ([]resourceTypeEntry, error) {
 	url := strings.TrimRight(cpURL, "/") + "/_resources"
 
-	client := &http.Client{Timeout: 15 * time.Second}
-	resp, err := client.Get(url)
+	body, status, err := authenticatedGet(url, bearerToken, 15*time.Second)
 	if err != nil {
 		return nil, fmt.Errorf("GET %s: %w", url, err)
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GET %s: unexpected status %s", url, resp.Status)
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("read /_resources response: %w", err)
+	if status != http.StatusOK {
+		return nil, fmt.Errorf("GET %s: unexpected status %d", url, status)
 	}
 
 	var list resourceTypeList
@@ -292,10 +295,12 @@ type kumactlCoordinates struct {
 	APIServer kumactlAPIServer `yaml:"apiServer"`
 }
 
-// kumactlAPIServer holds only the URL field; other fields (caCertFile, authType,
-// authConf) are present in real configs but not needed for the CLI-based extraction.
+// kumactlAPIServer holds the fields needed to reach and authenticate against a CP.
+// authType "tokens" uses authConf["token"] as a Bearer token.
 type kumactlAPIServer struct {
-	URL string `yaml:"url"`
+	URL      string            `yaml:"url"`
+	AuthType string            `yaml:"authType"`
+	AuthConf map[string]string `yaml:"authConf"`
 }
 
 type kumactlContext struct {
@@ -303,25 +308,25 @@ type kumactlContext struct {
 	ControlPlane string `yaml:"controlPlane"`
 }
 
-// resolveKumactlContext parses the kumactl config file and returns the CP URL and
-// the resolved context name (which may differ from the input when contextName is "").
-func resolveKumactlContext(contextName string) (cpURL, resolvedCtx string, err error) {
+// resolveKumactlContext parses the kumactl config file and returns the CP URL,
+// the resolved context name, and the bearer token (empty when not configured).
+func resolveKumactlContext(contextName string) (cpURL, resolvedCtx, bearerToken string, err error) {
 	configPath := kumactlConfigPath()
 	data, err := os.ReadFile(configPath)
 	if err != nil {
-		return "", "", fmt.Errorf("read kumactl config %q: %w", configPath, err)
+		return "", "", "", fmt.Errorf("read kumactl config %q: %w", configPath, err)
 	}
 
 	var cfg kumactlConfig
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		return "", "", fmt.Errorf("parse kumactl config %q: %w", configPath, err)
+		return "", "", "", fmt.Errorf("parse kumactl config %q: %w", configPath, err)
 	}
 
 	if contextName == "" {
 		contextName = cfg.CurrentContext
 	}
 	if contextName == "" {
-		return "", "", fmt.Errorf("no --kumactl-context given and no currentContext set in %s", configPath)
+		return "", "", "", fmt.Errorf("no --kumactl-context given and no currentContext set in %s", configPath)
 	}
 
 	// Resolve context → control-plane name.
@@ -333,16 +338,20 @@ func resolveKumactlContext(contextName string) (cpURL, resolvedCtx string, err e
 		}
 	}
 	if cpName == "" {
-		return "", "", fmt.Errorf("context %q not found in %s", contextName, configPath)
+		return "", "", "", fmt.Errorf("context %q not found in %s", contextName, configPath)
 	}
 
-	// Resolve control-plane name → URL.
+	// Resolve control-plane name → URL and bearer token.
 	for _, cp := range cfg.ControlPlanes {
 		if cp.Name == cpName {
-			return cp.Coordinates.APIServer.URL, contextName, nil
+			token := ""
+			if cp.Coordinates.APIServer.AuthType == "tokens" {
+				token = cp.Coordinates.APIServer.AuthConf["token"]
+			}
+			return cp.Coordinates.APIServer.URL, contextName, token, nil
 		}
 	}
-	return "", "", fmt.Errorf("control plane %q (linked from context %q) not found in %s", cpName, contextName, configPath)
+	return "", "", "", fmt.Errorf("control plane %q (linked from context %q) not found in %s", cpName, contextName, configPath)
 }
 
 // kumactlConfigPath returns the path to the kumactl config file, honouring the
@@ -353,6 +362,29 @@ func kumactlConfigPath() string {
 	}
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, ".kumactl", "config")
+}
+
+// ---- HTTP helper ------------------------------------------------------------
+
+// authenticatedGet performs a GET request, adding an Authorization: Bearer header
+// when bearerToken is non-empty. Returns the response body, HTTP status code, and
+// any transport-level error.
+func authenticatedGet(url, bearerToken string, timeout time.Duration) (body []byte, status int, err error) {
+	client := &http.Client{Timeout: timeout}
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, 0, err
+	}
+	if bearerToken != "" {
+		req.Header.Set("Authorization", "Bearer "+bearerToken)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer resp.Body.Close()
+	body, err = io.ReadAll(resp.Body)
+	return body, resp.StatusCode, err
 }
 
 // ---- kumactl helper ---------------------------------------------------------

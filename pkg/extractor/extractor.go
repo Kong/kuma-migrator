@@ -187,7 +187,7 @@ func sanitize(s string) string {
 func PrintCPModeInfo(cpMode, zoneName string, zones []string) {
 	switch cpMode {
 	case CPModeZone:
-		ui.KV("CP mode: ", fmt.Sprintf("zone (%s)", zoneName))
+		ui.KV("CP mode:", fmt.Sprintf("zone (%s)", zoneName))
 		ui.Warn("Extracting from a Zone CP — only kuma.io/origin: zone resources will be kept.")
 		ui.WarnIndented("For a complete policy set, also run extract against the Global CP.")
 		ui.Info("MeshGatewayInstance and MeshGatewayConfig are zone-local and will be extracted here.")
@@ -195,17 +195,17 @@ func PrintCPModeInfo(cpMode, zoneName string, zones []string) {
 		ui.InfoIndented("- Synced from Global CP with kuma.io/origin: global → skipped (extract from Global CP).")
 		ui.InfoIndented("- Created directly on this Zone CP with no origin label → extracted here.")
 	case CPModeGlobal:
-		ui.KV("CP mode: ", "global")
+		ui.KV("CP mode:", "global")
 		if len(zones) > 0 {
-			ui.KV("Attached zones: ", strings.Join(zones, ", "))
+			ui.KV("Attached zones:", strings.Join(zones, ", "))
 		}
 		ui.Info("MeshGateway and route CRDs created on the Global CP are extracted here.")
 		ui.Info("MeshGatewayInstance and MeshGatewayConfig are zone-local and skipped here.")
 		ui.InfoIndented("Run extract against each Zone CP to capture gateway instances.")
 	case CPModeStandalone:
-		ui.KV("CP mode: ", "standalone")
+		ui.KV("CP mode:", "standalone")
 	default:
-		ui.KV("CP mode: ", "unknown")
+		ui.KV("CP mode:", "unknown")
 		ui.Warn("Could not detect CP mode — extracting all resources.")
 	}
 }

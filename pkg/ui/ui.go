@@ -53,7 +53,7 @@ func Header(command string) {
 //
 //	  Context        global-cp
 func KV(label, value string) {
-	fmt.Printf("  %-16s%s\n", faint.Sprint(label), value)
+	fmt.Printf("  %-16s %s\n", faint.Sprint(label), value)
 }
 
 // ── Status notices ────────────────────────────────────────────────────────────

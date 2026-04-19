@@ -19,7 +19,7 @@ func TestDetectKumactlCPMode_Global(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	got, _ := detectKumactlCPMode(srv.URL)
+	got, _ := detectKumactlCPMode(srv.URL, "")
 	if got != CPModeGlobal {
 		t.Errorf("expected %q, got %q", CPModeGlobal, got)
 	}
@@ -33,7 +33,7 @@ func TestDetectKumactlCPMode_Zone(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	gotMode, gotZone := detectKumactlCPMode(srv.URL)
+	gotMode, gotZone := detectKumactlCPMode(srv.URL, "")
 	if gotMode != CPModeZone {
 		t.Errorf("expected mode %q, got %q", CPModeZone, gotMode)
 	}
@@ -48,7 +48,7 @@ func TestDetectKumactlCPMode_Standalone(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	got, _ := detectKumactlCPMode(srv.URL)
+	got, _ := detectKumactlCPMode(srv.URL, "")
 	if got != CPModeStandalone {
 		t.Errorf("expected %q, got %q", CPModeStandalone, got)
 	}
@@ -61,14 +61,14 @@ func TestDetectKumactlCPMode_Error(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	got, _ := detectKumactlCPMode(srv.URL)
+	got, _ := detectKumactlCPMode(srv.URL, "")
 	if got != "" {
 		t.Errorf("expected empty string on error, got %q", got)
 	}
 }
 
 func TestDetectKumactlCPMode_Unreachable(t *testing.T) {
-	got, _ := detectKumactlCPMode("http://127.0.0.1:19999") // nothing listening
+	got, _ := detectKumactlCPMode("http://127.0.0.1:19999", "") // nothing listening
 	if got != "" {
 		t.Errorf("expected empty string for unreachable server, got %q", got)
 	}
@@ -376,6 +376,45 @@ spec: {}
 	}
 	if n != 1 {
 		t.Errorf("expected 1 file (MeshGateway without origin label kept on zone CP as zone-local), got %d", n)
+	}
+}
+
+// ---- Konnect detection ------------------------------------------------------
+
+func TestDetectKumactlCPMode_Konnect(t *testing.T) {
+	// Konnect URLs always contain api.konghq.com — mode must be global without
+	// hitting any endpoint (the /config endpoint does not exist on Konnect).
+	konnectURLs := []string{
+		"https://eu.api.konghq.com/v1/mesh/control-planes/abc123/api",
+		"https://us.api.konghq.com/v1/mesh/control-planes/xyz/api",
+		"https://au.api.konghq.com/v1/mesh/control-planes/def456/api",
+	}
+	for _, u := range konnectURLs {
+		mode, zone := detectKumactlCPMode(u, "test-token")
+		if mode != CPModeGlobal {
+			t.Errorf("Konnect URL %q: expected mode %q, got %q", u, CPModeGlobal, mode)
+		}
+		if zone != "" {
+			t.Errorf("Konnect URL %q: expected empty zone, got %q", u, zone)
+		}
+	}
+}
+
+func TestIsKonnectURL(t *testing.T) {
+	cases := []struct {
+		url  string
+		want bool
+	}{
+		{"https://eu.api.konghq.com/v1/mesh/control-planes/abc/api", true},
+		{"https://us.api.konghq.com/v1/mesh/control-planes/abc/api", true},
+		{"http://localhost:5681", false},
+		{"https://kuma-cp.internal:5682", false},
+		{"https://my-kuma.example.com/api", false},
+	}
+	for _, c := range cases {
+		if got := isKonnectURL(c.url); got != c.want {
+			t.Errorf("isKonnectURL(%q) = %v, want %v", c.url, got, c.want)
+		}
 	}
 }
 
