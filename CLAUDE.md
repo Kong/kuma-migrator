@@ -57,6 +57,36 @@ and are skipped). Unknown mode falls back to extracting everything.
 Key files: `pkg/extractor/kube.go`, `pkg/extractor/kumactl.go`, `pkg/extractor/extractor.go`,
 `pkg/extractor/cpmode.go`.
 
+### Konnect (hosted) specifics
+
+- **Detection**: URL contains `api.konghq.com`. Logged as `Platform: Kong Konnect (hosted)`.
+- **Authentication**: kumactl stores PATs as `headers: [{key: Authorization, value: "Bearer kpat_..."}]`
+  in the kumactl config (not `authType: tokens`/`authConf`). `resolveKumactlContext` scans
+  `kumactlAPIServer.Headers` for the `Authorization` key and strips the `Bearer ` prefix.
+  Struct: `type kumactlHeader struct { Key, Value string }`.
+- **CP mode**: Konnect has no `/config` endpoint. Always treated as Global CP.
+- **Scope fallback**: `/_resources` sometimes reports resource types as Mesh-scoped but kumactl
+  rejects `--mesh` for them ("unknown flag: --mesh"). `isUnknownMeshFlag(err)` detects this
+  and retries the extraction globally (breaking out of the mesh loop).
+- **Universal list format**: kumactl on Konnect returns `{total: N, items: [...]}` JSON with
+  no top-level `kind`. `writeSingleResourceDoc` detects this and recurses into `items`.
+
+### Universal format YAML (migrate pipeline)
+
+Kuma's Universal format uses `type` instead of `kind` and top-level `name`/`mesh` fields
+instead of `metadata`. All migrate-side parsing must normalise these:
+
+- **`DetectScenario`** (`detect.go`): `kind := p.Kind; if kind == "" { kind = p.Type }`.
+  All downstream checks use the normalised `kind` variable.
+- **`meshNeedsMigration`** (`mesh.go`): `meshProbe` has both `Spec.{Metrics,Tracing,...}` and
+  top-level `{Metrics,Tracing,...}` fields. Effective values are resolved with fallback:
+  `metrics := p.Spec.Metrics; if metrics == nil { metrics = p.Metrics }`.
+- **`TransformFromToRules`** (`rulesapi.go`): uses a `map[string]interface{}` round-trip via
+  `applyFromToRulesMap` to preserve all top-level Universal fields (`type`, `name`, `mesh`,
+  `kri`, `creationTime`, `labels`). The typed `KubePolicy` struct path (`applyFromToRules`)
+  is kept only for the second-pass inside `transformScenarioSubset`.
+- **`extractNameFromObj`**: checks `obj["metadata"]["name"]` first, falls back to `obj["name"]`.
+
 ### Kuma resource labels relevant to extraction and migration
 
 | Label | Values | Meaning |

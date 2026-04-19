@@ -192,6 +192,20 @@ queries `GET <cpURL>/_resources` to discover all writable resource types, lists 
 names, then calls `kumactl get <type> [--mesh <mesh>] -o yaml` for each type.
 Read-only resources (Insights, computed objects) are automatically excluded.
 
+**Kong Konnect (hosted)** — automatically detected when the CP URL contains `api.konghq.com`.
+kumactl stores Personal Access Tokens for Konnect as HTTP headers (`Authorization: Bearer kpat_…`)
+rather than the `authType: tokens` format used by self-hosted CPs. The tool reads both formats.
+Konnect is always treated as a Global CP (no `/config` endpoint). Some resource types are
+incorrectly reported as Mesh-scoped in `/_resources` but reject `--mesh`; the tool
+automatically retries them as Global-scoped and emits a debug log line.
+
+**Universal format YAML** — kumactl (and Konnect in particular) returns resources in Kuma's
+Universal format (`type: MeshMetric`, `name: my-policy` at the top level, no `apiVersion`/`metadata`
+wrapper). The extract pipeline handles this transparently, including list responses of the form
+`{total: N, items: [...]}`. The migrate pipeline also understands Universal format: scenario
+detection, mesh migration, and the Rules API from[]→rules[] transformation all work with
+both formats.
+
 ### 2. Plan (dry run)
 
 Preview all changes **without writing any output files**.
@@ -562,9 +576,14 @@ spec:
   the Gateway API `backendRef`. Missing ports trigger a warning.
 - **Kong Mesh upgrade constraint** — Kong Mesh supports upgrading at most **two minor
   versions** at a time. Plan your upgrade path accordingly (e.g. 2.7 → 2.9 → 2.11 → 2.13).
-- **Universal vs Kubernetes mode** — detected from tag format. Kubernetes-encoded values
-  (`backend_demo_svc_3001`) are parsed to extract name and namespace; Universal free-form
-  values are used as-is.
+- **Universal vs Kubernetes format** — Kuma resources exist in two YAML shapes. Kubernetes
+  format uses `apiVersion`, `kind`, and `metadata.name`; Universal format uses `type` and a
+  top-level `name`/`mesh` field. Both are fully supported in extract and migrate. When
+  service names are Kubernetes-encoded (`backend_demo_svc_3001`), the tool parses them to
+  extract name, namespace, and port; Universal free-form names are used as-is.
+- **Rules API: `spec.targetRef` is optional** — the Rules scenario (`from[]` → `rules[]`)
+  is triggered whenever the policy kind is in the affected set and `from[]` is present,
+  regardless of whether `spec.targetRef` is set at the top level.
 
 ## Development
 
