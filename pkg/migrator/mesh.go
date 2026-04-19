@@ -77,6 +77,8 @@ type oldTCPLogConf struct {
 // must be extracted into standalone observability CRDs, OR when
 // spec.meshServices.mode is not already set to "Exclusive".
 func meshNeedsMigration(raw []byte) bool {
+	// Support both Kubernetes-style (fields under spec) and Universal-style
+	// (fields at top level, no spec wrapper).
 	type meshProbe struct {
 		Spec struct {
 			Metrics      interface{}            `json:"metrics"`
@@ -85,16 +87,45 @@ func meshNeedsMigration(raw []byte) bool {
 			Networking   interface{}            `json:"networking"`
 			MeshServices map[string]interface{} `json:"meshServices"`
 		} `json:"spec"`
+		// Universal-format: same fields at top level.
+		Metrics      interface{}            `json:"metrics"`
+		Tracing      interface{}            `json:"tracing"`
+		Logging      interface{}            `json:"logging"`
+		Networking   interface{}            `json:"networking"`
+		MeshServices map[string]interface{} `json:"meshServices"`
 	}
 	var p meshProbe
 	if err := yaml.Unmarshal(raw, &p); err != nil {
 		return false
 	}
-	if p.Spec.Metrics != nil || p.Spec.Tracing != nil || p.Spec.Logging != nil {
+
+	// Resolve effective values: Kubernetes spec takes precedence; Universal top-level is fallback.
+	metrics := p.Spec.Metrics
+	if metrics == nil {
+		metrics = p.Metrics
+	}
+	tracing := p.Spec.Tracing
+	if tracing == nil {
+		tracing = p.Tracing
+	}
+	logging := p.Spec.Logging
+	if logging == nil {
+		logging = p.Logging
+	}
+	networking := p.Spec.Networking
+	if networking == nil {
+		networking = p.Networking
+	}
+	meshServices := p.Spec.MeshServices
+	if meshServices == nil {
+		meshServices = p.MeshServices
+	}
+
+	if metrics != nil || tracing != nil || logging != nil {
 		return true
 	}
 	// Check networking.outbound.passthrough specifically.
-	if net, ok := p.Spec.Networking.(map[string]interface{}); ok {
+	if net, ok := networking.(map[string]interface{}); ok {
 		if out, ok := net["outbound"].(map[string]interface{}); ok {
 			if _, ok := out["passthrough"]; ok {
 				return true
@@ -102,7 +133,7 @@ func meshNeedsMigration(raw []byte) bool {
 		}
 	}
 	// meshServices.mode must be Exclusive for MeshService-based policies to work.
-	if p.Spec.MeshServices["mode"] != "Exclusive" {
+	if meshServices["mode"] != "Exclusive" {
 		return true
 	}
 	return false

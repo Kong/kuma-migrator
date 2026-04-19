@@ -67,17 +67,33 @@ func ExtractViaKumactl(contextName, outputDir string) error {
 	if err != nil {
 		return fmt.Errorf("list meshes: %w", err)
 	}
+	ui.KV("Meshes found:", strings.Join(meshNames, ", "))
 
 	total := 0
 	for _, rt := range types {
 		if rt.Scope == "Mesh" {
+			extracted := false
 			for _, mesh := range meshNames {
 				n, err := dumpKumactlResources(resolvedCtx, rt, mesh, effectiveOutDir, skipSet, cpMode)
 				if err != nil {
+					if isUnknownMeshFlag(err) {
+						// API reported Mesh-scoped but kumactl rejects --mesh:
+						// fall back to a single global extraction.
+						n2, err2 := dumpKumactlResources(resolvedCtx, rt, "", effectiveOutDir, skipSet, cpMode)
+						if err2 != nil {
+							ui.Warn(fmt.Sprintf("%s: %v", rt.Path, err2))
+						}
+						total += n2
+						extracted = true
+						break
+					}
 					ui.Warn(fmt.Sprintf("%s (mesh %s): %v", rt.Path, mesh, err))
+					continue
 				}
 				total += n
+				extracted = true
 			}
+			_ = extracted
 		} else {
 			n, err := dumpKumactlResources(resolvedCtx, rt, "", effectiveOutDir, skipSet, cpMode)
 			if err != nil {
@@ -180,7 +196,11 @@ func listKumaResourceTypes(cpURL string, skipSet map[string]bool, bearerToken st
 		return nil, fmt.Errorf("GET %s: %w", url, err)
 	}
 	if status != http.StatusOK {
-		return nil, fmt.Errorf("GET %s: unexpected status %d", url, status)
+		hint := ""
+		if status == http.StatusUnauthorized {
+			hint = " (check that a valid token is stored in your kumactl config)"
+		}
+		return nil, fmt.Errorf("GET %s: unexpected status %d%s", url, status, hint)
 	}
 
 	var list resourceTypeList
@@ -209,7 +229,11 @@ func listMeshNames(kumactlCtx string) ([]string, error) {
 }
 
 // parseMeshNamesFromYAML extracts mesh names from a kumactl YAML stream.
-// Supports both Kubernetes-style (metadata.name) and Universal-style (top-level name).
+// Supports three formats:
+//   - Stream of individual Mesh documents separated by "---"
+//   - Kubernetes-style MeshList (single doc with items[])
+//   - Universal-style top-level "name" field
+//
 // Falls back to ["default"] when no names can be parsed.
 func parseMeshNamesFromYAML(data []byte) []string {
 	docs := splitYAMLDocs(data)
@@ -223,9 +247,28 @@ func parseMeshNamesFromYAML(data []byte) []string {
 			Metadata struct {
 				Name string `yaml:"name"`
 			} `yaml:"metadata"`
-			Name string `yaml:"name"`
+			Name  string `yaml:"name"`
+			Items []struct {
+				Metadata struct {
+					Name string `yaml:"name"`
+				} `yaml:"metadata"`
+				Name string `yaml:"name"`
+			} `yaml:"items"`
 		}
 		if err := yaml.Unmarshal([]byte(doc), &obj); err != nil {
+			continue
+		}
+		// Kubernetes-style MeshList: kind: MeshList with items[].
+		if len(obj.Items) > 0 {
+			for _, item := range obj.Items {
+				n := item.Metadata.Name
+				if n == "" {
+					n = item.Name
+				}
+				if n != "" {
+					names = append(names, n)
+				}
+			}
 			continue
 		}
 		name := obj.Metadata.Name
@@ -277,6 +320,17 @@ func isEmptyResult(err error) bool {
 		strings.Contains(msg, "not found")
 }
 
+// isUnknownMeshFlag returns true when kumactl rejects --mesh for a resource type
+// that the /_resources API incorrectly reported as Mesh-scoped. This happens with
+// some Global-scoped resources (e.g. meshglobalratelimits, opa-policies) on
+// certain Kuma/Konnect versions.
+func isUnknownMeshFlag(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), "unknown flag: --mesh")
+}
+
 // ---- kumactl config parsing -------------------------------------------------
 
 // kumactlConfig mirrors the ~/.kumactl/config YAML structure.
@@ -296,11 +350,20 @@ type kumactlCoordinates struct {
 }
 
 // kumactlAPIServer holds the fields needed to reach and authenticate against a CP.
-// authType "tokens" uses authConf["token"] as a Bearer token.
+// Two auth approaches are supported:
+//   - authType "tokens": bearerToken = authConf["token"]
+//   - headers list: scan for key "Authorization", use its value directly (may already
+//     include the "Bearer " prefix, as written by `kumactl config control-planes add`).
 type kumactlAPIServer struct {
 	URL      string            `yaml:"url"`
 	AuthType string            `yaml:"authType"`
 	AuthConf map[string]string `yaml:"authConf"`
+	Headers  []kumactlHeader   `yaml:"headers"`
+}
+
+type kumactlHeader struct {
+	Key   string `yaml:"key"`
+	Value string `yaml:"value"`
 }
 
 type kumactlContext struct {
@@ -345,8 +408,27 @@ func resolveKumactlContext(contextName string) (cpURL, resolvedCtx, bearerToken 
 	for _, cp := range cfg.ControlPlanes {
 		if cp.Name == cpName {
 			token := ""
-			if cp.Coordinates.APIServer.AuthType == "tokens" {
+			switch {
+			case cp.Coordinates.APIServer.AuthType == "tokens":
+				// Classic token auth: authConf["token"] holds the bare token.
 				token = cp.Coordinates.APIServer.AuthConf["token"]
+			default:
+				// Header-based auth written by `kumactl config control-planes add`:
+				// headers: [{key: Authorization, value: "Bearer kpat_..."}]
+				// The value already includes the "Bearer " prefix.
+				for _, h := range cp.Coordinates.APIServer.Headers {
+					if strings.EqualFold(h.Key, "Authorization") {
+						// Strip "Bearer " prefix so authenticatedGet can add it back
+						// uniformly, or pass the bare token if the header had none.
+						val := h.Value
+						if after, ok := strings.CutPrefix(val, "Bearer "); ok {
+							token = after
+						} else {
+							token = val
+						}
+						break
+					}
+				}
 			}
 			return cp.Coordinates.APIServer.URL, contextName, token, nil
 		}

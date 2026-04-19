@@ -184,6 +184,34 @@ name: universal-mesh`
 	}
 }
 
+func TestListMeshNames_ParsesKubernetesMeshList(t *testing.T) {
+	// Konnect / Kubernetes-style kumactl returns a MeshList document, not ---stream.
+	doc := `apiVersion: kuma.io/v1alpha1
+kind: MeshList
+items:
+- apiVersion: kuma.io/v1alpha1
+  kind: Mesh
+  metadata:
+    name: british-airways-mesh
+  spec: {}
+- apiVersion: kuma.io/v1alpha1
+  kind: Mesh
+  metadata:
+    name: internal-mesh
+  spec: {}`
+
+	names := parseMeshNamesFromYAML([]byte(doc))
+	if len(names) != 2 {
+		t.Fatalf("expected 2 mesh names from MeshList, got %d: %v", len(names), names)
+	}
+	want := map[string]bool{"british-airways-mesh": true, "internal-mesh": true}
+	for _, n := range names {
+		if !want[n] {
+			t.Errorf("unexpected mesh name %q", n)
+		}
+	}
+}
+
 func TestListMeshNames_EmptyYAML(t *testing.T) {
 	names := parseMeshNamesFromYAML([]byte(""))
 	// Should fall back to ["default"].
@@ -215,6 +243,28 @@ func TestIsEmptyResult_NotFound(t *testing.T) {
 func TestIsEmptyResult_RealError(t *testing.T) {
 	if isEmptyResult(fakeErr("connection refused")) {
 		t.Error("expected isEmptyResult=false for connection refused")
+	}
+}
+
+// ---- isUnknownMeshFlag ------------------------------------------------------
+
+func TestIsUnknownMeshFlag_Match(t *testing.T) {
+	if !isUnknownMeshFlag(fakeErr("Error: unknown flag: --mesh")) {
+		t.Error("expected isUnknownMeshFlag=true for 'unknown flag: --mesh'")
+	}
+}
+
+func TestIsUnknownMeshFlag_NoMatch(t *testing.T) {
+	for _, msg := range []string{"connection refused", "no resources found", "unauthorized"} {
+		if isUnknownMeshFlag(fakeErr(msg)) {
+			t.Errorf("expected isUnknownMeshFlag=false for %q", msg)
+		}
+	}
+}
+
+func TestIsUnknownMeshFlag_Nil(t *testing.T) {
+	if isUnknownMeshFlag(nil) {
+		t.Error("expected isUnknownMeshFlag=false for nil")
 	}
 }
 

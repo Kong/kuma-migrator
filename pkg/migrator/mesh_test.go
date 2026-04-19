@@ -400,6 +400,77 @@ spec:
 	}
 }
 
+func TestMeshNeedsMigration_UniversalFormat(t *testing.T) {
+	// Universal Mesh with meshServices.mode: Exclusive at top level — no migration needed.
+	alreadyDone := []byte(`meshServices:
+  mode: Exclusive
+mtls:
+  backends:
+  - name: builtin
+    type: builtin
+  enabledBackend: builtin
+name: default
+type: Mesh
+`)
+	if meshNeedsMigration(alreadyDone) {
+		t.Error("expected meshNeedsMigration=false for Universal Mesh with top-level meshServices.mode: Exclusive")
+	}
+
+	// Universal Mesh without meshServices — needs migration.
+	missingMode := []byte(`mtls:
+  enabledBackend: builtin
+name: default
+type: Mesh
+`)
+	if !meshNeedsMigration(missingMode) {
+		t.Error("expected meshNeedsMigration=true for Universal Mesh with no meshServices.mode")
+	}
+
+	// Universal Mesh with top-level metrics — needs migration.
+	withMetrics := []byte(`metrics:
+  backends: []
+meshServices:
+  mode: Exclusive
+name: default
+type: Mesh
+`)
+	if !meshNeedsMigration(withMetrics) {
+		t.Error("expected meshNeedsMigration=true for Universal Mesh with top-level metrics")
+	}
+}
+
+func TestDetectScenario_RulesAPI_NoTopLevelTargetRef(t *testing.T) {
+	// MeshAccessLog with from[] but NO spec.targetRef — still ScenarioRules.
+	input := `type: MeshAccessLog
+name: my-access-log
+mesh: default
+spec:
+  from:
+  - default:
+      backends:
+      - type: File
+        file:
+          path: /dev/stdout
+    targetRef:
+      kind: Mesh
+  to:
+  - default:
+      backends:
+      - type: File
+        file:
+          path: /dev/stdout
+    targetRef:
+      kind: Mesh
+`
+	got, err := DetectScenario([]byte(input))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != ScenarioRules {
+		t.Errorf("expected ScenarioRules for MeshAccessLog without spec.targetRef, got %v", got)
+	}
+}
+
 func TestTransformMesh_InjectsMeshServicesMode(t *testing.T) {
 	// A Mesh with no observability sections and no meshServices field should get
 	// meshServices.mode: Exclusive injected.

@@ -55,18 +55,25 @@ func DetectScenario(raw []byte) (Scenario, error) {
 		return ScenarioUnknown, err
 	}
 
-	// ExternalService (both Kubernetes-style and Universal-style).
-	if p.Kind == "ExternalService" || p.Type == "ExternalService" {
+	// Normalise: Universal format uses "type" instead of "kind".
+	// All checks below use kind so both formats are handled uniformly.
+	kind := p.Kind
+	if kind == "" {
+		kind = p.Type
+	}
+
+	// ExternalService.
+	if kind == "ExternalService" {
 		return ScenarioExternalService, nil
 	}
 
 	// Kong Mesh OPAPolicy → MeshOPA.
-	if p.Kind == "OPAPolicy" || p.Type == "OPAPolicy" {
+	if kind == "OPAPolicy" {
 		return ScenarioOPAPolicy, nil
 	}
 
 	// Gateway resources → Gateway API CRDs.
-	switch p.Kind {
+	switch kind {
 	case "MeshGateway":
 		return ScenarioGateway, nil
 	case "MeshGatewayInstance":
@@ -80,7 +87,7 @@ func DetectScenario(raw []byte) (Scenario, error) {
 	}
 
 	// Mesh CRD — check if it has sections that need extracting.
-	if p.Kind == "Mesh" {
+	if kind == "Mesh" {
 		if meshNeedsMigration(raw) {
 			return ScenarioMesh, nil
 		}
@@ -88,14 +95,14 @@ func DetectScenario(raw []byte) (Scenario, error) {
 	}
 
 	// Scenario A: has sources/destinations keys OR a known non-Mesh* type name.
-	if p.Sources != nil || p.Destinations != nil || knownLegacyTypes[p.Type] {
+	if p.Sources != nil || p.Destinations != nil || knownLegacyTypes[kind] {
 		return ScenarioLegacy, nil
 	}
 
 	// Scenario D: new-style Mesh* policy with from[] still present (deprecated in 2.10).
 	// Must not have service-identity tags (those become ScenarioSubset first, then the
 	// from→rules migration is applied as a second pass inside transformScenarioSubset).
-	if rulesAPIMigrationKinds[p.Kind] && p.Spec != nil && len(p.Spec.From) > 0 {
+	if rulesAPIMigrationKinds[kind] && p.Spec != nil && len(p.Spec.From) > 0 {
 		hasServiceTag := false
 		for i := range p.Spec.From {
 			if probeRefHasServiceTag(p.Spec.From[i].TargetRef) {
@@ -103,18 +110,18 @@ func DetectScenario(raw []byte) (Scenario, error) {
 				break
 			}
 		}
-		if !hasServiceTag && p.Spec.TargetRef != nil && !probeRefHasServiceTag(p.Spec.TargetRef) {
+		if !hasServiceTag && !probeRefHasServiceTag(p.Spec.TargetRef) {
 			return ScenarioRules, nil
 		}
 	}
 
-	// Not a Kuma policy resource at all.
-	if p.Kind == "" && p.Type == "" {
+	// Not a Kuma policy resource at all — skip.
+	if kind == "" {
 		return ScenarioSkipped, nil
 	}
 
-	// Non-Mesh resources (e.g. Kubernetes Deployment, Service) — pass through.
-	if !strings.HasPrefix(p.Kind, "Mesh") && p.Type == "" {
+	// Non-Mesh, non-legacy Kubernetes resources (e.g. Deployment, Service) — skip.
+	if !strings.HasPrefix(kind, "Mesh") {
 		return ScenarioSkipped, nil
 	}
 

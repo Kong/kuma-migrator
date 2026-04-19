@@ -173,6 +173,68 @@ currentContext: ctx1
 	}
 }
 
+func TestResolveKumactlContext_HeadersAuth(t *testing.T) {
+	// kumactl config control-planes add writes auth as headers list when
+	// using Konnect or header-based tokens.
+	cfg := writeConfig(t, `
+controlPlanes:
+  - name: konnect-cp
+    coordinates:
+      apiServer:
+        url: https://eu.api.konghq.com/v1/mesh/control-planes/abc/api
+        headers:
+          - key: Authorization
+            value: "Bearer kpat_mytoken456"
+contexts:
+  - name: konnect
+    controlPlane: konnect-cp
+currentContext: konnect
+`)
+	t.Setenv("KUMACTL_CONFIG", cfg)
+
+	cpURL, resolvedCtx, token, err := resolveKumactlContext("konnect")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cpURL != "https://eu.api.konghq.com/v1/mesh/control-planes/abc/api" {
+		t.Errorf("unexpected CP URL: %s", cpURL)
+	}
+	if resolvedCtx != "konnect" {
+		t.Errorf("unexpected context: %s", resolvedCtx)
+	}
+	// "Bearer " prefix must be stripped so authenticatedGet can re-add it.
+	if token != "kpat_mytoken456" {
+		t.Errorf("expected token kpat_mytoken456, got %q", token)
+	}
+}
+
+func TestResolveKumactlContext_HeadersAuthNoBearerPrefix(t *testing.T) {
+	// Some configs may store the bare token without the "Bearer " prefix.
+	cfg := writeConfig(t, `
+controlPlanes:
+  - name: local-cp
+    coordinates:
+      apiServer:
+        url: http://localhost:5681
+        headers:
+          - key: Authorization
+            value: "bare-token-value"
+contexts:
+  - name: local
+    controlPlane: local-cp
+currentContext: local
+`)
+	t.Setenv("KUMACTL_CONFIG", cfg)
+
+	_, _, token, err := resolveKumactlContext("local")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if token != "bare-token-value" {
+		t.Errorf("expected token bare-token-value, got %q", token)
+	}
+}
+
 // TestKumactlConfigPath_EnvOverride verifies KUMACTL_CONFIG env var is honoured.
 func TestKumactlConfigPath_EnvOverride(t *testing.T) {
 	t.Setenv("KUMACTL_CONFIG", "/custom/path/config")

@@ -418,6 +418,91 @@ func TestIsKonnectURL(t *testing.T) {
 	}
 }
 
+// ---- Universal / list format parsing ----------------------------------------
+
+func TestWriteResourceFiles_UniversalFormatSingleResource(t *testing.T) {
+	dir := t.TempDir()
+	// kumactl in Universal mode returns type/name instead of kind/metadata.name.
+	data := []byte(`type: MeshMetric
+name: my-metrics
+mesh: default
+spec: {}
+`)
+	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeGlobal)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("expected 1 file from Universal format resource, got %d", n)
+	}
+}
+
+func TestWriteResourceFiles_UniversalFormatList(t *testing.T) {
+	dir := t.TempDir()
+	// kumactl Universal list response: {total: N, items: [{type: ..., name: ...}]}
+	data := []byte(`total: 2
+items:
+- type: MeshMetric
+  name: metrics-1
+  mesh: default
+  spec: {}
+- type: MeshAccessLog
+  name: access-log-1
+  mesh: default
+  spec: {}
+`)
+	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeGlobal)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if n != 2 {
+		t.Errorf("expected 2 files from Universal list, got %d", n)
+	}
+}
+
+func TestWriteResourceFiles_KubernetesListFormat(t *testing.T) {
+	dir := t.TempDir()
+	// kumactl on Kubernetes returns a MeshMetricList document.
+	data := []byte(`apiVersion: kuma.io/v1alpha1
+kind: MeshMetricList
+items:
+- apiVersion: kuma.io/v1alpha1
+  kind: MeshMetric
+  metadata:
+    name: my-metrics
+    namespace: kuma-system
+  spec: {}
+- apiVersion: kuma.io/v1alpha1
+  kind: MeshMetric
+  metadata:
+    name: other-metrics
+    namespace: kuma-system
+  spec: {}
+`)
+	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeGlobal)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if n != 2 {
+		t.Errorf("expected 2 files from Kubernetes list format, got %d", n)
+	}
+}
+
+func TestWriteResourceFiles_EmptyKubernetesList(t *testing.T) {
+	dir := t.TempDir()
+	data := []byte(`apiVersion: kuma.io/v1alpha1
+kind: MeshMetricList
+items: []
+`)
+	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeGlobal)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if n != 0 {
+		t.Errorf("expected 0 files from empty list, got %d", n)
+	}
+}
+
 func TestWriteResourceFiles_ZoneFilter_SkipsNonGatewayNoLabel(t *testing.T) {
 	dir := t.TempDir()
 	// MeshTimeout without origin label — not a gateway-local kind, must be skipped on zone CP.
