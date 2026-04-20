@@ -22,8 +22,17 @@ var DefaultSkipKinds = []string{
 	"Workload",
 }
 
+// AdminServerConfig holds settings for connecting to the Kuma CP admin server.
+type AdminServerConfig struct {
+	// TLSSkipVerify disables TLS certificate verification when connecting to
+	// the control plane admin server. Use only for self-signed certificates.
+	TLSSkipVerify bool `yaml:"tlsSkipVerify"`
+}
+
 // Config holds kuma-migrator user configuration.
 type Config struct {
+	// AdminServer holds connection settings for the Kuma CP admin server.
+	AdminServer AdminServerConfig `yaml:"adminServer"`
 	// Skip is the list of resource kinds to exclude from migration.
 	// Documents whose kind matches an entry in this list are not transformed
 	// and not written to the output directory.

@@ -1,6 +1,7 @@
 package extractor
 
 import (
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -14,6 +15,11 @@ import (
 	"github.com/Kong/kuma-migrator/pkg/ui"
 	"sigs.k8s.io/yaml"
 )
+
+// TLSSkipVerify disables TLS certificate verification for all HTTP calls made
+// by the extractor. Set via the --tls-skip-verify CLI flag before calling any
+// Extract function. Not safe for production use.
+var TLSSkipVerify bool
 
 // ExtractViaKumactl extracts all writable Kuma resources from the CP reachable
 // via the given kumactl context, writing one YAML file per resource to outputDir.
@@ -185,8 +191,15 @@ type resourceTypeList struct {
 	Resources []resourceTypeEntry `json:"resources"`
 }
 
-// listKumaResourceTypes calls GET <cpURL>/_resources and returns all types
-// where readOnly is false. ReadOnly resources (Insights, etc.) are skipped.
+// listKumaResourceTypes calls GET <cpURL>/_resources and returns all policy
+// resource types, excluding Insight kinds and the user skip-list.
+//
+// The readOnly field from /_resources is intentionally ignored: when the Kuma
+// API server is configured with ApiServer.ReadOnly=true (common on Global CPs
+// in certain deployments) every resource type is reported as readOnly=true,
+// which would produce an empty list. The migrator only reads resources; it
+// never writes back through this API, so the flag is irrelevant here.
+// Insight resources are excluded by name (contains "Insight") instead.
 // bearerToken is added as an Authorization header when non-empty.
 func listKumaResourceTypes(cpURL string, skipSet map[string]bool, bearerToken string) ([]resourceTypeEntry, error) {
 	url := strings.TrimRight(cpURL, "/") + "/_resources"
@@ -210,9 +223,10 @@ func listKumaResourceTypes(cpURL string, skipSet map[string]bool, bearerToken st
 
 	var result []resourceTypeEntry
 	for _, rt := range list.Resources {
-		if !rt.ReadOnly && !skipSet[rt.Name] {
-			result = append(result, rt)
+		if isInsightKind(rt.Name) || skipSet[rt.Name] {
+			continue
 		}
+		result = append(result, rt)
 	}
 	return result, nil
 }
@@ -450,9 +464,16 @@ func kumactlConfigPath() string {
 
 // authenticatedGet performs a GET request, adding an Authorization: Bearer header
 // when bearerToken is non-empty. Returns the response body, HTTP status code, and
-// any transport-level error.
+// any transport-level error. When TLSSkipVerify is true, certificate verification
+// is disabled (useful for self-signed CP admin server certs).
 func authenticatedGet(url, bearerToken string, timeout time.Duration) (body []byte, status int, err error) {
-	client := &http.Client{Timeout: timeout}
+	transport := http.DefaultTransport
+	if TLSSkipVerify {
+		transport = &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec
+		}
+	}
+	client := &http.Client{Timeout: timeout, Transport: transport}
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, 0, err

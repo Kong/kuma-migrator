@@ -83,6 +83,35 @@ func TestSkipSet_LookupIsCaseSensitive(t *testing.T) {
 	}
 }
 
+func TestLoad_AdminServerTLSSkipVerify(t *testing.T) {
+	f := writeTempConfig(t, `
+adminServer:
+  tlsSkipVerify: true
+`)
+	t.Setenv("KUMA_MIGRATOR_CONFIG", f)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !cfg.AdminServer.TLSSkipVerify {
+		t.Error("expected adminServer.tlsSkipVerify to be true")
+	}
+}
+
+func TestLoad_AdminServerTLSSkipVerify_DefaultFalse(t *testing.T) {
+	f := writeTempConfig(t, `# no adminServer section`)
+	t.Setenv("KUMA_MIGRATOR_CONFIG", f)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.AdminServer.TLSSkipVerify {
+		t.Error("expected adminServer.tlsSkipVerify to default to false")
+	}
+}
+
 func TestDefaultSkipKinds_ContainsExpected(t *testing.T) {
 	expected := []string{
 		"Dataplane", "AccessRole", "AccessRoleBinding",

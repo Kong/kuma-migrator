@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/Kong/kuma-migrator/pkg/config"
 	"github.com/Kong/kuma-migrator/pkg/extractor"
 	"github.com/spf13/cobra"
 )
@@ -47,6 +48,10 @@ Two connection modes are supported (mutually exclusive):
 		if _, err := os.Stat(extractOutputDir); os.IsNotExist(err) {
 			// Output dir will be created by the extractor — no pre-check needed.
 		}
+		// Config file can enable TLS skip verify; the -k flag also enables it.
+		// Either source being true is sufficient.
+		cfg, _ := config.Load()
+		extractor.TLSSkipVerify = extractTLSSkipVerify || (cfg != nil && cfg.AdminServer.TLSSkipVerify)
 		if extractKubeContext != "" {
 			return extractor.ExtractViaKubectl(extractKubeContext, extractOutputDir)
 		}
@@ -57,11 +62,13 @@ Two connection modes are supported (mutually exclusive):
 var extractKubeContext string
 var extractKumactlContext string
 var extractOutputDir string
+var extractTLSSkipVerify bool
 
 func init() {
 	extractCmd.Flags().StringVar(&extractKubeContext, "kube-context", "", "Kubernetes context to use for resource extraction (kubectl)")
 	extractCmd.Flags().StringVar(&extractKumactlContext, "kumactl-context", "", "kumactl context name to use for resource extraction (kumactl CLI)")
 	extractCmd.Flags().StringVarP(&extractOutputDir, "output-dir", "o", "", "directory to write extracted YAML files (required)")
+	extractCmd.Flags().BoolVarP(&extractTLSSkipVerify, "tls-skip-verify", "k", false, "disable TLS certificate verification for the control plane admin server (use for self-signed certs)")
 	_ = extractCmd.MarkFlagRequired("output-dir")
 	rootCmd.AddCommand(extractCmd)
 }

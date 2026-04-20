@@ -9,7 +9,8 @@ import (
 
 // ---- listKumaResourceTypes --------------------------------------------------
 
-func TestListKumaResourceTypes_FiltersReadOnly(t *testing.T) {
+func TestListKumaResourceTypes_FiltersInsightKinds(t *testing.T) {
+	// Insight kinds are excluded by name, regardless of the readOnly flag.
 	payload := resourceTypeList{
 		Resources: []resourceTypeEntry{
 			{Name: "MeshTimeout", Path: "meshtimeouts", Scope: "Mesh", ReadOnly: false},
@@ -25,7 +26,7 @@ func TestListKumaResourceTypes_FiltersReadOnly(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if len(types) != 2 {
-		t.Fatalf("expected 2 writable types, got %d", len(types))
+		t.Fatalf("expected 2 types (Insight kinds excluded), got %d", len(types))
 	}
 	names := make([]string, len(types))
 	for i, rt := range types {
@@ -40,6 +41,33 @@ func TestListKumaResourceTypes_FiltersReadOnly(t *testing.T) {
 		}
 		if !found {
 			t.Errorf("expected %q in result, got %v", want, names)
+		}
+	}
+}
+
+func TestListKumaResourceTypes_ReadOnlyAPIServerIncludesPolicies(t *testing.T) {
+	// When the Kuma API server runs in read-only mode, every resource type is
+	// reported with readOnly=true. The migrator must still return policy types.
+	payload := resourceTypeList{
+		Resources: []resourceTypeEntry{
+			{Name: "MeshTimeout", Path: "meshtimeouts", Scope: "Mesh", ReadOnly: true},
+			{Name: "MeshTrafficPermission", Path: "meshtrafficpermissions", Scope: "Mesh", ReadOnly: true},
+			{Name: "DataplaneInsight", Path: "dataplane-insights", Scope: "Mesh", ReadOnly: true},
+		},
+	}
+	srv := fakeResourcesServer(t, payload)
+
+	types, err := listKumaResourceTypes(srv.URL, map[string]bool{}, "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// Policies must be returned even though readOnly=true; only Insight is excluded.
+	if len(types) != 2 {
+		t.Fatalf("expected 2 types, got %d: %v", len(types), types)
+	}
+	for _, rt := range types {
+		if rt.Name == "DataplaneInsight" {
+			t.Error("DataplaneInsight should have been filtered out")
 		}
 	}
 }
