@@ -45,17 +45,41 @@ Two mutually-exclusive modes, both write one YAML file per resource:
 every instance with `kubectl get <kind> -o yaml`. Insight kinds are excluded via `isInsightKind`.
 
 **`--kumactl-context`** — resolves the context from `~/.kumactl/config` (or `$KUMACTL_CONFIG`),
-calls `GET <cpURL>/_resources` to discover all writable resource types (`readOnly: false`),
-lists mesh names via `kumactl get meshes -o yaml`, then calls
-`kumactl get <path> [--mesh <mesh>] -o yaml` for each type × mesh combination.
+calls `GET <cpURL>/_resources` to discover all writable resource types, lists mesh names via
+`kumactl get meshes -o yaml`, then calls `kumactl get <path> [--mesh <mesh>] -o yaml` for
+each type × mesh combination.
+
+The `readOnly` field from `/_resources` is intentionally **ignored**. When the CP API server
+is configured with `ApiServer.ReadOnly=true` (common on self-hosted Global CPs), every type
+is reported as `readOnly=true`, which would produce zero results. Insight kinds are excluded
+by name (`isInsightKind`) instead.
 
 Both modes detect the CP mode at runtime (`GET <cpURL>/config` for kumactl; `KUMA_MODE` env var
 on the CP Deployment for kubectl) and apply a zone filter: on a Zone CP, only resources with
 `kuma.io/origin: zone` are extracted (resources synced from the Global CP carry `kuma.io/origin: global`
 and are skipped). Unknown mode falls back to extracting everything.
 
+The kumactl path also reads the `environment` field from `GET <cpURL>/config`
+(`"kubernetes"` or `"universal"`) to select the appropriate default skip list. See
+**Environment-aware skip lists** below.
+
 Key files: `pkg/extractor/kube.go`, `pkg/extractor/kumactl.go`, `pkg/extractor/extractor.go`,
 `pkg/extractor/cpmode.go`.
+
+### Environment-aware skip lists
+
+`config.go` defines two built-in skip lists:
+- `DefaultSkipKindsKubernetes` — includes `Dataplane`, `ZoneIngress`, `ZoneEgress`, `Workload`
+  (CP-managed on Kubernetes, never hand-authored)
+- `DefaultSkipKindsUniversal` — same list minus those four kinds (hand-authored on Universal,
+  may contain deprecated fields that the migrator should scan)
+
+`Config.SkipSetForEnv(env string)` picks the right default; an explicit user `skip` list
+always takes precedence. The kubectl path always passes `CPEnvKubernetes`; the kumactl path
+passes the detected environment from `/config`.
+
+Constants `CPEnvKubernetes = "kubernetes"` and `CPEnvUniversal = "universal"` live in
+`pkg/extractor/cpmode.go` alongside the `CPMode*` constants.
 
 ### Konnect (hosted) specifics
 
@@ -118,8 +142,14 @@ instead of `metadata`. All migrate-side parsing must normalise these:
 - `MeshTrafficPermission action: ALLOW/DENY` → warn, use `Allow`/`Deny` (Kong Mesh 2.1)
 - `MeshLoadBalancingStrategy hashPolicies[].type: SourceIP` → warn, use `Connection` (v2.10)
 - `Dataplane transparentProxying.redirectPortInboundV6` → warn, field removed (v2.9)
+- `Dataplane transparentProxying.reachableServices` → warn, names must be updated to MeshService display names in Exclusive mode (v2.10)
 - `kuma.io/*` annotation `yes`/`no` → scanner, use `true`/`false` (v2.9)
 - `MeshSubset` in `spec.targetRef` without service-identity tags → warn, use `Dataplane` with labels (v2.10)
+
+`ScanForDeprecations` normalises `kind` from `obj["type"]` when `obj["kind"]` is empty, so
+Universal-format resources (including `Dataplane`) are handled correctly.
+`warnDataplaneRedirectPortInboundV6` checks both top-level `networking` (Universal) and
+`spec.networking` (Kubernetes) paths.
 
 ## Kong Mesh Specifics
 

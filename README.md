@@ -190,7 +190,15 @@ then fetches every instance with `kubectl get <kind> -o yaml`.
 **kumactl path** — resolves the context from `~/.kumactl/config` (or `$KUMACTL_CONFIG`),
 queries `GET <cpURL>/_resources` to discover all writable resource types, lists all Mesh
 names, then calls `kumactl get <type> [--mesh <mesh>] -o yaml` for each type.
-Read-only resources (Insights, computed objects) are automatically excluded.
+Insight kinds are excluded by name. The `readOnly` flag from `/_resources` is intentionally
+ignored — when the CP API server is configured with `ApiServer.ReadOnly=true` every type is
+reported as read-only, which would produce zero results. The migrator only reads resources
+and never writes back through this API, so the flag is irrelevant.
+
+The deployment environment (`kubernetes` or `universal`) is auto-detected from
+`GET <cpURL>/config` and printed in the extract output. On Universal CPs, `Dataplane`,
+`ZoneIngress`, `ZoneEgress`, and `Workload` resources are **not** skipped — they are
+hand-authored YAMLs that may contain deprecated fields the migrator can warn about or fix.
 
 **Kong Konnect (hosted)** — automatically detected when the CP URL contains `api.konghq.com`.
 kumactl stores Personal Access Tokens for Konnect as HTTP headers (`Authorization: Bearer kpat_…`)
@@ -309,6 +317,17 @@ The migration report (`migration-report.md`) contains a ready-to-run
 `kubectl delete` command list for all such resources.
 
 ### Flags
+
+#### extract
+
+| Flag | Short | Required | Description |
+|---|---|---|---|
+| `--kube-context` | | one of | Kubernetes context to use (kubectl) |
+| `--kumactl-context` | | one of | kumactl context name (kumactl CLI) |
+| `--output-dir` | `-o` | yes | Directory to write extracted YAML files |
+| `--tls-skip-verify` | `-k` | no | Disable TLS certificate verification for the CP admin server (self-signed certs) |
+
+#### plan / migrate
 
 | Flag | Short | Required | Description |
 |---|---|---|---|
@@ -584,6 +603,16 @@ spec:
 - **Rules API: `spec.targetRef` is optional** — the Rules scenario (`from[]` → `rules[]`)
   is triggered whenever the policy kind is in the affected set and `from[]` is present,
   regardless of whether `spec.targetRef` is set at the top level.
+- **Universal Dataplane deprecations** — on Universal CPs, `Dataplane` resources are
+  hand-authored and included in extraction. The tool warns about:
+  - `transparentProxying.redirectPortInboundV6` — removed in Kuma 2.9
+  - `transparentProxying.reachableServices` — service names must be updated to MeshService
+    display names when `spec.meshServices.mode: Exclusive` is enabled (Kuma 2.10+)
+- **Skip list is environment-aware** — on Kubernetes, `Dataplane`, `ZoneIngress`,
+  `ZoneEgress`, and `Workload` are skipped (CP-managed, never hand-authored). On Universal
+  these are extracted and scanned. The user-configured `skip` list always takes precedence.
+- **TLS skip verify** — use `-k` / `--tls-skip-verify` (or `adminServer.tlsSkipVerify: true`
+  in `~/.config/kuma-migrator.yaml`) for control planes with self-signed certificates.
 
 ## Development
 
