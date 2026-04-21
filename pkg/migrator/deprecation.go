@@ -22,14 +22,21 @@ import (
 //   - MeshTrafficPermission action: ALLOW/DENY uppercase casing (Kong Mesh 2.1)
 //   - MeshLoadBalancingStrategy hashPolicies[].type: SourceIP → Connection (v2.10)
 //   - Dataplane transparentProxying.redirectPortInboundV6 removed (v2.9)
+//   - Dataplane transparentProxying.reachableServices uses legacy kuma.io/service names (v2.10)
 //   - Any Mesh* policy with spec.targetRef.kind: MeshSubset without service-identity tags (v2.10)
+//
+// Both Kubernetes format (kind/metadata) and Universal format (type/name) are supported.
 func ScanForDeprecations(raw []byte) (out []byte, warnings []string) {
 	var obj map[string]interface{}
 	if err := yaml.Unmarshal(raw, &obj); err != nil {
 		return raw, nil
 	}
 
+	// Normalise: Universal format uses "type" instead of "kind".
 	kind, _ := obj["kind"].(string)
+	if kind == "" {
+		kind, _ = obj["type"].(string)
+	}
 	name := extractNameFromObj(obj)
 
 	switch kind {
@@ -53,7 +60,8 @@ func ScanForDeprecations(raw []byte) (out []byte, warnings []string) {
 		warnings = warnSourceIPHashPolicy(obj, name)
 	case "Dataplane":
 		out = raw
-		warnings = warnDataplaneRedirectPortInboundV6(obj, name)
+		warnings = append(warnings, warnDataplaneRedirectPortInboundV6(obj, name)...)
+		warnings = append(warnings, warnDataplaneReachableServices(obj, name)...)
 	default:
 		out = raw
 		// Generic check: any Mesh* policy with MeshSubset targetRef that has no
@@ -255,14 +263,49 @@ func warnSourceIPHashPolicy(obj map[string]interface{}, name string) []string {
 
 // ---- Dataplane transparentProxying.redirectPortInboundV6 (v2.9) --------------
 
+// warnDataplaneRedirectPortInboundV6 checks both Universal (networking at top level)
+// and Kubernetes (networking under spec) layout.
 func warnDataplaneRedirectPortInboundV6(obj map[string]interface{}, name string) []string {
-	if !hasNestedField(obj, "spec", "networking", "transparentProxying", "redirectPortInboundV6") {
+	// Universal format: networking is a top-level field.
+	// Kubernetes format: networking is under spec (uncommon — Dataplanes are auto-generated on K8s).
+	if !hasNestedField(obj, "networking", "transparentProxying", "redirectPortInboundV6") &&
+		!hasNestedField(obj, "spec", "networking", "transparentProxying", "redirectPortInboundV6") {
 		return nil
 	}
 	return []string{fmt.Sprintf(
 		"Dataplane %q: transparentProxying.redirectPortInboundV6 was removed in Kuma 2.9 — "+
 			"remove this field from the resource.",
 		name)}
+}
+
+// ---- Dataplane transparentProxying.reachableServices (v2.10) ----------------
+
+// warnDataplaneReachableServices warns when a Dataplane uses reachableServices with
+// legacy kuma.io/service names. In Kuma 2.10+ with spec.meshServices.mode: Exclusive,
+// service names in reachableServices must be updated to use MeshService display names.
+func warnDataplaneReachableServices(obj map[string]interface{}, name string) []string {
+	// Universal format: networking at top level; Kubernetes: under spec.
+	networking, _ := obj["networking"].(map[string]interface{})
+	if networking == nil {
+		spec, _ := obj["spec"].(map[string]interface{})
+		networking, _ = spec["networking"].(map[string]interface{})
+	}
+	if networking == nil {
+		return nil
+	}
+	tp, _ := networking["transparentProxying"].(map[string]interface{})
+	if tp == nil {
+		return nil
+	}
+	services, _ := tp["reachableServices"].([]interface{})
+	if len(services) == 0 {
+		return nil
+	}
+	return []string{fmt.Sprintf(
+		"Dataplane %q: transparentProxying.reachableServices uses legacy kuma.io/service names (%v). "+
+			"When spec.meshServices.mode is Exclusive (Kuma 2.10+), update these to the corresponding "+
+			"MeshService display names (kuma.io/display-name label value).",
+		name, services)}
 }
 
 // ---- MeshSubset in targetRef without service-identity tags (v2.10) -----------

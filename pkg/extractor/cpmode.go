@@ -6,6 +6,13 @@ const (
 	CPModeStandalone = "standalone"
 )
 
+// CPEnvKubernetes and CPEnvUniversal are the two deployment environments
+// reported by GET /config under the "environment" field.
+const (
+	CPEnvKubernetes = "kubernetes"
+	CPEnvUniversal  = "universal"
+)
+
 // cpModeLabel returns the directory label for a given CP mode.
 // Unknown mode uses "unknown" so files are still organised under a named folder.
 func cpModeLabel(mode string) string {

@@ -36,8 +36,6 @@ func ExtractViaKumactl(contextName, outputDir string) error {
 		return fmt.Errorf("create output directory: %w", err)
 	}
 
-	skipSet := loadSkipSet()
-
 	cpURL, resolvedCtx, bearerToken, err := resolveKumactlContext(contextName)
 	if err != nil {
 		return err
@@ -49,7 +47,12 @@ func ExtractViaKumactl(contextName, outputDir string) error {
 		ui.KV("Platform:", "Kong Konnect (hosted)")
 	}
 
-	cpMode, zoneName := detectKumactlCPMode(cpURL, bearerToken)
+	cpMode, zoneName, cpEnv := detectKumactlCPMode(cpURL, bearerToken)
+	if cpEnv != "" {
+		ui.KV("Environment:", cpEnv)
+	}
+
+	skipSet := loadSkipSet(cpEnv)
 	dirLabel := cpModeDirectoryLabel(cpMode, zoneName)
 	var zones []string
 	if cpMode == CPModeGlobal {
@@ -145,37 +148,39 @@ func isKonnectURL(cpURL string) bool {
 	return strings.Contains(cpURL, "api.konghq.com")
 }
 
-// detectKumactlCPMode returns the lower-cased CP mode ("global", "zone", "standalone")
-// and, for zone CPs, the zone name.
+// detectKumactlCPMode returns the lower-cased CP mode ("global", "zone", "standalone"),
+// the zone name (non-empty only for zone CPs), and the deployment environment
+// ("kubernetes" or "universal"). All three are empty strings on error so callers
+// treat the unknowns as safe defaults (extract everything, kubernetes skip-list).
 //
-// For Konnect-hosted CPs (api.konghq.com) the mode is always "global" — the /config
-// endpoint does not exist on Konnect so we detect it from the URL directly.
+// For Konnect-hosted CPs (api.konghq.com) the mode is always "global" and the
+// environment is always "kubernetes" — the /config endpoint does not exist on Konnect
+// so we detect it from the URL directly.
 //
 // For self-hosted CPs, calls GET <cpURL>/config (authenticated when bearerToken is set).
-// Returns ("", "") on any error so callers treat it as unknown and fall back to
-// extracting everything.
-func detectKumactlCPMode(cpURL, bearerToken string) (mode, zoneName string) {
+func detectKumactlCPMode(cpURL, bearerToken string) (mode, zoneName, environment string) {
 	if isKonnectURL(cpURL) {
-		return CPModeGlobal, ""
+		return CPModeGlobal, "", CPEnvKubernetes
 	}
 
 	url := strings.TrimRight(cpURL, "/") + "/config"
 	body, status, err := authenticatedGet(url, bearerToken, 10*time.Second)
 	if err != nil || status != http.StatusOK {
-		return "", ""
+		return "", "", ""
 	}
 	var cfg struct {
-		Mode      string `json:"mode"`
-		Multizone struct {
+		Mode        string `json:"mode"`
+		Environment string `json:"environment"`
+		Multizone   struct {
 			Zone struct {
 				Name string `json:"name"`
 			} `json:"zone"`
 		} `json:"multizone"`
 	}
 	if err := json.Unmarshal(body, &cfg); err != nil {
-		return "", ""
+		return "", "", ""
 	}
-	return strings.ToLower(cfg.Mode), cfg.Multizone.Zone.Name
+	return strings.ToLower(cfg.Mode), cfg.Multizone.Zone.Name, strings.ToLower(cfg.Environment)
 }
 
 // ---- CP resource-type discovery ---------------------------------------------

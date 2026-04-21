@@ -83,6 +83,56 @@ func TestSkipSet_LookupIsCaseSensitive(t *testing.T) {
 	}
 }
 
+func TestSkipSetForEnv_Universal(t *testing.T) {
+	cfg := &Config{} // no explicit skip list → use defaults
+	set := cfg.SkipSetForEnv("universal")
+	// Universal list must NOT contain workload-registration kinds.
+	for _, kind := range []string{"Dataplane", "ZoneIngress", "ZoneEgress", "Workload"} {
+		if set[kind] {
+			t.Errorf("universal skip set must not contain %q", kind)
+		}
+	}
+	// But shared infrastructure kinds should still be skipped.
+	for _, kind := range []string{"AccessRole", "Zone", "HostnameGenerator"} {
+		if !set[kind] {
+			t.Errorf("universal skip set should contain %q", kind)
+		}
+	}
+}
+
+func TestSkipSetForEnv_Kubernetes(t *testing.T) {
+	cfg := &Config{}
+	set := cfg.SkipSetForEnv("kubernetes")
+	for _, kind := range []string{"Dataplane", "ZoneIngress", "ZoneEgress", "Workload"} {
+		if !set[kind] {
+			t.Errorf("kubernetes skip set should contain %q", kind)
+		}
+	}
+}
+
+func TestSkipSetForEnv_UnknownFallsBackToKubernetes(t *testing.T) {
+	cfg := &Config{}
+	setUnknown := cfg.SkipSetForEnv("")
+	setK8s := cfg.SkipSetForEnv("kubernetes")
+	for kind := range setK8s {
+		if !setUnknown[kind] {
+			t.Errorf("unknown env should fall back to kubernetes defaults; missing %q", kind)
+		}
+	}
+}
+
+func TestSkipSetForEnv_ExplicitListTakesPrecedence(t *testing.T) {
+	// When the user sets an explicit skip list, it overrides the environment default.
+	cfg := &Config{Skip: []string{"CustomKind"}}
+	set := cfg.SkipSetForEnv("universal")
+	if set["Dataplane"] {
+		t.Error("explicit skip list should override universal defaults; Dataplane should not be skipped")
+	}
+	if !set["CustomKind"] {
+		t.Error("explicit skip list entry CustomKind should be present")
+	}
+}
+
 func TestLoad_AdminServerTLSSkipVerify(t *testing.T) {
 	f := writeTempConfig(t, `
 adminServer:

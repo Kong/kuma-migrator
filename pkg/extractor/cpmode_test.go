@@ -19,7 +19,7 @@ func TestDetectKumactlCPMode_Global(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	got, _ := detectKumactlCPMode(srv.URL, "")
+	got, _, _ := detectKumactlCPMode(srv.URL, "")
 	if got != CPModeGlobal {
 		t.Errorf("expected %q, got %q", CPModeGlobal, got)
 	}
@@ -33,7 +33,7 @@ func TestDetectKumactlCPMode_Zone(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	gotMode, gotZone := detectKumactlCPMode(srv.URL, "")
+	gotMode, gotZone, _ := detectKumactlCPMode(srv.URL, "")
 	if gotMode != CPModeZone {
 		t.Errorf("expected mode %q, got %q", CPModeZone, gotMode)
 	}
@@ -48,7 +48,7 @@ func TestDetectKumactlCPMode_Standalone(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	got, _ := detectKumactlCPMode(srv.URL, "")
+	got, _, _ := detectKumactlCPMode(srv.URL, "")
 	if got != CPModeStandalone {
 		t.Errorf("expected %q, got %q", CPModeStandalone, got)
 	}
@@ -61,16 +61,31 @@ func TestDetectKumactlCPMode_Error(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	got, _ := detectKumactlCPMode(srv.URL, "")
+	got, _, _ := detectKumactlCPMode(srv.URL, "")
 	if got != "" {
 		t.Errorf("expected empty string on error, got %q", got)
 	}
 }
 
 func TestDetectKumactlCPMode_Unreachable(t *testing.T) {
-	got, _ := detectKumactlCPMode("http://127.0.0.1:19999", "") // nothing listening
+	got, _, _ := detectKumactlCPMode("http://127.0.0.1:19999", "") // nothing listening
 	if got != "" {
 		t.Errorf("expected empty string for unreachable server, got %q", got)
+	}
+}
+
+func TestDetectKumactlCPMode_ReturnsEnvironment(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/config" {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"mode":"global","environment":"universal"}`))
+		}
+	}))
+	defer srv.Close()
+
+	_, _, env := detectKumactlCPMode(srv.URL, "")
+	if env != CPEnvUniversal {
+		t.Errorf("expected env %q, got %q", CPEnvUniversal, env)
 	}
 }
 
@@ -390,12 +405,15 @@ func TestDetectKumactlCPMode_Konnect(t *testing.T) {
 		"https://au.api.konghq.com/v1/mesh/control-planes/def456/api",
 	}
 	for _, u := range konnectURLs {
-		mode, zone := detectKumactlCPMode(u, "test-token")
+		mode, zone, env := detectKumactlCPMode(u, "test-token")
 		if mode != CPModeGlobal {
 			t.Errorf("Konnect URL %q: expected mode %q, got %q", u, CPModeGlobal, mode)
 		}
 		if zone != "" {
 			t.Errorf("Konnect URL %q: expected empty zone, got %q", u, zone)
+		}
+		if env != CPEnvKubernetes {
+			t.Errorf("Konnect URL %q: expected env %q, got %q", u, CPEnvKubernetes, env)
 		}
 	}
 }

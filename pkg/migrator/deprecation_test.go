@@ -544,3 +544,100 @@ spec:
 		}
 	}
 }
+
+// ---- Universal Dataplane deprecations ----------------------------------------
+
+func TestScanForDeprecations_Dataplane_UniversalKindNormalisation(t *testing.T) {
+	// Universal format uses "type" instead of "kind". The deprecation scanner
+	// must normalise this so the Dataplane case fires correctly.
+	input := `type: Dataplane
+mesh: default
+name: web-01
+networking:
+  address: 192.168.0.1
+  transparentProxying:
+    redirectPortInbound: 15006
+    redirectPortOutbound: 15001
+    redirectPortInboundV6: 15010
+`
+	_, warnings := ScanForDeprecations([]byte(input))
+	found := false
+	for _, w := range warnings {
+		if strings.Contains(w, "redirectPortInboundV6") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected redirectPortInboundV6 warning for Universal Dataplane, got: %v", warnings)
+	}
+}
+
+func TestScanForDeprecations_Dataplane_TopLevelNetworking(t *testing.T) {
+	// Universal Dataplanes have networking at the top level, not under spec.
+	input := `type: Dataplane
+mesh: default
+name: backend-01
+networking:
+  address: 192.168.0.2
+  transparentProxying:
+    redirectPortInbound: 15006
+    redirectPortOutbound: 15001
+    redirectPortInboundV6: 15010
+`
+	_, warnings := ScanForDeprecations([]byte(input))
+	found := false
+	for _, w := range warnings {
+		if strings.Contains(w, "redirectPortInboundV6") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected redirectPortInboundV6 warning via top-level networking, got: %v", warnings)
+	}
+}
+
+func TestScanForDeprecations_Dataplane_ReachableServices(t *testing.T) {
+	// reachableServices with legacy kuma.io/service names should warn.
+	input := `type: Dataplane
+mesh: default
+name: web-01
+networking:
+  address: 192.168.0.1
+  transparentProxying:
+    redirectPortInbound: 15006
+    redirectPortOutbound: 15001
+    reachableServices:
+      - backend
+      - database
+`
+	_, warnings := ScanForDeprecations([]byte(input))
+	found := false
+	for _, w := range warnings {
+		if strings.Contains(w, "reachableServices") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected reachableServices warning, got: %v", warnings)
+	}
+}
+
+func TestScanForDeprecations_Dataplane_NoWarningWhenClean(t *testing.T) {
+	// A Dataplane with no deprecated fields should produce no warnings.
+	input := `type: Dataplane
+mesh: default
+name: web-01
+networking:
+  address: 192.168.0.1
+  inbound:
+    - port: 8080
+      servicePort: 8080
+      tags:
+        kuma.io/service: web
+        kuma.io/protocol: http
+`
+	_, warnings := ScanForDeprecations([]byte(input))
+	if len(warnings) != 0 {
+		t.Errorf("expected no warnings for clean Dataplane, got: %v", warnings)
+	}
+}

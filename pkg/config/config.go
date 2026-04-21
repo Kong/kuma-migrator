@@ -8,10 +8,10 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
-// DefaultSkipKinds is the built-in skip list used when no config file is present
-// or when the file does not define a skip list. These are infrastructure/identity
-// resources that do not need policy migration.
-var DefaultSkipKinds = []string{
+// DefaultSkipKindsKubernetes is the built-in skip list for Kubernetes deployments.
+// Dataplane, ZoneIngress, ZoneEgress, and Workload are CP-managed in Kubernetes
+// and are never hand-authored by users.
+var DefaultSkipKindsKubernetes = []string{
 	"Dataplane",
 	"AccessRole",
 	"AccessRoleBinding",
@@ -21,6 +21,20 @@ var DefaultSkipKinds = []string{
 	"HostnameGenerator",
 	"Workload",
 }
+
+// DefaultSkipKindsUniversal is the built-in skip list for Universal deployments.
+// Dataplane, ZoneIngress, ZoneEgress, and Workload are hand-authored in Universal
+// and may carry deprecated fields that the migrator should scan and fix.
+var DefaultSkipKindsUniversal = []string{
+	"AccessRole",
+	"AccessRoleBinding",
+	"Zone",
+	"HostnameGenerator",
+}
+
+// DefaultSkipKinds is an alias for DefaultSkipKindsKubernetes, used when the
+// deployment environment is unknown.
+var DefaultSkipKinds = DefaultSkipKindsKubernetes
 
 // AdminServerConfig holds settings for connecting to the Kuma CP admin server.
 type AdminServerConfig struct {
@@ -39,10 +53,29 @@ type Config struct {
 	Skip []string `yaml:"skip"`
 }
 
-// SkipSet returns a set (map for O(1) lookup) built from c.Skip.
+// SkipSet returns a set (map for O(1) lookup) built from c.Skip,
+// using DefaultSkipKinds (Kubernetes) when no explicit list is configured.
 func (c *Config) SkipSet() map[string]bool {
-	s := make(map[string]bool, len(c.Skip))
-	for _, k := range c.Skip {
+	return c.SkipSetForEnv("")
+}
+
+// SkipSetForEnv returns a skip set for the given deployment environment
+// ("kubernetes", "universal", or "" for unknown). When the user has provided
+// an explicit skip list in their config file it is always used. When the list
+// is empty (defaults), the appropriate built-in list is selected:
+//   - "universal"  → DefaultSkipKindsUniversal
+//   - anything else → DefaultSkipKindsKubernetes
+func (c *Config) SkipSetForEnv(env string) map[string]bool {
+	skip := c.Skip
+	if len(skip) == 0 {
+		if env == "universal" {
+			skip = DefaultSkipKindsUniversal
+		} else {
+			skip = DefaultSkipKindsKubernetes
+		}
+	}
+	s := make(map[string]bool, len(skip))
+	for _, k := range skip {
 		s[k] = true
 	}
 	return s

@@ -28,7 +28,7 @@ func ExtractViaKubectl(kubeContext, outputDir string) error {
 		return fmt.Errorf("create output directory: %w", err)
 	}
 
-	skipSet := loadSkipSet()
+	skipSet := loadSkipSet(CPEnvKubernetes) // kubectl path is always Kubernetes
 
 	cpMode, zoneName := detectKubeCPMode(kubeContext)
 	dirLabel := cpModeDirectoryLabel(cpMode, zoneName)

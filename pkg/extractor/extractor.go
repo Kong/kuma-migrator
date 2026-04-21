@@ -12,15 +12,16 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
-// loadSkipSet loads the user config and returns the skip set. On error it logs
-// a warning and falls back to an empty set (no additional skipping).
-func loadSkipSet() map[string]bool {
+// loadSkipSet loads the user config and returns the skip set for the given
+// deployment environment ("kubernetes", "universal", or "" for unknown).
+// On error it logs a warning and falls back to an empty set (no additional skipping).
+func loadSkipSet(env string) map[string]bool {
 	cfg, err := config.Load()
 	if err != nil {
 		fmt.Printf("  [WARN] could not load config (skip list ignored): %v\n", err)
 		return map[string]bool{}
 	}
-	return cfg.SkipSet()
+	return cfg.SkipSetForEnv(env)
 }
 
 // gatewayLocalKinds is the set of resource types that may be created directly on a Zone
