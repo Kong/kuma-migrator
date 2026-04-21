@@ -31,10 +31,10 @@ across all supported migration paths in the Kuma/Kong Mesh 2.x lifecycle.
 ## CLI Commands
 
 ```
-kuma-migrator extract --kube-context <ctx>    --output-dir <dir>   # pull resources via kubectl
-kuma-migrator extract --kumactl-context <ctx> --output-dir <dir>   # pull resources via kumactl
-kuma-migrator plan    --input-dir <dir> --output-dir <dir>         # dry-run, writes migration-plan.md
-kuma-migrator migrate --input-dir <dir> --output-dir <dir>         # transforms + writes migration-report.md
+kuma-migrator extract --kube-context <ctx>    --output-dir <dir> [--mesh <mesh>]
+kuma-migrator extract --kumactl-context <ctx> --output-dir <dir> [--mesh <mesh>]
+kuma-migrator plan    --input-dir <dir> --output-dir <dir>        [--mesh <mesh>]
+kuma-migrator migrate --input-dir <dir> --output-dir <dir>        [--mesh <mesh>]
 ```
 
 ### extract command
@@ -63,8 +63,39 @@ The kumactl path also reads the `environment` field from `GET <cpURL>/config`
 (`"kubernetes"` or `"universal"`) to select the appropriate default skip list. See
 **Environment-aware skip lists** below.
 
+**`--mesh <name>` filter**: when set, only the named mesh is iterated for Mesh-scoped resources.
+Global-scoped resources (no mesh association) are always extracted regardless of this flag.
+
+**Output directory layout** — context-first: context+mode label at the top level, mesh name
+underneath, kind subfolder last. Global-scoped resources go into a `global/` subdirectory
+alongside the per-mesh directories:
+```
+<output-dir>/
+  <context>-global-ctx/    ← kumactl/kubectl context name + "-global-ctx"
+    <mesh-name>/           ← one dir per Kuma mesh
+      <kind-subfolder>/
+    global/                ← global-scoped resources (Zone, HostnameGenerator, …)
+      <kind-subfolder>/
+  <context>-zone-ctx/      ← same for zone CPs
+    <mesh-name>/
+      <kind-subfolder>/
+  <context>-standalone-ctx/
+    ...
+```
+
+`cpModeDirectoryLabel(contextName, mode string) string` in `cpmode.go` builds the top-level
+directory label: `contextName + "-global-ctx"` / `"-zone-ctx"` / `"-standalone-ctx"` / `"-unknown-ctx"`.
+
 Key files: `pkg/extractor/kube.go`, `pkg/extractor/kumactl.go`, `pkg/extractor/extractor.go`,
 `pkg/extractor/cpmode.go`.
+
+The `--mesh` flag is threaded through:
+- `ExtractViaKumactl(contextName, outputDir, meshFilter string)` — filters `loopMeshes`
+- `ExtractViaKubectl(kubeContext, outputDir, meshFilter string)` — passed to `dumpCRDInstances`
+- `dumpKumactlResources(..., meshName, meshFilter string)` — passes both to `writeResourceFiles`
+- `dumpCRDInstances(..., cpModeDir, meshFilter string)` — reads mesh from `kuma.io/mesh` label
+- `writeResourceFiles` / `writeSingleResourceDoc` — skip if `meshFilter != "" && meshName != "" && meshName != meshFilter`
+  and compute path as `<outputDir>/<cpModeDir>/<meshName>/<sub>` (or `<cpModeDir>/global/<sub>` for global-scoped)
 
 ### Environment-aware skip lists
 
@@ -94,6 +125,34 @@ Constants `CPEnvKubernetes = "kubernetes"` and `CPEnvUniversal = "universal"` li
   and retries the extraction globally (breaking out of the mesh loop).
 - **Universal list format**: kumactl on Konnect returns `{total: N, items: [...]}` JSON with
   no top-level `kind`. `writeSingleResourceDoc` detects this and recurses into `items`.
+
+### migrate / plan pipeline
+
+`Plan(inputDir, outputDir, meshFilter string)` and `Migrate(inputDir, outputDir, meshFilter string)` call
+`runMigration(inputDir, outputDir string, writeFiles bool, meshFilter string)`.
+
+`runMigration` detects the context directory and mesh directory from each file's relative path using
+`isKindSubfolder(s string) bool` (returns true for `resiliency`, `routing`, `zero-trust`, `mesh`,
+`observability`, `other`). Detection rule: the first non-kind-subfolder path component is `cpModeDir`
+(the context label); the second non-kind-subfolder component that is not the reserved `"global"` is `meshDir`.
+
+| Path pattern | cpModeDir | meshDir |
+|---|---|---|
+| `<sub>/file.yaml` | `""` | `""` |
+| `<anyDir>/<sub>/file.yaml` | `<anyDir>` | `""` |
+| `<ctx>/global/<sub>/file.yaml` | `<ctx>` | `""` (global subdir is reserved) |
+| `<ctx>/<mesh>/<sub>/file.yaml` | `<ctx>` | `<mesh>` |
+
+When `meshFilter != ""` and `meshDir != ""` and `meshDir != meshFilter`, the file is skipped.
+Files with `meshDir == ""` (no mesh dir detected) are **always** processed regardless of meshFilter.
+
+`processFile(inputPath, outputDir, cpModeDir, meshDir string, ...)` computes the output path as:
+- `<outputDir>/<cpModeDir>/<meshDir>/<sub>/` when both are set (context-first layout)
+  - Gateway API output kinds are redirected to `<outputDir>/<cpModeDir>/global/<sub>/`
+- `<outputDir>/<cpModeDir>/global/<sub>/` when only cpModeDir is set (no mesh → global subdir)
+- `<outputDir>/<sub>/` when both are empty (flat / legacy)
+
+`FileReport.CPModeDir` holds the context directory label; `FileReport.MeshDir` holds the mesh name.
 
 ### Universal format YAML (migrate pipeline)
 

@@ -13,23 +13,24 @@ const (
 	CPEnvUniversal  = "universal"
 )
 
-// cpModeLabel returns the directory label for a given CP mode.
-// Unknown mode uses "unknown" so files are still organised under a named folder.
-func cpModeLabel(mode string) string {
+// cpModeDirectoryLabel returns the top-level output directory label for a CP
+// extraction. The name combines the kumactl/kubectl context name with a suffix
+// that encodes the CP mode, making it easy to identify the origin of each file
+// set when multiple CPs are extracted into the same parent directory.
+//
+//	contextName + "-global-ctx"     — Global CP
+//	contextName + "-zone-ctx"       — Zone CP
+//	contextName + "-standalone-ctx" — Standalone CP
+//	contextName + "-unknown-ctx"    — mode could not be detected
+func cpModeDirectoryLabel(contextName, mode string) string {
 	switch mode {
-	case CPModeGlobal, CPModeZone, CPModeStandalone:
-		return mode
+	case CPModeGlobal:
+		return contextName + "-global-ctx"
+	case CPModeZone:
+		return contextName + "-zone-ctx"
+	case CPModeStandalone:
+		return contextName + "-standalone-ctx"
 	default:
-		return "unknown"
+		return contextName + "-unknown-ctx"
 	}
-}
-
-// cpModeDirectoryLabel returns the output directory name for a CP mode.
-// For zone CPs, includes the zone name as a suffix (e.g. "zone-eu-west").
-// Falls back to cpModeLabel when zoneName is empty.
-func cpModeDirectoryLabel(mode, zoneName string) string {
-	if mode == CPModeZone && zoneName != "" {
-		return "zone-" + zoneName
-	}
-	return cpModeLabel(mode)
 }

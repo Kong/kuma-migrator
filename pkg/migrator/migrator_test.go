@@ -47,7 +47,7 @@ conf:
   connectTimeout: 5s
 `)
 
-	if err := Plan(in, out); err != nil {
+	if err := Plan(in, out, ""); err != nil {
 		t.Fatalf("Plan returned error: %v", err)
 	}
 
@@ -81,7 +81,7 @@ metadata:
 spec: {}
 `)
 
-	if err := Plan(in, out); err != nil {
+	if err := Plan(in, out, ""); err != nil {
 		t.Fatalf("Plan: %v", err)
 	}
 	content, err := os.ReadFile(filepath.Join(out, "migration-plan.md"))
@@ -122,7 +122,7 @@ conf:
   connectTimeout: 5s
 `)
 
-	if err := Migrate(in, out); err != nil {
+	if err := Migrate(in, out, ""); err != nil {
 		t.Fatalf("Migrate returned error: %v", err)
 	}
 
@@ -155,7 +155,7 @@ conf:
   connectTimeout: 5s
 `)
 
-	if err := Migrate(in, out); err != nil {
+	if err := Migrate(in, out, ""); err != nil {
 		t.Fatalf("Migrate: %v", err)
 	}
 
@@ -221,7 +221,7 @@ spec:
   replicas: 1
 `)
 
-	report, err := runMigration(in, out, false)
+	report, err := runMigration(in, out, false, "")
 	if err != nil {
 		t.Fatalf("runMigration: %v", err)
 	}
@@ -261,7 +261,7 @@ conf:
   connectTimeout: 5s
 `)
 
-	report, err := runMigration(in, out, false)
+	report, err := runMigration(in, out, false, "")
 	if err != nil {
 		t.Fatalf("runMigration: %v", err)
 	}
@@ -303,7 +303,7 @@ spec:
           numRetries: 3
 `)
 
-	report, err := runMigration(in, out, false)
+	report, err := runMigration(in, out, false, "")
 	if err != nil {
 		t.Fatalf("runMigration: %v", err)
 	}
@@ -356,7 +356,7 @@ spec:
               value: backend_demo_svc_3001.mesh
 `)
 
-	report, err := runMigration(in, out, false)
+	report, err := runMigration(in, out, false, "")
 	if err != nil {
 		t.Fatalf("runMigration: %v", err)
 	}
@@ -391,7 +391,7 @@ spec:
         type: builtin
 `)
 
-	if err := Migrate(in, out); err != nil {
+	if err := Migrate(in, out, ""); err != nil {
 		t.Fatalf("Migrate: %v", err)
 	}
 
@@ -428,7 +428,7 @@ conf:
   connectTimeout: 5s
 `)
 
-	if err := Migrate(in, out); err != nil {
+	if err := Migrate(in, out, ""); err != nil {
 		t.Fatalf("Migrate: %v", err)
 	}
 
@@ -445,5 +445,143 @@ conf:
 	}
 	if !strings.Contains(body, "Migration Report") {
 		t.Error("expected 'Migration Report' in apply-mode report title")
+	}
+}
+
+// ---- Mesh subdir detection and filter tests ----------------------------------
+
+func TestRunMigration_ContextAndMeshDirDetected(t *testing.T) {
+	in := tempDir(t)
+	out := tempDir(t)
+
+	// Create file at <in>/my-cp-global-ctx/default/resiliency/timeout.yaml
+	// (context-first layout produced by current extract).
+	subDir := filepath.Join(in, "my-cp-global-ctx", "default", "resiliency")
+	if err := os.MkdirAll(subDir, 0755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	writeTempFile(t, subDir, "timeout.yaml", `type: Timeout
+name: my-timeout
+mesh: default
+sources:
+  - match:
+      kuma.io/service: '*'
+destinations:
+  - match:
+      kuma.io/service: backend_demo_svc_3001
+conf:
+  connectTimeout: 5s
+`)
+
+	report, err := runMigration(in, out, false, "")
+	if err != nil {
+		t.Fatalf("runMigration: %v", err)
+	}
+	if report.TotalFiles != 1 {
+		t.Errorf("expected TotalFiles=1, got %d", report.TotalFiles)
+	}
+	if len(report.Files) != 1 {
+		t.Fatalf("expected 1 FileReport, got %d", len(report.Files))
+	}
+	fr := report.Files[0]
+	if fr.MeshDir != "default" {
+		t.Errorf("expected MeshDir=default, got %q", fr.MeshDir)
+	}
+	if fr.CPModeDir != "my-cp-global-ctx" {
+		t.Errorf("expected CPModeDir=my-cp-global-ctx, got %q", fr.CPModeDir)
+	}
+}
+
+func TestRunMigration_MeshFilter_SkipsOtherMesh(t *testing.T) {
+	in := tempDir(t)
+	out := tempDir(t)
+
+	// Context-first layout: two mesh subdirs under the same context dir.
+	for _, mesh := range []string{"default", "prod"} {
+		subDir := filepath.Join(in, "my-cp-global-ctx", mesh, "resiliency")
+		if err := os.MkdirAll(subDir, 0755); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+		writeTempFile(t, subDir, "timeout.yaml", `apiVersion: kuma.io/v1alpha1
+kind: MeshTimeout
+metadata:
+  name: t
+  labels:
+    kuma.io/mesh: `+mesh+`
+spec: {}
+`)
+	}
+
+	report, err := runMigration(in, out, false, "default")
+	if err != nil {
+		t.Fatalf("runMigration: %v", err)
+	}
+	// Only the default mesh file should be counted.
+	if report.TotalFiles != 1 {
+		t.Errorf("expected TotalFiles=1 (only default mesh), got %d", report.TotalFiles)
+	}
+	for _, fr := range report.Files {
+		if fr.MeshDir != "default" {
+			t.Errorf("expected only default mesh files, got MeshDir=%q", fr.MeshDir)
+		}
+	}
+}
+
+func TestRunMigration_MeshFilter_KeepsLegacyFiles(t *testing.T) {
+	in := tempDir(t)
+	out := tempDir(t)
+
+	// Legacy layout (no mesh subdir): <in>/global/resiliency/file.yaml
+	subDir := filepath.Join(in, "global", "resiliency")
+	if err := os.MkdirAll(subDir, 0755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	writeTempFile(t, subDir, "timeout.yaml", `apiVersion: kuma.io/v1alpha1
+kind: MeshTimeout
+metadata:
+  name: legacy-timeout
+spec: {}
+`)
+
+	// meshFilter set but no mesh subdir → file must still be processed.
+	report, err := runMigration(in, out, false, "default")
+	if err != nil {
+		t.Fatalf("runMigration: %v", err)
+	}
+	if report.TotalFiles != 1 {
+		t.Errorf("expected legacy file to be processed even with mesh filter, got TotalFiles=%d", report.TotalFiles)
+	}
+}
+
+func TestMigrate_MeshSubdir_OutputMirrorsInputLayout(t *testing.T) {
+	in := tempDir(t)
+	out := tempDir(t)
+
+	// Input: <in>/my-cp-global-ctx/default/resiliency/timeout.yaml
+	// (context-first layout produced by current extract)
+	subDir := filepath.Join(in, "my-cp-global-ctx", "default", "resiliency")
+	if err := os.MkdirAll(subDir, 0755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	writeTempFile(t, subDir, "timeout.yaml", `type: Timeout
+name: my-timeout
+mesh: default
+sources:
+  - match:
+      kuma.io/service: '*'
+destinations:
+  - match:
+      kuma.io/service: backend_demo_svc_3001
+conf:
+  connectTimeout: 5s
+`)
+
+	if err := Migrate(in, out, ""); err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+	// Output must mirror context-first layout: <out>/my-cp-global-ctx/default/resiliency/MeshTimeout-my-timeout.yaml
+	outPath := filepath.Join(out, "my-cp-global-ctx", "default", "resiliency", "MeshTimeout-my-timeout.yaml")
+	if _, err := os.Stat(outPath); os.IsNotExist(err) {
+		t.Errorf("expected output at %s", outPath)
 	}
 }

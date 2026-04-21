@@ -31,7 +31,10 @@ var TLSSkipVerify bool
 //  4. For Mesh-scoped types: kumactl get <path> --mesh <mesh> -o yaml  (per mesh)
 //  5. For Global-scoped types: kumactl get <path> -o yaml
 //  6. Split YAML stream → one file per resource (Insight kinds skipped)
-func ExtractViaKumactl(contextName, outputDir string) error {
+//
+// meshFilter, when non-empty, restricts extraction to the named mesh only.
+// Global-scoped resources are always extracted regardless of meshFilter.
+func ExtractViaKumactl(contextName, outputDir, meshFilter string) error {
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		return fmt.Errorf("create output directory: %w", err)
 	}
@@ -53,15 +56,13 @@ func ExtractViaKumactl(contextName, outputDir string) error {
 	}
 
 	skipSet := loadSkipSet(cpEnv)
-	dirLabel := cpModeDirectoryLabel(cpMode, zoneName)
+	dirLabel := cpModeDirectoryLabel(resolvedCtx, cpMode)
 	var zones []string
 	if cpMode == CPModeGlobal {
 		zones = listZoneNamesKumactl(resolvedCtx)
 	}
 	PrintCPModeInfo(cpMode, zoneName, zones)
 	fmt.Println()
-
-	effectiveOutDir := filepath.Join(outputDir, dirLabel)
 
 	// Discover all writable resource types from the CP API, excluding skip-list kinds.
 	types, err := listKumaResourceTypes(cpURL, skipSet, bearerToken)
@@ -76,19 +77,39 @@ func ExtractViaKumactl(contextName, outputDir string) error {
 	if err != nil {
 		return fmt.Errorf("list meshes: %w", err)
 	}
+
+	// When a mesh filter is set, limit extraction to that single mesh.
+	loopMeshes := meshNames
+	if meshFilter != "" {
+		found := false
+		for _, m := range meshNames {
+			if m == meshFilter {
+				found = true
+				break
+			}
+		}
+		if !found {
+			ui.Warn(fmt.Sprintf("Mesh %q not found on this CP (available: %s) — no mesh-scoped resources will be extracted.",
+				meshFilter, strings.Join(meshNames, ", ")))
+			loopMeshes = nil
+		} else {
+			loopMeshes = []string{meshFilter}
+		}
+		ui.KV("Mesh filter:", meshFilter)
+	}
 	ui.KV("Meshes found:", strings.Join(meshNames, ", "))
 
 	total := 0
 	for _, rt := range types {
 		if rt.Scope == "Mesh" {
 			extracted := false
-			for _, mesh := range meshNames {
-				n, err := dumpKumactlResources(resolvedCtx, rt, mesh, effectiveOutDir, skipSet, cpMode)
+			for _, mesh := range loopMeshes {
+				n, err := dumpKumactlResources(resolvedCtx, rt, mesh, outputDir, skipSet, cpMode, dirLabel, meshFilter)
 				if err != nil {
 					if isUnknownMeshFlag(err) {
 						// API reported Mesh-scoped but kumactl rejects --mesh:
 						// fall back to a single global extraction.
-						n2, err2 := dumpKumactlResources(resolvedCtx, rt, "", effectiveOutDir, skipSet, cpMode)
+						n2, err2 := dumpKumactlResources(resolvedCtx, rt, "", outputDir, skipSet, cpMode, dirLabel, meshFilter)
 						if err2 != nil {
 							ui.Warn(fmt.Sprintf("%s: %v", rt.Path, err2))
 						}
@@ -104,14 +125,15 @@ func ExtractViaKumactl(contextName, outputDir string) error {
 			}
 			_ = extracted
 		} else {
-			n, err := dumpKumactlResources(resolvedCtx, rt, "", effectiveOutDir, skipSet, cpMode)
+			// Global-scoped resources: no mesh association — always extracted.
+			n, err := dumpKumactlResources(resolvedCtx, rt, "", outputDir, skipSet, cpMode, dirLabel, meshFilter)
 			if err != nil {
 				ui.Warn(fmt.Sprintf("%s: %v", rt.Path, err))
 			}
 			total += n
 		}
 	}
-	ui.ExtractDone(total, effectiveOutDir)
+	ui.ExtractDone(total, outputDir)
 	return nil
 }
 
@@ -309,7 +331,10 @@ func parseMeshNamesFromYAML(data []byte) []string {
 
 // dumpKumactlResources fetches all instances of a resource type (optionally scoped
 // to a mesh) and writes one YAML file per resource to outputDir.
-func dumpKumactlResources(kumactlCtx string, rt resourceTypeEntry, mesh, outputDir string, skipSet map[string]bool, cpMode string) (int, error) {
+// mesh is the Kuma mesh name for Mesh-scoped resources (empty for Global-scoped).
+// cpModeDir is the CP mode directory label (e.g. "global", "zone-eu-west").
+// meshFilter restricts extraction to the named mesh when non-empty.
+func dumpKumactlResources(kumactlCtx string, rt resourceTypeEntry, mesh, outputDir string, skipSet map[string]bool, cpMode, cpModeDir, meshFilter string) (int, error) {
 	args := []string{"get", rt.Path, "-o", "yaml"}
 	if mesh != "" {
 		args = append(args, "--mesh", mesh)
@@ -324,7 +349,7 @@ func dumpKumactlResources(kumactlCtx string, rt resourceTypeEntry, mesh, outputD
 		return 0, err
 	}
 
-	n, err := writeResourceFiles(out, outputDir, skipSet, cpMode)
+	n, err := writeResourceFiles(out, outputDir, skipSet, cpMode, cpModeDir, mesh, meshFilter)
 	return n, err
 }
 

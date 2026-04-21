@@ -76,9 +76,17 @@ func isZoneOnlyKind(kind string) bool {
 // Documents whose kind contains "Insight" or is in skipSet are silently skipped.
 // On a Zone CP (cpMode == CPModeZone) only resources with kuma.io/origin: zone are kept,
 // with the exception of gateway-local kinds which may lack the label (see gatewayLocalKinds).
-// Files are written into per-kind subfolders (resiliency/, routing/, etc.).
+// Files are written into per-kind subfolders under <outputDir>/<cpModeDir>/<meshName>/<sub>/
+// (context-first layout). Global-scoped resources go to <outputDir>/<cpModeDir>/global/<sub>/.
+//
+//   - cpModeDir: the CP mode directory label (e.g. "global", "zone-eu-west"); empty means flat output.
+//   - meshName:  the mesh these resources belong to; when non-empty, files are written under
+//     <outputDir>/<meshName>/<cpModeDir>/<sub>/ so each mesh has its own top-level directory.
+//   - meshFilter: when non-empty, resources whose meshName does not match are skipped.
+//     Resources with no mesh association (global-scoped) are never filtered out.
+//
 // Returns the number of files written.
-func writeResourceFiles(data []byte, outputDir string, skipSet map[string]bool, cpMode string) (int, error) {
+func writeResourceFiles(data []byte, outputDir string, skipSet map[string]bool, cpMode, cpModeDir, meshName, meshFilter string) (int, error) {
 	docs := splitYAMLDocs(data)
 	count := 0
 	for _, doc := range docs {
@@ -86,7 +94,7 @@ func writeResourceFiles(data []byte, outputDir string, skipSet map[string]bool, 
 		if doc == "" {
 			continue
 		}
-		n, err := writeSingleResourceDoc(doc, outputDir, skipSet, cpMode)
+		n, err := writeSingleResourceDoc(doc, outputDir, skipSet, cpMode, cpModeDir, meshName, meshFilter)
 		if err != nil {
 			return count, err
 		}
@@ -103,7 +111,12 @@ func writeResourceFiles(data []byte, outputDir string, skipSet map[string]bool, 
 //   - Universal-style: type + name at top level          (kumactl Universal output)
 //   - Kubernetes list: kind ends in "List", items[]      (kumactl -o yaml on Kube returns MeshMetricList)
 //   - Universal list:  top-level items[], no kind/type   ({total: N, items: [...]})
-func writeSingleResourceDoc(doc string, outputDir string, skipSet map[string]bool, cpMode string) (int, error) {
+//
+// When cpModeDir is non-empty, the file is written to <outputDir>/<cpModeDir>/<meshName>/<sub>/
+// for mesh-scoped resources, or <outputDir>/<cpModeDir>/global/<sub>/ for global-scoped ones.
+// When meshFilter is non-empty, resources whose meshName does not match are skipped (resources
+// with no mesh association are always kept).
+func writeSingleResourceDoc(doc string, outputDir string, skipSet map[string]bool, cpMode, cpModeDir, meshName, meshFilter string) (int, error) {
 	var obj map[string]interface{}
 	if err := yaml.Unmarshal([]byte(doc), &obj); err != nil || obj == nil {
 		return 0, nil
@@ -128,7 +141,7 @@ func writeSingleResourceDoc(doc string, outputDir string, skipSet map[string]boo
 			if err != nil {
 				continue
 			}
-			n, _ := writeSingleResourceDoc(strings.TrimSpace(string(itemBytes)), outputDir, skipSet, cpMode)
+			n, _ := writeSingleResourceDoc(strings.TrimSpace(string(itemBytes)), outputDir, skipSet, cpMode, cpModeDir, meshName, meshFilter)
 			count += n
 		}
 		return count, nil
@@ -177,6 +190,12 @@ func writeSingleResourceDoc(doc string, outputDir string, skipSet map[string]boo
 		}
 	}
 
+	// Apply mesh filter: skip if a specific mesh was requested and this resource
+	// belongs to a different mesh. Resources with no mesh association are always kept.
+	if meshFilter != "" && meshName != "" && meshName != meshFilter {
+		return 0, nil
+	}
+
 	var filename string
 	if ns != "" {
 		filename = sanitize(kind+"-"+ns+"-"+name) + ".yaml"
@@ -185,7 +204,22 @@ func writeSingleResourceDoc(doc string, outputDir string, skipSet map[string]boo
 	}
 
 	sub := resource.KindSubfolder(kind)
-	dir := filepath.Join(outputDir, sub)
+	// Compute output directory (context-first layout):
+	//   <outputDir>/<cpModeDir>/<meshName>/<sub>   when both cpModeDir and meshName are set
+	//   <outputDir>/<cpModeDir>/global/<sub>        when cpModeDir is set but no mesh (global-scoped resources)
+	//   <outputDir>/<meshName>/<sub>               when only meshName is set (no CP-mode dir)
+	//   <outputDir>/<sub>                          otherwise (flat / legacy)
+	var dir string
+	switch {
+	case cpModeDir != "" && meshName != "":
+		dir = filepath.Join(outputDir, cpModeDir, meshName, sub)
+	case cpModeDir != "":
+		dir = filepath.Join(outputDir, cpModeDir, "global", sub)
+	case meshName != "":
+		dir = filepath.Join(outputDir, meshName, sub)
+	default:
+		dir = filepath.Join(outputDir, sub)
+	}
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		ui.Warn(fmt.Sprintf("mkdir %s: %v", dir, err))
 		return 0, nil

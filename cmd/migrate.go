@@ -21,16 +21,18 @@ Run 'kuma-migrator plan' first to preview all changes before applying.`,
 		if _, err := os.Stat(migrateInputDir); os.IsNotExist(err) {
 			return fmt.Errorf("input directory does not exist: %s", migrateInputDir)
 		}
-		return migrator.Migrate(migrateInputDir, migrateOutputDir)
+		return migrator.Migrate(migrateInputDir, migrateOutputDir, migrateMesh)
 	},
 }
 
 var migrateInputDir string
 var migrateOutputDir string
+var migrateMesh string
 
 func init() {
 	migrateCmd.Flags().StringVarP(&migrateInputDir, "input-dir", "i", "", "directory containing source policy YAML files (required)")
 	migrateCmd.Flags().StringVarP(&migrateOutputDir, "output-dir", "o", "", "directory to write migrated YAML files and the migration-report.md (required)")
+	migrateCmd.Flags().StringVar(&migrateMesh, "mesh", "", "restrict migration to the named Kuma mesh (default: all meshes)")
 	_ = migrateCmd.MarkFlagRequired("input-dir")
 	_ = migrateCmd.MarkFlagRequired("output-dir")
 	rootCmd.AddCommand(migrateCmd)

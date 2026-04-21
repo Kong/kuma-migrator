@@ -53,9 +53,9 @@ Two connection modes are supported (mutually exclusive):
 		cfg, _ := config.Load()
 		extractor.TLSSkipVerify = extractTLSSkipVerify || (cfg != nil && cfg.AdminServer.TLSSkipVerify)
 		if extractKubeContext != "" {
-			return extractor.ExtractViaKubectl(extractKubeContext, extractOutputDir)
+			return extractor.ExtractViaKubectl(extractKubeContext, extractOutputDir, extractMesh)
 		}
-		return extractor.ExtractViaKumactl(extractKumactlContext, extractOutputDir)
+		return extractor.ExtractViaKumactl(extractKumactlContext, extractOutputDir, extractMesh)
 	},
 }
 
@@ -63,12 +63,14 @@ var extractKubeContext string
 var extractKumactlContext string
 var extractOutputDir string
 var extractTLSSkipVerify bool
+var extractMesh string
 
 func init() {
 	extractCmd.Flags().StringVar(&extractKubeContext, "kube-context", "", "Kubernetes context to use for resource extraction (kubectl)")
 	extractCmd.Flags().StringVar(&extractKumactlContext, "kumactl-context", "", "kumactl context name to use for resource extraction (kumactl CLI)")
 	extractCmd.Flags().StringVarP(&extractOutputDir, "output-dir", "o", "", "directory to write extracted YAML files (required)")
 	extractCmd.Flags().BoolVarP(&extractTLSSkipVerify, "tls-skip-verify", "k", false, "disable TLS certificate verification for the control plane admin server (use for self-signed certs)")
+	extractCmd.Flags().StringVar(&extractMesh, "mesh", "", "restrict extraction to the named Kuma mesh (default: all meshes)")
 	_ = extractCmd.MarkFlagRequired("output-dir")
 	rootCmd.AddCommand(extractCmd)
 }

@@ -95,20 +95,29 @@ extract → plan → migrate → apply
 ### 1. Extract
 
 Pull resources directly from running control planes into a local directory,
-one YAML file per resource, organised by CP mode and policy type:
+one YAML file per resource, organised by CP context, mesh, and policy type:
 
 ```
 <output-dir>/
-  global/               ← resources from the Global CP
-    resiliency/
-    routing/
-    zero-trust/
-    observability/
-    mesh/               ← Mesh CRs (apply last — they enable Exclusive mode)
-  zone-<zone-name>/     ← resources from a Zone CP (zone-origin only)
-    resiliency/
-    routing/
-    ...
+  <context-name>-global-ctx/    ← kumactl/kubectl context name + CP mode suffix
+    default/                    ← mesh name (one directory per mesh)
+      resiliency/
+      routing/
+      zero-trust/
+      observability/
+      mesh/
+    prod/                       ← another mesh
+      resiliency/
+    global/                     ← global-scoped resources (Zone, HostnameGenerator, …)
+                                   and Gateway API CRDs
+      routing/
+      mesh/
+  <context-name>-zone-ctx/      ← Zone CP resources (kuma.io/origin: zone only)
+    default/
+      resiliency/
+  <context-name>-standalone-ctx/
+    default/
+      resiliency/
 ```
 
 > **Note on MeshGateway and route CRDs**: these may be created on the Global CP *or* directly on
@@ -133,6 +142,34 @@ Some resource types have a fixed home CP and are handled specially:
 > When synced from Global to Zone they carry `kuma.io/origin: global` and are filtered out
 > on zone extraction. When created directly on a Zone CP they have no origin label and are kept.
 
+The top-level directory encodes the kumactl/kubectl context name and CP mode, with mesh
+subdirectories inside. Global-scoped resources (Zone, HostnameGenerator, …) go into `global/`
+alongside the per-mesh directories:
+
+```
+<output-dir>/
+  prod-cp-global-ctx/         ← context "prod-cp" + global CP
+    default/                  ← mesh
+      resiliency/
+      routing/
+      zero-trust/
+      observability/
+      mesh/
+    prod/                     ← another mesh
+      resiliency/
+    global/                   ← global-scoped resources (Zone, HostnameGenerator, …)
+      mesh/
+  zone-eu-west-zone-ctx/      ← context "zone-eu-west" + zone CP
+    default/
+      resiliency/
+```
+
+Use `--mesh <name>` to extract only the resources belonging to a specific mesh:
+
+```bash
+kuma-migrator extract --kumactl-context global-cp --output-dir ./raw-policies --mesh default
+```
+
 #### Always extract from the Global CP first
 
 ```bash
@@ -152,7 +189,7 @@ Attached zones: zone-eu-west, zone-us-east
 [INFO] MeshGatewayInstance and MeshGatewayConfig are zone-local and skipped here.
        Run extract against each Zone CP to capture gateway instances.
 Found 24 writable resource type(s) (skip-list excluded)
-Extracted 87 resource(s) to ./raw-policies/global
+Extracted 87 resource(s) to ./raw-policies
 ```
 
 #### Also extract from Zone CPs
@@ -168,7 +205,7 @@ kuma-migrator extract --kube-context prod-zone-eu --output-dir ./raw-policies
 kuma-migrator extract --kube-context prod-zone-us --output-dir ./raw-policies
 ```
 
-Output is written under `zone-<zone-name>/` (e.g. `raw-policies/zone-eu-west/`).
+Output is written under `<context>-zone-ctx/<mesh>/` (e.g. `raw-policies/zone-eu-west-zone-ctx/default/`).
 On a Zone CP the tool warns and filters automatically:
 
 ```
@@ -217,86 +254,96 @@ both formats.
 ### 2. Plan (dry run)
 
 Preview all changes **without writing any output files**.
-Run once per extracted directory:
+Point `--input-dir` at the entire extracted tree and optionally filter to a single mesh:
 
 ```bash
-kuma-migrator plan --input-dir ./raw-policies/global    --output-dir ./migrated/global
-kuma-migrator plan --input-dir ./raw-policies/zone-eu-west --output-dir ./migrated/zone-eu-west
+# All meshes
+kuma-migrator plan --input-dir ./raw-policies --output-dir ./migrated
+
+# Single mesh only
+kuma-migrator plan --input-dir ./raw-policies --output-dir ./migrated --mesh default
 ```
 
-Writes `migration-plan.md` in each output directory. Review before proceeding.
+Writes `migration-plan.md` in the output directory. Review before proceeding.
 
 ### 3. Migrate
 
 Transform policies and write migrated YAML files:
 
 ```bash
-kuma-migrator migrate --input-dir ./raw-policies/global    --output-dir ./migrated/global
-kuma-migrator migrate --input-dir ./raw-policies/zone-eu-west --output-dir ./migrated/zone-eu-west
+# All meshes
+kuma-migrator migrate --input-dir ./raw-policies --output-dir ./migrated
+
+# Single mesh only
+kuma-migrator migrate --input-dir ./raw-policies --output-dir ./migrated --mesh default
 ```
 
-The output mirrors the input subfolder structure. When the input already contains
-a CP mode parent folder (e.g. `raw-policies/global/resiliency/`), the output
-preserves it (`migrated/global/resiliency/`).
-
-**Special case — Gateway API resources from the Global CP**: `MeshGateway`, `MeshHTTPRoute`,
-`MeshTCPRoute`, and `MeshGatewayRoute` in the `global/` input folder are transformed into
-Gateway API CRDs (`Gateway`, `HTTPRoute`, `TCPRoute`). Because these are Kubernetes-native
-resources that must be applied to **zone clusters**, the migrator writes them to `all-zones/`
-instead of `global/`:
+The output preserves the input layout, keeping context and mesh subdirectories intact:
 
 ```
 migrated/
-  global/           ← Kuma policy CRDs applied to the Global CP
-  all-zones/        ← Gateway API CRDs to be applied to every Zone cluster
-    routing/
-      Gateway-my-gw.yaml
-      HTTPRoute-my-route.yaml
-  zone-eu-west/     ← zone-origin Kuma policies applied to that zone cluster
+  prod-cp-global-ctx/       ← context + CP mode dir
+    default/                ← mesh
+      resiliency/
+      routing/
+      zero-trust/
+      observability/
+      mesh/
+    global/                 ← global-scoped resources AND Gateway API CRDs
+      routing/
+        Gateway-my-gw.yaml
+        HTTPRoute-my-route.yaml
+      mesh/
+  zone-eu-west-zone-ctx/    ← zone-origin policies
+    default/
+      resiliency/
 ```
 
-You can also point `--input-dir` at the root of the extracted tree to process all
-CP modes in one pass:
-
-```bash
-kuma-migrator migrate --input-dir ./raw-policies --output-dir ./migrated
-# writes to ./migrated/global/, ./migrated/all-zones/, ./migrated/zone-eu-west/, etc.
-```
+**Gateway API resources**: `MeshGateway`, `MeshHTTPRoute`, `MeshTCPRoute`, and `MeshGatewayRoute`
+are transformed into Gateway API CRDs (`Gateway`, `HTTPRoute`, `TCPRoute`). Because these are
+Kubernetes-native resources that must be applied to **zone clusters** rather than the Global CP,
+the migrator redirects them to the `global/` subdirectory (alongside global-scoped Kuma resources)
+even when the source file came from a mesh-scoped input directory.
 
 ### 4. Apply (in order)
 
-After upgrading your control planes, apply the migrated manifests in this order:
+After upgrading your control planes, apply the migrated manifests in this order.
+Substitute `prod-cp-global-ctx` and `zone-eu-west-zone-ctx` with your actual context directory names.
 
 ```bash
 # 1. Global CP policies — resiliency, routing, zero-trust, observability
-kubectl apply -f ./migrated/global/resiliency/
-kubectl apply -f ./migrated/global/routing/
-kubectl apply -f ./migrated/global/zero-trust/
-kubectl apply -f ./migrated/global/observability/
+kubectl apply -f ./migrated/prod-cp-global-ctx/default/resiliency/
+kubectl apply -f ./migrated/prod-cp-global-ctx/default/routing/
+kubectl apply -f ./migrated/prod-cp-global-ctx/default/zero-trust/
+kubectl apply -f ./migrated/prod-cp-global-ctx/default/observability/
 
-# 2. Gateway API resources — apply to EACH zone cluster (repeat per zone context)
-#    These were migrated from MeshGateway / MeshHTTPRoute / etc. on the Global CP.
-#    They are Kubernetes-native CRDs and must be applied to zone clusters, not the Global CP.
-kubectl --context <zone-eu-west-context> apply -f ./migrated/all-zones/routing/
-kubectl --context <zone-us-east-context> apply -f ./migrated/all-zones/routing/
+# 2. Gateway API resources + global-scoped resources — apply to EACH zone cluster
+#    These are Kubernetes-native CRDs (Gateway, HTTPRoute, …) and must be applied to
+#    zone clusters, not the Global CP. Global-scoped Kuma resources (Zone, HostnameGenerator)
+#    also live here.
+kubectl --context <zone-eu-west-context> apply -f ./migrated/prod-cp-global-ctx/global/routing/
+kubectl --context <zone-us-east-context> apply -f ./migrated/prod-cp-global-ctx/global/routing/
 
 # 3. Zone-origin policies (if any were extracted from Zone CPs)
-kubectl --context <zone-eu-west-context> apply -f ./migrated/zone-eu-west/resiliency/
-kubectl --context <zone-eu-west-context> apply -f ./migrated/zone-eu-west/routing/
-kubectl --context <zone-eu-west-context> apply -f ./migrated/zone-eu-west/zero-trust/
-kubectl --context <zone-eu-west-context> apply -f ./migrated/zone-eu-west/observability/
+kubectl --context <zone-eu-west-context> apply -f ./migrated/zone-eu-west-zone-ctx/default/resiliency/
+kubectl --context <zone-eu-west-context> apply -f ./migrated/zone-eu-west-zone-ctx/default/routing/
+kubectl --context <zone-eu-west-context> apply -f ./migrated/zone-eu-west-zone-ctx/default/zero-trust/
+kubectl --context <zone-eu-west-context> apply -f ./migrated/zone-eu-west-zone-ctx/default/observability/
 
 # 4. Mesh CRs last — these enable spec.meshServices.mode: Exclusive
 #    Applying them before all other policies are in place will break
 #    any workload still addressed by a kuma.io/service tag.
-kubectl apply -f ./migrated/global/mesh/
+kubectl apply -f ./migrated/prod-cp-global-ctx/default/mesh/
+
+# 5. Global-scoped Kuma CRs (Zones, HostnameGenerators, etc.)
+kubectl apply -f ./migrated/prod-cp-global-ctx/global/mesh/
 ```
 
 ### 5. (Optional) Skip step 2 when MeshGateway was zone-local
 
 If your `MeshGateway` and route CRDs were created directly on a Zone CP (not via the Global CP),
-they will be extracted into `zone-<name>/routing/` and migrated there — no `all-zones/` directory
-will be produced. The migration report will tell you which case applies.
+they will be extracted into `<context>-zone-ctx/<mesh>/routing/` and migrated there.
+The migration report will tell you which case applies.
 
 ### 6. Clean up original resources
 
@@ -325,6 +372,7 @@ The migration report (`migration-report.md`) contains a ready-to-run
 | `--kube-context` | | one of | Kubernetes context to use (kubectl) |
 | `--kumactl-context` | | one of | kumactl context name (kumactl CLI) |
 | `--output-dir` | `-o` | yes | Directory to write extracted YAML files |
+| `--mesh` | | no | Restrict extraction to the named Kuma mesh (default: all meshes) |
 | `--tls-skip-verify` | `-k` | no | Disable TLS certificate verification for the CP admin server (self-signed certs) |
 
 #### plan / migrate
@@ -333,6 +381,7 @@ The migration report (`migration-report.md`) contains a ready-to-run
 |---|---|---|---|
 | `--input-dir` | `-i` | yes | Directory containing source policy YAML files |
 | `--output-dir` | `-o` | yes | Directory for output files and the Markdown report |
+| `--mesh` | | no | Restrict processing to the named mesh subdirectory (default: all meshes) |
 
 ## Console output
 
@@ -355,14 +404,14 @@ Summary: 9 file(s) processed — 7 migrated, 1 already migrated, 1 skipped, 0 er
 The Markdown report (`migration-plan.md` or `migration-report.md`) contains:
 
 - **Summary table** — files processed, migrated, already migrated, skipped, errors
-- **Migrated Files** — compact table per `cpMode/subfolder` (e.g. `global/resiliency/`),
+- **Migrated Files** — compact table per `contextDir/meshDir/subfolder` (e.g. `prod-cp-global-ctx/default/resiliency/`),
   with per-file warning blocks where relevant; `mesh/` noted as "apply last"
 - **Already Migrated** — files passed through unchanged
 - **Skipped Files** — non-policy YAML files
 - **Action Items** (when present) — errors, workload service address mappings,
   deprecated annotations
 - **Apply Checklist** — ordered, numbered steps with the correct `kubectl apply -f` paths;
-  includes a dedicated step for `all-zones/` Gateway API resources when present
+  includes a dedicated step for `global/` Gateway API resources when present
 - **Original Resources to Delete** — resources whose kind changed; includes a collapsible
   `kubectl delete` command list
 

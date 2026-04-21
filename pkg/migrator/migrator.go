@@ -28,15 +28,16 @@ type DocChange struct {
 
 // FileReport captures the transformation results for a single YAML file.
 type FileReport struct {
-	FileName      string
-	Label         string // e.g. "MIGRATED LEGACY", "ALREADY MIGRATED", "SKIP", "ERROR"
-	Subfolder     string // output subdirectory (e.g. "resiliency", "mesh")
-	CPModeDir     string // CP mode prefix from input path (e.g. "global", "zone", "standalone")
+	FileName        string
+	Label           string // e.g. "MIGRATED LEGACY", "ALREADY MIGRATED", "SKIP", "ERROR"
+	Subfolder       string // output subdirectory (e.g. "resiliency", "mesh")
+	CPModeDir       string // CP mode prefix from input path (e.g. "global", "zone", "standalone")
 	OutputCPModeDir string // effective output CP mode dir (may differ from CPModeDir for GW resources from global)
-	HasError      bool
-	Changes    []DocChange
-	EnvVarHits []EnvVarHit
-	AnnotHits  []AnnotationHit
+	MeshDir         string // mesh directory from input path (e.g. "default", "prod"); empty for flat/legacy layout
+	HasError        bool
+	Changes         []DocChange
+	EnvVarHits      []EnvVarHit
+	AnnotHits       []AnnotationHit
 }
 
 // MigrationReport is the top-level result of a plan or apply run.
@@ -67,9 +68,13 @@ type MigrationReport struct {
 //
 // The plan shows every change that would be made and all warnings, letting you
 // review before committing.
-func Plan(inputDir, outputDir string) error {
+//
+// meshFilter, when non-empty, restricts processing to files under the named
+// mesh subdirectory (e.g. "default"). Files without a mesh directory prefix
+// are always processed.
+func Plan(inputDir, outputDir, meshFilter string) error {
 	ui.Header("plan")
-	report, err := runMigration(inputDir, outputDir, false)
+	report, err := runMigration(inputDir, outputDir, false, meshFilter)
 	if err != nil {
 		return err
 	}
@@ -80,9 +85,13 @@ func Plan(inputDir, outputDir string) error {
 
 // Migrate reads all YAML files from inputDir, transforms them, writes the results
 // to outputDir, and writes a Markdown report to outputDir/migration-report.md.
-func Migrate(inputDir, outputDir string) error {
+//
+// meshFilter, when non-empty, restricts processing to files under the named
+// mesh subdirectory (e.g. "default"). Files without a mesh directory prefix
+// are always processed.
+func Migrate(inputDir, outputDir, meshFilter string) error {
 	ui.Header("migrate")
-	report, err := runMigration(inputDir, outputDir, true)
+	report, err := runMigration(inputDir, outputDir, true, meshFilter)
 	if err != nil {
 		return err
 	}
@@ -93,7 +102,20 @@ func Migrate(inputDir, outputDir string) error {
 
 // ---- Internal engine --------------------------------------------------------
 
-func runMigration(inputDir, outputDir string, writeFiles bool) (*MigrationReport, error) {
+// isKindSubfolder returns true when s is a recognised per-kind output subdirectory
+// name. These names are produced by resource.KindSubfolder and appear as the final
+// path component before the YAML filename in the extract output layout.
+// Used during path detection to tell kind-subfolders apart from context/mesh dirs.
+func isKindSubfolder(s string) bool {
+	switch s {
+	case "resiliency", "routing", "zero-trust", "mesh", "observability", "other",
+		"gateway", "workload":
+		return true
+	}
+	return false
+}
+
+func runMigration(inputDir, outputDir string, writeFiles bool, meshFilter string) (*MigrationReport, error) {
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		return nil, fmt.Errorf("create output directory %q: %w", outputDir, err)
 	}
@@ -121,25 +143,45 @@ func runMigration(inputDir, outputDir string, writeFiles bool) (*MigrationReport
 			return nil
 		}
 
-		// Detect CP mode from the first directory component of the relative path.
-		// e.g. "<inputDir>/global/resiliency/file.yaml"    → cpModeDir = "global"
-		//      "<inputDir>/zone-eu-west/resiliency/file.yaml" → cpModeDir = "zone-eu-west"
+		// Detect context directory and mesh directory from the relative path.
+		//
+		// Context-first layout (produced by current extract):
+		//   <inputDir>/<ctxDir>/<meshName>/<sub>/file.yaml  → cpModeDir=<ctxDir>, meshDir=<meshName>
+		//   <inputDir>/<ctxDir>/global/<sub>/file.yaml       → cpModeDir=<ctxDir>, meshDir=""
+		//
+		// Legacy layout (flat, or pre-context-dir extract output):
+		//   <inputDir>/<sub>/file.yaml                       → cpModeDir="", meshDir=""
+		//   <inputDir>/<anyDir>/<sub>/file.yaml              → cpModeDir=<anyDir>, meshDir=""
+		//
+		// Detection rule: a path component is a kind-subfolder (leaf) if isKindSubfolder
+		// returns true. The first non-kind-subfolder component is cpModeDir; the second
+		// non-kind-subfolder component that is not the reserved "global" is meshDir.
+		meshDir := ""
 		cpModeDir := ""
 		if rel, relErr := filepath.Rel(inputDir, path); relErr == nil {
-			parts := strings.SplitN(filepath.ToSlash(rel), "/", 2)
+			parts := strings.SplitN(filepath.ToSlash(rel), "/", 5)
 			if len(parts) >= 2 {
 				first := parts[0]
-				switch {
-				case first == "global", first == "standalone", first == "unknown":
+				if !isKindSubfolder(first) {
 					cpModeDir = first
-				case first == "zone" || strings.HasPrefix(first, "zone-"):
-					cpModeDir = first
+					if len(parts) >= 3 {
+						second := parts[1]
+						if !isKindSubfolder(second) && second != "global" {
+							meshDir = second
+						}
+					}
 				}
 			}
 		}
 
+		// Apply mesh filter: skip files that belong to a different named mesh.
+		// Files without a mesh directory prefix (old layout) are always processed.
+		if meshFilter != "" && meshDir != "" && meshDir != meshFilter {
+			return nil
+		}
+
 		report.TotalFiles++
-		fr := processFile(path, outputDir, cpModeDir, writeFiles, skipSet)
+		fr := processFile(path, outputDir, cpModeDir, meshDir, writeFiles, skipSet)
 		report.Files = append(report.Files, fr)
 
 		for _, h := range fr.EnvVarHits {
@@ -215,9 +257,9 @@ func isGatewayAPIOutputKind(kind string) bool {
 	return false
 }
 
-func processFile(inputPath, outputDir, cpModeDir string, writeFile bool, skipSet map[string]bool) FileReport {
+func processFile(inputPath, outputDir, cpModeDir, meshDir string, writeFile bool, skipSet map[string]bool) FileReport {
 	name := filepath.Base(inputPath)
-	fr := FileReport{FileName: name, CPModeDir: cpModeDir, OutputCPModeDir: cpModeDir}
+	fr := FileReport{FileName: name, CPModeDir: cpModeDir, OutputCPModeDir: cpModeDir, MeshDir: meshDir}
 
 	data, err := os.ReadFile(inputPath)
 	if err != nil {
@@ -299,17 +341,23 @@ func processFile(inputPath, outputDir, cpModeDir string, writeFile bool, skipSet
 		for _, doc := range outputDocs {
 			kind, _ := probeKindName(doc)
 			sub := resource.KindSubfolder(kind)
-			// Gateway API output kinds (Gateway, HTTPRoute, TCPRoute, GatewayClass, …) are
-			// Kubernetes-native resources applied to zone clusters, never to the Global CP.
-			// When the source file came from the global/ input folder, redirect the output to
-			// all-zones/ so it is clear where to apply.
-			effectiveCPModeDir := cpModeDir
-			if cpModeDir == "global" && isGatewayAPIOutputKind(kind) {
-				effectiveCPModeDir = "all-zones"
-			}
+			// Compute output directory (context-first layout, mirrors extract output):
+			//   <outputDir>/<cpModeDir>/<meshDir>/<sub>   when context+mesh present; GW API → global/
+			//   <outputDir>/<cpModeDir>/global/<sub>       when context set but no mesh (or GW API redirect)
+			//   <outputDir>/<sub>                          otherwise (flat / legacy)
 			var dir string
-			if effectiveCPModeDir != "" {
-				dir = filepath.Join(outputDir, effectiveCPModeDir, sub)
+			if cpModeDir != "" && meshDir != "" {
+				if isGatewayAPIOutputKind(kind) {
+					// Gateway API resources (Gateway, HTTPRoute, …) are Kubernetes-native and
+					// must be applied to zone clusters, not to the Global CP. Redirect them to
+					// the global/ sub-directory so it is clear where they belong.
+					dir = filepath.Join(outputDir, cpModeDir, "global", sub)
+					fr.OutputCPModeDir = "global"
+				} else {
+					dir = filepath.Join(outputDir, cpModeDir, meshDir, sub)
+				}
+			} else if cpModeDir != "" {
+				dir = filepath.Join(outputDir, cpModeDir, "global", sub)
 			} else {
 				dir = filepath.Join(outputDir, sub)
 			}
@@ -323,10 +371,6 @@ func processFile(inputPath, outputDir, cpModeDir string, writeFile bool, skipSet
 				fr.Label = labelError
 				fr.HasError = true
 				return fr
-			}
-			// Track that output went to all-zones (for report apply-path accuracy).
-			if effectiveCPModeDir != cpModeDir {
-				fr.OutputCPModeDir = effectiveCPModeDir
 			}
 		}
 	}

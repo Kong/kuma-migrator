@@ -89,21 +89,27 @@ func TestDetectKumactlCPMode_ReturnsEnvironment(t *testing.T) {
 	}
 }
 
-func TestCPModeDirectoryLabel_Zone(t *testing.T) {
-	if got := cpModeDirectoryLabel(CPModeZone, "eu-west"); got != "zone-eu-west" {
-		t.Errorf("expected zone-eu-west, got %q", got)
-	}
-}
-
-func TestCPModeDirectoryLabel_ZoneNoName(t *testing.T) {
-	if got := cpModeDirectoryLabel(CPModeZone, ""); got != "zone" {
-		t.Errorf("expected zone, got %q", got)
-	}
-}
-
 func TestCPModeDirectoryLabel_Global(t *testing.T) {
-	if got := cpModeDirectoryLabel(CPModeGlobal, ""); got != "global" {
-		t.Errorf("expected global, got %q", got)
+	if got := cpModeDirectoryLabel("prod-cp", CPModeGlobal); got != "prod-cp-global-ctx" {
+		t.Errorf("expected prod-cp-global-ctx, got %q", got)
+	}
+}
+
+func TestCPModeDirectoryLabel_Zone(t *testing.T) {
+	if got := cpModeDirectoryLabel("eu-west", CPModeZone); got != "eu-west-zone-ctx" {
+		t.Errorf("expected eu-west-zone-ctx, got %q", got)
+	}
+}
+
+func TestCPModeDirectoryLabel_Standalone(t *testing.T) {
+	if got := cpModeDirectoryLabel("my-cp", CPModeStandalone); got != "my-cp-standalone-ctx" {
+		t.Errorf("expected my-cp-standalone-ctx, got %q", got)
+	}
+}
+
+func TestCPModeDirectoryLabel_Unknown(t *testing.T) {
+	if got := cpModeDirectoryLabel("my-cp", ""); got != "my-cp-unknown-ctx" {
+		t.Errorf("expected my-cp-unknown-ctx, got %q", got)
 	}
 }
 
@@ -158,7 +164,7 @@ metadata:
     kuma.io/origin: zone
 spec: {}
 `)
-	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeZone)
+	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeZone, "", "", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -177,7 +183,7 @@ metadata:
     kuma.io/origin: global
 spec: {}
 `)
-	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeZone)
+	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeZone, "", "", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -194,7 +200,7 @@ metadata:
   name: no-label-timeout
 spec: {}
 `)
-	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeZone)
+	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeZone, "", "", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -233,7 +239,7 @@ metadata:
   name: global-timeout
 spec: {}
 `)
-	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeGlobal)
+	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeGlobal, "", "", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -268,7 +274,7 @@ metadata:
   name: no-label-hc
 spec: {}
 `)
-	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeGlobal)
+	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeGlobal, "", "", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -287,7 +293,7 @@ metadata:
     kuma.io/origin: global
 spec: {}
 `)
-	n, err := writeResourceFiles(data, dir, map[string]bool{}, "")
+	n, err := writeResourceFiles(data, dir, map[string]bool{}, "", "", "", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -315,7 +321,7 @@ metadata:
     kuma.io/origin: global
 spec: {}
 `)
-	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeZone)
+	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeZone, "", "", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -346,7 +352,7 @@ metadata:
   namespace: kong-mesh-system
 spec: {}
 `)
-	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeZone)
+	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeZone, "", "", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -367,7 +373,7 @@ metadata:
     kuma.io/origin: global
 spec: {}
 `)
-	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeZone)
+	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeZone, "", "", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -385,7 +391,7 @@ metadata:
   name: zone-local-gw
 spec: {}
 `)
-	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeZone)
+	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeZone, "", "", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -446,7 +452,7 @@ name: my-metrics
 mesh: default
 spec: {}
 `)
-	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeGlobal)
+	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeGlobal, "", "", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -469,7 +475,7 @@ items:
   mesh: default
   spec: {}
 `)
-	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeGlobal)
+	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeGlobal, "", "", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -497,7 +503,7 @@ items:
     namespace: kuma-system
   spec: {}
 `)
-	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeGlobal)
+	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeGlobal, "", "", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -512,7 +518,7 @@ func TestWriteResourceFiles_EmptyKubernetesList(t *testing.T) {
 kind: MeshMetricList
 items: []
 `)
-	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeGlobal)
+	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeGlobal, "", "", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -530,11 +536,112 @@ metadata:
   name: no-label-timeout
 spec: {}
 `)
-	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeZone)
+	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeZone, "", "", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if n != 0 {
 		t.Errorf("expected 0 files (non-gateway kind without origin label skipped on zone CP), got %d", n)
+	}
+}
+
+// ---- Mesh subdir and mesh filter tests --------------------------------------
+
+func TestWriteResourceFiles_MeshSubdir_CreatesSubdirPerMesh(t *testing.T) {
+	dir := t.TempDir()
+	data := []byte(`apiVersion: kuma.io/v1alpha1
+kind: MeshTimeout
+metadata:
+  name: my-timeout
+spec: {}
+`)
+	// Context-first layout: cpModeDir is the context dir label, meshName is the mesh.
+	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeGlobal, "my-cp-global-ctx", "default", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("expected 1 file written, got %d", n)
+	}
+	// File must be under <dir>/my-cp-global-ctx/default/resiliency/
+	entries, _ := os.ReadDir(filepath.Join(dir, "my-cp-global-ctx", "default", "resiliency"))
+	if len(entries) != 1 || entries[0].Name() != "MeshTimeout-my-timeout.yaml" {
+		t.Errorf("unexpected files in my-cp-global-ctx/default/resiliency/: %v", entries)
+	}
+}
+
+func TestWriteResourceFiles_GlobalScopedGoesToGlobalSubdir(t *testing.T) {
+	dir := t.TempDir()
+	data := []byte(`apiVersion: kuma.io/v1alpha1
+kind: MeshTimeout
+metadata:
+  name: global-resource
+spec: {}
+`)
+	// No meshName → global-scoped resource goes to <cpModeDir>/global/<sub>/
+	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeGlobal, "my-cp-global-ctx", "", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("expected 1 file written, got %d", n)
+	}
+	entries, _ := os.ReadDir(filepath.Join(dir, "my-cp-global-ctx", "global", "resiliency"))
+	if len(entries) != 1 || entries[0].Name() != "MeshTimeout-global-resource.yaml" {
+		t.Errorf("unexpected files in my-cp-global-ctx/global/resiliency/: %v", entries)
+	}
+}
+
+func TestWriteResourceFiles_MeshFilter_SkipsOtherMesh(t *testing.T) {
+	dir := t.TempDir()
+	data := []byte(`apiVersion: kuma.io/v1alpha1
+kind: MeshTimeout
+metadata:
+  name: prod-timeout
+spec: {}
+`)
+	// meshName="prod", meshFilter="default" → should be skipped.
+	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeGlobal, "global", "prod", "default")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if n != 0 {
+		t.Errorf("expected 0 files (prod mesh skipped when filter=default), got %d", n)
+	}
+}
+
+func TestWriteResourceFiles_MeshFilter_KeepsMatchingMesh(t *testing.T) {
+	dir := t.TempDir()
+	data := []byte(`apiVersion: kuma.io/v1alpha1
+kind: MeshTimeout
+metadata:
+  name: default-timeout
+spec: {}
+`)
+	// meshName="default", meshFilter="default" → should be kept.
+	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeGlobal, "global", "default", "default")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("expected 1 file (matching mesh filter), got %d", n)
+	}
+}
+
+func TestWriteResourceFiles_MeshFilter_KeepsGlobalScopedResources(t *testing.T) {
+	dir := t.TempDir()
+	data := []byte(`apiVersion: kuma.io/v1alpha1
+kind: MeshTimeout
+metadata:
+  name: global-resource
+spec: {}
+`)
+	// meshName="" (global-scoped), meshFilter="default" → must NOT be filtered out.
+	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeGlobal, "global", "", "default")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("expected 1 file (global-scoped resources not filtered by mesh filter), got %d", n)
 	}
 }

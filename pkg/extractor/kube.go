@@ -23,7 +23,13 @@ import (
 //	  | while read crd; do
 //	      kubectl --context <ctx> get <crd> -A -o json | <per item> | kubectl get -o yaml > file.yaml
 //	    done
-func ExtractViaKubectl(kubeContext, outputDir string) error {
+// ExtractViaKubectl extracts all kuma.io/v1alpha1 resources from the cluster
+// reachable via the given Kubernetes context, writing one YAML file per resource
+// to outputDir. Resources whose kind contains "Insight" are skipped.
+//
+// meshFilter, when non-empty, restricts extraction to the named mesh only.
+// Global-scoped resources (no kuma.io/mesh label) are always extracted.
+func ExtractViaKubectl(kubeContext, outputDir, meshFilter string) error {
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		return fmt.Errorf("create output directory: %w", err)
 	}
@@ -31,7 +37,7 @@ func ExtractViaKubectl(kubeContext, outputDir string) error {
 	skipSet := loadSkipSet(CPEnvKubernetes) // kubectl path is always Kubernetes
 
 	cpMode, zoneName := detectKubeCPMode(kubeContext)
-	dirLabel := cpModeDirectoryLabel(cpMode, zoneName)
+	dirLabel := cpModeDirectoryLabel(kubeContext, cpMode)
 	var zones []string
 	if cpMode == CPModeGlobal {
 		zones = listZoneNamesKubectl(kubeContext)
@@ -39,10 +45,11 @@ func ExtractViaKubectl(kubeContext, outputDir string) error {
 
 	ui.Header("extract")
 	ui.KV("Context:", kubeContext)
+	if meshFilter != "" {
+		ui.KV("Mesh filter:", meshFilter)
+	}
 	PrintCPModeInfo(cpMode, zoneName, zones)
 	fmt.Println()
-
-	effectiveOutDir := filepath.Join(outputDir, dirLabel)
 
 	crds, err := listKumaCRDs(kubeContext, skipSet)
 	if err != nil {
@@ -53,13 +60,13 @@ func ExtractViaKubectl(kubeContext, outputDir string) error {
 
 	total := 0
 	for _, crd := range crds {
-		n, err := dumpCRDInstances(kubeContext, crd, effectiveOutDir, cpMode)
+		n, err := dumpCRDInstances(kubeContext, crd, outputDir, cpMode, dirLabel, meshFilter)
 		if err != nil {
 			ui.Warn(fmt.Sprintf("%s: %v", crd.Plural, err))
 		}
 		total += n
 	}
-	ui.ExtractDone(total, effectiveOutDir)
+	ui.ExtractDone(total, outputDir)
 	return nil
 }
 
@@ -219,7 +226,15 @@ type kubeResourceItem struct {
 	} `json:"metadata"`
 }
 
-func dumpCRDInstances(kubeContext string, crd crdEntry, outputDir string, cpMode string) (int, error) {
+// dumpCRDInstances lists all instances of a CRD kind from the cluster and writes
+// one YAML file per resource. Files are organised as:
+//
+//	<outputDir>/<meshName>/<cpModeDir>/<sub>/  (for mesh-scoped resources)
+//	<outputDir>/<cpModeDir>/<sub>/             (for global-scoped resources, no mesh label)
+//
+// meshFilter, when non-empty, skips resources whose kuma.io/mesh label does not match.
+// Resources with no kuma.io/mesh label (global-scoped) are never filtered out.
+func dumpCRDInstances(kubeContext string, crd crdEntry, outputDir, cpMode, cpModeDir, meshFilter string) (int, error) {
 	out, err := kubectl(kubeContext, "get", crd.Plural, "-A", "-o", "json")
 	if err != nil {
 		return 0, err
@@ -257,6 +272,14 @@ func dumpCRDInstances(kubeContext string, crd crdEntry, outputDir string, cpMode
 			}
 		}
 
+		meshName := item.Metadata.Labels["kuma.io/mesh"]
+
+		// Apply mesh filter: skip resources that belong to a different mesh.
+		// Resources with no mesh label (global-scoped) are never filtered out.
+		if meshFilter != "" && meshName != "" && meshName != meshFilter {
+			continue
+		}
+
 		kind := item.Kind
 		if kind == "" {
 			kind = crd.Kind
@@ -283,7 +306,20 @@ func dumpCRDInstances(kubeContext string, crd crdEntry, outputDir string, cpMode
 		}
 
 		sub := resource.KindSubfolder(kind)
-		dir := filepath.Join(outputDir, sub)
+		// Compute output directory (context-first layout):
+		//   <outputDir>/<cpModeDir>/<meshName>/<sub>   when mesh-scoped
+		//   <outputDir>/<cpModeDir>/global/<sub>        when global-scoped (no mesh label)
+		var dir string
+		switch {
+		case cpModeDir != "" && meshName != "":
+			dir = filepath.Join(outputDir, cpModeDir, meshName, sub)
+		case cpModeDir != "":
+			dir = filepath.Join(outputDir, cpModeDir, "global", sub)
+		case meshName != "":
+			dir = filepath.Join(outputDir, meshName, sub)
+		default:
+			dir = filepath.Join(outputDir, sub)
+		}
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			ui.Warn(fmt.Sprintf("mkdir %s: %v", dir, err))
 			continue
