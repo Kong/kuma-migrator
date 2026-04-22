@@ -55,9 +55,17 @@ is reported as `readOnly=true`, which would produce zero results. Insight kinds 
 by name (`isInsightKind`) instead.
 
 Both modes detect the CP mode at runtime (`GET <cpURL>/config` for kumactl; `KUMA_MODE` env var
-on the CP Deployment for kubectl) and apply a zone filter: on a Zone CP, only resources with
-`kuma.io/origin: zone` are extracted (resources synced from the Global CP carry `kuma.io/origin: global`
-and are skipped). Unknown mode falls back to extracting everything.
+on the CP Deployment for kubectl) and apply origin-based filtering:
+
+| CP mode | Filter applied |
+|---|---|
+| `zone` | Only `kuma.io/origin: zone` kept; resources with `origin: global` or no label skipped (except gateway-local kinds) |
+| `global` | Resources with `kuma.io/origin: zone` **skipped** — these are zone-created policies synced read-only to the Global CP. The user is told which zone to target (via `kuma.io/zone` label). Resources with `origin: global` or no label are extracted normally. |
+| `standalone` / unknown | All resources extracted (no origin filter) |
+
+Zone-origin skips on Global CP are accumulated into `[]ZoneOriginSkip` and printed after
+`ExtractDone` as a `⚠` warning section listing each skipped resource and the zone to target.
+Unknown mode falls back to extracting everything.
 
 The kumactl path also reads the `environment` field from `GET <cpURL>/config`
 (`"kubernetes"` or `"universal"`) to select the appropriate default skip list. See
@@ -93,12 +101,15 @@ Key files: `pkg/extractor/kube.go`, `pkg/extractor/kumactl.go`, `pkg/extractor/e
 `pkg/extractor/cpmode.go`.
 
 The `--mesh` flag and `--output-format` flag are threaded through:
-- `ExtractViaKumactl(contextName, outputDir, meshFilter, outputFormat string)` — filters `loopMeshes`; passes outputFormat down
-- `ExtractViaKubectl(kubeContext, outputDir, meshFilter, outputFormat string)` — outputFormat accepted but unused (kubectl always returns K8s format)
-- `dumpKumactlResources(..., meshName, meshFilter, outputFormat string)` — passes all to `writeResourceFiles`
-- `dumpCRDInstances(..., cpModeDir, meshFilter string)` — reads mesh from `kuma.io/mesh` label
-- `writeResourceFiles(data, outputDir, skipSet, cpMode, cpModeDir, meshName, meshFilter, outputFormat string)` — skip if `meshFilter != "" && meshName != "" && meshName != meshFilter`; applies `universalToKubernetes` conversion when `outputFormat == "kubernetes"` and resource lacks `kind`
+- `ExtractViaKumactl(contextName, outputDir, meshFilter, outputFormat string)` — filters `loopMeshes`; passes outputFormat down; accumulates `[]ZoneOriginSkip` and calls `printZoneOriginSkips` after `ExtractDone`
+- `ExtractViaKubectl(kubeContext, outputDir, meshFilter, outputFormat string)` — same accumulation; outputFormat accepted but unused (kubectl always returns K8s format)
+- `dumpKumactlResources(..., meshName, meshFilter, outputFormat string, skips *[]ZoneOriginSkip)` — passes all to `writeResourceFiles`
+- `dumpCRDInstances(..., cpModeDir, meshFilter string, skips *[]ZoneOriginSkip)` — reads mesh from `kuma.io/mesh` label; applies zone-origin filter inline before per-resource YAML fetch
+- `writeResourceFiles(data, outputDir, skipSet, cpMode, cpModeDir, meshName, meshFilter, outputFormat string, skips *[]ZoneOriginSkip)` — skip if `meshFilter != "" && meshName != "" && meshName != meshFilter`; applies `universalToKubernetes` conversion when `outputFormat == "kubernetes"` and resource lacks `kind`
 - Path computed as `<outputDir>/<cpModeDir>/mesh-<meshName>/<sub>` (or `<cpModeDir>/global-scoped-resources/<sub>` for global-scoped)
+
+`ZoneOriginSkip` struct (in `extractor.go`): `Kind`, `Name`, `ZoneName` (value of `kuma.io/zone` label, empty when absent).
+`printZoneOriginSkips(skips []ZoneOriginSkip)` (in `extractor.go`): prints a `⚠` warning section after extraction listing each skipped resource and its zone.
 
 `universalToKubernetes(obj map[string]interface{}) map[string]interface{}` in `extractor.go`
 converts a Universal-format resource map to Kubernetes format: `type`→`kind`, `name`→`metadata.name`,
@@ -199,7 +210,8 @@ instead of `metadata`. All migrate-side parsing must normalise these:
 
 | Label | Values | Meaning |
 |---|---|---|
-| `kuma.io/origin` | `global` / `zone` | Set by CP. `global` = synced from Global CP; `zone` = created locally in this zone. |
+| `kuma.io/origin` | `global` / `zone` | Set by CP. `global` = synced from Global CP; `zone` = created locally in this zone. On Global CP, `zone`-origin resources are **skipped** during extraction (use `kuma.io/zone` to find the originating zone). |
+| `kuma.io/zone` | zone name | Present on resources with `kuma.io/origin: zone`. Used by the extractor to tell the user which Zone CP to target when skipping a zone-origin resource on a Global CP. |
 | `kuma.io/policy-role` | `system` / `producer` / `consumer` / `workload-owner` | Set by CP based on namespace + spec shape. Does **not** affect extraction filtering (origin label covers this). Must be **preserved** by migration transforms — Subset/Passthrough/Rules scenarios do preserve it; Legacy (Universal-format) inputs don't carry it. |
 
 `kuma.io/policy-role` priority order (low → high): `system` → `producer` → `consumer` → `workload-owner`.

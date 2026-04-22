@@ -165,7 +165,7 @@ metadata:
     kuma.io/origin: zone
 spec: {}
 `)
-	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeZone, "", "", "", "universal")
+	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeZone, "", "", "", "universal", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -184,7 +184,7 @@ metadata:
     kuma.io/origin: global
 spec: {}
 `)
-	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeZone, "", "", "", "universal")
+	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeZone, "", "", "", "universal", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -201,7 +201,7 @@ metadata:
   name: no-label-timeout
 spec: {}
 `)
-	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeZone, "", "", "", "universal")
+	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeZone, "", "", "", "universal", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -240,7 +240,7 @@ metadata:
   name: global-timeout
 spec: {}
 `)
-	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeGlobal, "", "", "", "universal")
+	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeGlobal, "", "", "", "universal", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -250,15 +250,16 @@ spec: {}
 	}
 }
 
-func TestWriteResourceFiles_GlobalMode_KeepsAll(t *testing.T) {
+func TestWriteResourceFiles_GlobalMode_SkipsZoneOrigin(t *testing.T) {
 	dir := t.TempDir()
-	// Three docs: one zone, one global, one no label — all kept on global CP.
+	// Three docs: zone-origin (skipped + recorded), global-origin (kept), no-label (kept).
 	data := []byte(`apiVersion: kuma.io/v1alpha1
 kind: MeshTimeout
 metadata:
   name: zone-timeout
   labels:
     kuma.io/origin: zone
+    kuma.io/zone: eu-west
 spec: {}
 ---
 apiVersion: kuma.io/v1alpha1
@@ -275,12 +276,48 @@ metadata:
   name: no-label-hc
 spec: {}
 `)
-	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeGlobal, "", "", "", "universal")
+	var skips []ZoneOriginSkip
+	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeGlobal, "", "", "", "universal", &skips)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if n != 3 {
-		t.Errorf("expected 3 files on global CP, got %d", n)
+	// zone-origin resource skipped; global-origin and no-label kept.
+	if n != 2 {
+		t.Errorf("expected 2 files (zone-origin skipped on global CP), got %d", n)
+	}
+	if len(skips) != 1 {
+		t.Fatalf("expected 1 ZoneOriginSkip, got %d", len(skips))
+	}
+	if skips[0].Kind != "MeshTimeout" || skips[0].Name != "zone-timeout" || skips[0].ZoneName != "eu-west" {
+		t.Errorf("unexpected skip: %+v", skips[0])
+	}
+}
+
+func TestWriteResourceFiles_GlobalMode_SkipsZoneOriginUniversalFormat(t *testing.T) {
+	dir := t.TempDir()
+	// Universal-format resource (type/name/labels at top level) with kuma.io/origin: zone
+	// on a Global CP — this is the Konnect API case.
+	data := []byte(`type: MeshTimeout
+name: zone-timeout
+mesh: default
+labels:
+  kuma.io/origin: zone
+  kuma.io/zone: us-east
+spec: {}
+`)
+	var skips []ZoneOriginSkip
+	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeGlobal, "", "default", "", "universal", &skips)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if n != 0 {
+		t.Errorf("expected 0 files (zone-origin Universal resource skipped on global CP), got %d", n)
+	}
+	if len(skips) != 1 {
+		t.Fatalf("expected 1 ZoneOriginSkip, got %d", len(skips))
+	}
+	if skips[0].Kind != "MeshTimeout" || skips[0].Name != "zone-timeout" || skips[0].ZoneName != "us-east" {
+		t.Errorf("unexpected skip: %+v", skips[0])
 	}
 }
 
@@ -294,7 +331,7 @@ metadata:
     kuma.io/origin: global
 spec: {}
 `)
-	n, err := writeResourceFiles(data, dir, map[string]bool{}, "", "", "", "", "universal")
+	n, err := writeResourceFiles(data, dir, map[string]bool{}, "", "", "", "", "universal", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -322,7 +359,7 @@ metadata:
     kuma.io/origin: global
 spec: {}
 `)
-	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeZone, "", "", "", "universal")
+	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeZone, "", "", "", "universal", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -353,7 +390,7 @@ metadata:
   namespace: kong-mesh-system
 spec: {}
 `)
-	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeZone, "", "", "", "universal")
+	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeZone, "", "", "", "universal", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -374,7 +411,7 @@ metadata:
     kuma.io/origin: global
 spec: {}
 `)
-	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeZone, "", "", "", "universal")
+	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeZone, "", "", "", "universal", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -392,7 +429,7 @@ metadata:
   name: zone-local-gw
 spec: {}
 `)
-	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeZone, "", "", "", "universal")
+	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeZone, "", "", "", "universal", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -453,7 +490,7 @@ name: my-metrics
 mesh: default
 spec: {}
 `)
-	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeGlobal, "", "", "", "universal")
+	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeGlobal, "", "", "", "universal", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -476,7 +513,7 @@ items:
   mesh: default
   spec: {}
 `)
-	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeGlobal, "", "", "", "universal")
+	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeGlobal, "", "", "", "universal", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -504,7 +541,7 @@ items:
     namespace: kuma-system
   spec: {}
 `)
-	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeGlobal, "", "", "", "universal")
+	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeGlobal, "", "", "", "universal", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -519,7 +556,7 @@ func TestWriteResourceFiles_EmptyKubernetesList(t *testing.T) {
 kind: MeshMetricList
 items: []
 `)
-	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeGlobal, "", "", "", "universal")
+	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeGlobal, "", "", "", "universal", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -537,7 +574,7 @@ metadata:
   name: no-label-timeout
 spec: {}
 `)
-	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeZone, "", "", "", "universal")
+	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeZone, "", "", "", "universal", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -557,7 +594,7 @@ metadata:
 spec: {}
 `)
 	// Context-first layout: cpModeDir is the context dir label, meshName is the mesh.
-	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeGlobal, "my-cp-global-ctx", "default", "", "universal")
+	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeGlobal, "my-cp-global-ctx", "default", "", "universal", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -580,7 +617,7 @@ metadata:
 spec: {}
 `)
 	// No meshName → global-scoped resource goes to <cpModeDir>/global/<sub>/
-	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeGlobal, "my-cp-global-ctx", "", "", "universal")
+	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeGlobal, "my-cp-global-ctx", "", "", "universal", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -602,7 +639,7 @@ metadata:
 spec: {}
 `)
 	// meshName="prod", meshFilter="default" → should be skipped.
-	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeGlobal, "global", "prod", "default", "universal")
+	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeGlobal, "global", "prod", "default", "universal", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -620,7 +657,7 @@ metadata:
 spec: {}
 `)
 	// meshName="default", meshFilter="default" → should be kept.
-	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeGlobal, "global", "default", "default", "universal")
+	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeGlobal, "global", "default", "default", "universal", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -638,7 +675,7 @@ metadata:
 spec: {}
 `)
 	// meshName="" (global-scoped), meshFilter="default" → must NOT be filtered out.
-	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeGlobal, "global", "", "default", "universal")
+	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeGlobal, "global", "", "default", "universal", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -658,12 +695,12 @@ func TestWriteResourceFiles_OutputFormatKubernetes_ConvertsUniversalStandaloneDo
 name: my-timeout
 mesh: default
 labels:
-  kuma.io/origin: zone
+  kuma.io/policy-role: producer
 spec:
   default:
     connectTimeout: 5s
 `)
-	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeGlobal, "", "default", "", "kubernetes")
+	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeGlobal, "", "default", "", "kubernetes", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -675,7 +712,7 @@ spec:
 		t.Fatalf("reading written file: %v", err)
 	}
 	s := string(content)
-	for _, want := range []string{"apiVersion: kuma.io/v1alpha1", "kind: MeshTimeout", "name: my-timeout", "kuma.io/mesh: default", "kuma.io/origin: zone"} {
+	for _, want := range []string{"apiVersion: kuma.io/v1alpha1", "kind: MeshTimeout", "name: my-timeout", "kuma.io/mesh: default", "kuma.io/policy-role: producer"} {
 		if !strings.Contains(s, want) {
 			t.Errorf("expected %q in converted file:\n%s", want, s)
 		}
@@ -704,7 +741,7 @@ items:
     targetRef:
       kind: Mesh
 `)
-	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeGlobal, "", "default", "", "kubernetes")
+	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeGlobal, "", "default", "", "kubernetes", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -737,7 +774,7 @@ name: my-timeout
 mesh: default
 spec: {}
 `)
-	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeGlobal, "", "", "", "universal")
+	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeGlobal, "", "", "", "universal", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

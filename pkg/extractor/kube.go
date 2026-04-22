@@ -59,14 +59,16 @@ func ExtractViaKubectl(kubeContext, outputDir, meshFilter, outputFormat string) 
 	fmt.Println()
 
 	total := 0
+	var zoneOriginSkips []ZoneOriginSkip
 	for _, crd := range crds {
-		n, err := dumpCRDInstances(kubeContext, crd, outputDir, cpMode, dirLabel, meshFilter)
+		n, err := dumpCRDInstances(kubeContext, crd, outputDir, cpMode, dirLabel, meshFilter, &zoneOriginSkips)
 		if err != nil {
 			ui.Warn(fmt.Sprintf("%s: %v", crd.Plural, err))
 		}
 		total += n
 	}
 	ui.ExtractDone(total, outputDir)
+	printZoneOriginSkips(zoneOriginSkips)
 	return nil
 }
 
@@ -234,7 +236,9 @@ type kubeResourceItem struct {
 //
 // meshFilter, when non-empty, skips resources whose kuma.io/mesh label does not match.
 // Resources with no kuma.io/mesh label (global-scoped) are never filtered out.
-func dumpCRDInstances(kubeContext string, crd crdEntry, outputDir, cpMode, cpModeDir, meshFilter string) (int, error) {
+// skips, when non-nil, receives ZoneOriginSkip entries for any resource skipped on a
+// Global CP because it carries kuma.io/origin: zone.
+func dumpCRDInstances(kubeContext string, crd crdEntry, outputDir, cpMode, cpModeDir, meshFilter string, skips *[]ZoneOriginSkip) (int, error) {
 	out, err := kubectl(kubeContext, "get", crd.Plural, "-A", "-o", "json")
 	if err != nil {
 		return 0, err
@@ -255,6 +259,25 @@ func dumpCRDInstances(kubeContext string, crd crdEntry, outputDir, cpMode, cpMod
 		// On a Global CP, skip zone-only kinds (MeshGateway, MeshGatewayInstance, etc.).
 		if cpMode == CPModeGlobal && isZoneOnlyKind(item.Kind) {
 			continue
+		}
+
+		// On a Global CP, skip resources with kuma.io/origin: zone.
+		// These are zone-created policies synced read-only to the Global CP.
+		if cpMode == CPModeGlobal {
+			if origin := item.Metadata.Labels["kuma.io/origin"]; origin == CPModeZone {
+				if skips != nil {
+					k := item.Kind
+					if k == "" {
+						k = crd.Kind
+					}
+					*skips = append(*skips, ZoneOriginSkip{
+						Kind:     k,
+						Name:     item.Metadata.Name,
+						ZoneName: item.Metadata.Labels["kuma.io/zone"],
+					})
+				}
+				continue
+			}
 		}
 
 		// On a Zone CP, skip resources not originating from this zone.

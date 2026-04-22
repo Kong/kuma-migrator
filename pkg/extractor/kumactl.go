@@ -111,10 +111,11 @@ func ExtractViaKumactl(contextName, outputDir, meshFilter, outputFormat string) 
 	}
 
 	total := 0
+	var zoneOriginSkips []ZoneOriginSkip
 
 	// Global-scoped resources first (no mesh association).
 	for _, rt := range globalScopedTypes {
-		n, err := dumpKumactlResources(resolvedCtx, cpURL, bearerToken, rt, "", outputDir, skipSet, cpMode, dirLabel, meshFilter, outputFormat)
+		n, err := dumpKumactlResources(resolvedCtx, cpURL, bearerToken, rt, "", outputDir, skipSet, cpMode, dirLabel, meshFilter, outputFormat, &zoneOriginSkips)
 		if err != nil {
 			ui.Warn(fmt.Sprintf("%s: %v", rt.Path, err))
 		}
@@ -125,12 +126,12 @@ func ExtractViaKumactl(contextName, outputDir, meshFilter, outputFormat string) 
 	for _, mesh := range loopMeshes {
 		ui.StartMesh(mesh)
 		for _, rt := range meshScopedTypes {
-			n, err := dumpKumactlResources(resolvedCtx, cpURL, bearerToken, rt, mesh, outputDir, skipSet, cpMode, dirLabel, meshFilter, outputFormat)
+			n, err := dumpKumactlResources(resolvedCtx, cpURL, bearerToken, rt, mesh, outputDir, skipSet, cpMode, dirLabel, meshFilter, outputFormat, &zoneOriginSkips)
 			if err != nil {
 				if isUnknownMeshFlag(err) {
 					// API reported Mesh-scoped but kumactl rejects --mesh:
 					// fall back to a single global extraction.
-					n2, err2 := dumpKumactlResources(resolvedCtx, cpURL, bearerToken, rt, "", outputDir, skipSet, cpMode, dirLabel, meshFilter, outputFormat)
+					n2, err2 := dumpKumactlResources(resolvedCtx, cpURL, bearerToken, rt, "", outputDir, skipSet, cpMode, dirLabel, meshFilter, outputFormat, &zoneOriginSkips)
 					if err2 != nil {
 						ui.Warn(fmt.Sprintf("%s: %v", rt.Path, err2))
 					}
@@ -144,6 +145,7 @@ func ExtractViaKumactl(contextName, outputDir, meshFilter, outputFormat string) 
 		}
 	}
 	ui.ExtractDone(total, outputDir)
+	printZoneOriginSkips(zoneOriginSkips)
 	return nil
 }
 
@@ -348,12 +350,14 @@ func parseMeshNamesFromYAML(data []byte) []string {
 // mesh is the Kuma mesh name for Mesh-scoped resources (empty for Global-scoped).
 // cpModeDir is the CP mode directory label.
 // meshFilter restricts extraction to the named mesh when non-empty.
+// skips, when non-nil, receives ZoneOriginSkip entries for any resource skipped on a
+// Global CP because it carries kuma.io/origin: zone.
 //
 // For Konnect-hosted CPs (cpURL contains api.konghq.com), resources are fetched
 // via a direct authenticated HTTP GET with ?format=kubernetes so that the response
 // is in Kubernetes format rather than Universal format. For all other CPs the
 // kumactl CLI is used.
-func dumpKumactlResources(kumactlCtx, cpURL, bearerToken string, rt resourceTypeEntry, mesh, outputDir string, skipSet map[string]bool, cpMode, cpModeDir, meshFilter, outputFormat string) (int, error) {
+func dumpKumactlResources(kumactlCtx, cpURL, bearerToken string, rt resourceTypeEntry, mesh, outputDir string, skipSet map[string]bool, cpMode, cpModeDir, meshFilter, outputFormat string, skips *[]ZoneOriginSkip) (int, error) {
 	var (
 		out []byte
 		err error
@@ -402,7 +406,7 @@ func dumpKumactlResources(kumactlCtx, cpURL, bearerToken string, rt resourceType
 		}
 	}
 
-	n, err := writeResourceFiles(out, outputDir, skipSet, cpMode, cpModeDir, mesh, meshFilter, outputFormat)
+	n, err := writeResourceFiles(out, outputDir, skipSet, cpMode, cpModeDir, mesh, meshFilter, outputFormat, skips)
 	return n, err
 }
 

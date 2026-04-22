@@ -72,10 +72,21 @@ func isZoneOnlyKind(kind string) bool {
 	return zoneOnlyKinds[kind]
 }
 
+// ZoneOriginSkip records a resource that was skipped on a Global CP because it
+// carries kuma.io/origin: zone. These are zone-created policies synced (read-only)
+// to the Global CP and must be extracted from the originating zone instead.
+type ZoneOriginSkip struct {
+	Kind     string
+	Name     string
+	ZoneName string // value of kuma.io/zone label; empty when label is absent
+}
+
 // writeResourceFiles splits a multi-document YAML stream into individual files under outputDir.
 // Documents whose kind contains "Insight" or is in skipSet are silently skipped.
 // On a Zone CP (cpMode == CPModeZone) only resources with kuma.io/origin: zone are kept,
 // with the exception of gateway-local kinds which may lack the label (see gatewayLocalKinds).
+// On a Global CP (cpMode == CPModeGlobal) resources with kuma.io/origin: zone are skipped and
+// appended to skips (when non-nil) so callers can surface them to the user.
 // Files are written into per-kind subfolders under <outputDir>/<cpModeDir>/<meshName>/<sub>/
 // (context-first layout). Global-scoped resources go to <outputDir>/<cpModeDir>/global/<sub>/.
 //
@@ -86,9 +97,10 @@ func isZoneOnlyKind(kind string) bool {
 //     Resources with no mesh association (global-scoped) are never filtered out.
 //   - outputFormat: "kubernetes" converts Universal-format resources (type/name/mesh) to
 //     Kubernetes format (apiVersion/kind/metadata) before writing. "universal" writes as-is.
+//   - skips:        when non-nil, zone-origin resources skipped on Global CP are appended here.
 //
 // Returns the number of files written.
-func writeResourceFiles(data []byte, outputDir string, skipSet map[string]bool, cpMode, cpModeDir, meshName, meshFilter, outputFormat string) (int, error) {
+func writeResourceFiles(data []byte, outputDir string, skipSet map[string]bool, cpMode, cpModeDir, meshName, meshFilter, outputFormat string, skips *[]ZoneOriginSkip) (int, error) {
 	docs := splitYAMLDocs(data)
 	count := 0
 	for _, doc := range docs {
@@ -96,7 +108,7 @@ func writeResourceFiles(data []byte, outputDir string, skipSet map[string]bool, 
 		if doc == "" {
 			continue
 		}
-		n, err := writeSingleResourceDoc(doc, outputDir, skipSet, cpMode, cpModeDir, meshName, meshFilter, outputFormat)
+		n, err := writeSingleResourceDoc(doc, outputDir, skipSet, cpMode, cpModeDir, meshName, meshFilter, outputFormat, skips)
 		if err != nil {
 			return count, err
 		}
@@ -122,7 +134,10 @@ func writeResourceFiles(data []byte, outputDir string, skipSet map[string]bool, 
 // for mesh-scoped resources, or <outputDir>/<cpModeDir>/global/<sub>/ for global-scoped ones.
 // When meshFilter is non-empty, resources whose meshName does not match are skipped (resources
 // with no mesh association are always kept).
-func writeSingleResourceDoc(doc string, outputDir string, skipSet map[string]bool, cpMode, cpModeDir, meshName, meshFilter, outputFormat string) (int, error) {
+//
+// On a Global CP, resources with kuma.io/origin: zone are skipped and appended to skips (when
+// non-nil). These are zone-created policies synced read-only to the Global CP.
+func writeSingleResourceDoc(doc string, outputDir string, skipSet map[string]bool, cpMode, cpModeDir, meshName, meshFilter, outputFormat string, skips *[]ZoneOriginSkip) (int, error) {
 	var obj map[string]interface{}
 	if err := yaml.Unmarshal([]byte(doc), &obj); err != nil || obj == nil {
 		return 0, nil
@@ -147,7 +162,7 @@ func writeSingleResourceDoc(doc string, outputDir string, skipSet map[string]boo
 			if err != nil {
 				continue
 			}
-			n, _ := writeSingleResourceDoc(strings.TrimSpace(string(itemBytes)), outputDir, skipSet, cpMode, cpModeDir, meshName, meshFilter, outputFormat)
+			n, _ := writeSingleResourceDoc(strings.TrimSpace(string(itemBytes)), outputDir, skipSet, cpMode, cpModeDir, meshName, meshFilter, outputFormat, skips)
 			count += n
 		}
 		return count, nil
@@ -198,6 +213,19 @@ func writeSingleResourceDoc(doc string, outputDir string, skipSet map[string]boo
 	// They may appear on the global CP via KDS sync but must be extracted from zone CPs.
 	if cpMode == CPModeGlobal && isZoneOnlyKind(kind) {
 		return 0, nil
+	}
+
+	// On a Global CP, skip resources with kuma.io/origin: zone.
+	// These are zone-created policies synced read-only to the Global CP; they must be
+	// extracted from the originating zone instead (identified by kuma.io/zone label).
+	if cpMode == CPModeGlobal {
+		if origin, _ := labels["kuma.io/origin"].(string); origin == CPModeZone {
+			zoneName, _ := labels["kuma.io/zone"].(string)
+			if skips != nil {
+				*skips = append(*skips, ZoneOriginSkip{Kind: kind, Name: name, ZoneName: zoneName})
+			}
+			return 0, nil
+		}
 	}
 
 	if cpMode == CPModeZone {
@@ -306,6 +334,23 @@ func universalToKubernetes(obj map[string]interface{}) map[string]interface{} {
 		}
 	}
 	return result
+}
+
+// printZoneOriginSkips prints a terminal summary of resources skipped on a Global CP
+// because they carry kuma.io/origin: zone, telling the user which zone to target.
+func printZoneOriginSkips(skips []ZoneOriginSkip) {
+	if len(skips) == 0 {
+		return
+	}
+	fmt.Println()
+	ui.Warn("Zone-origin resources skipped on Global CP — extract from their zone instead:")
+	for _, s := range skips {
+		zone := s.ZoneName
+		if zone == "" {
+			zone = "(zone label absent — check kuma.io/zone label)"
+		}
+		ui.WarnIndented(fmt.Sprintf("%s/%s  →  zone: %s", s.Kind, s.Name, zone))
+	}
 }
 
 // splitYAMLDocs splits a byte slice on YAML document separators (---).

@@ -354,7 +354,7 @@ func TestDumpKumactlResources_KonnectAddsFormatKubernetes(t *testing.T) {
 
 	rt := resourceTypeEntry{Name: "MeshTimeout", Path: "meshtimeouts", Scope: "Global"}
 	dir := t.TempDir()
-	_, err := dumpKumactlResources("ctx", srv.URL, "token", rt, "", dir, map[string]bool{}, CPModeGlobal, "my-cp-global-ctx", "", "universal")
+	_, err := dumpKumactlResources("ctx", srv.URL, "token", rt, "", dir, map[string]bool{}, CPModeGlobal, "my-cp-global-ctx", "", "universal", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -379,7 +379,7 @@ func TestDumpKumactlResources_KonnectMeshScopedURL(t *testing.T) {
 
 	rt := resourceTypeEntry{Name: "MeshTimeout", Path: "meshtimeouts", Scope: "Mesh"}
 	dir := t.TempDir()
-	_, err := dumpKumactlResources("ctx", srv.URL, "token", rt, "default", dir, map[string]bool{}, CPModeGlobal, "my-cp-global-ctx", "", "universal")
+	_, err := dumpKumactlResources("ctx", srv.URL, "token", rt, "default", dir, map[string]bool{}, CPModeGlobal, "my-cp-global-ctx", "", "universal", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -404,7 +404,7 @@ func TestDumpKumactlResources_KonnectSendsAuthHeader(t *testing.T) {
 
 	rt := resourceTypeEntry{Name: "MeshTimeout", Path: "meshtimeouts", Scope: "Global"}
 	dir := t.TempDir()
-	_, err := dumpKumactlResources("ctx", srv.URL, "kpat_secret", rt, "", dir, map[string]bool{}, CPModeGlobal, "my-cp-global-ctx", "", "universal")
+	_, err := dumpKumactlResources("ctx", srv.URL, "kpat_secret", rt, "", dir, map[string]bool{}, CPModeGlobal, "my-cp-global-ctx", "", "universal", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

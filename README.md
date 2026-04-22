@@ -132,6 +132,7 @@ Some resource types have a fixed home CP and are handled specially:
 | `MeshGateway`, `MeshHTTPRoute`, `MeshTCPRoute`, `MeshGatewayRoute` | **Zone CP** (less common) | not present | extracted (no origin label) |
 | `MeshGatewayInstance` | Zone CP | **skipped** (never synced to Global) | extracted (may have no origin label) |
 | `MeshGatewayConfig` | Zone CP | **skipped** (never synced to Global) | extracted (may have no origin label) |
+| Policy types with `kuma.io/origin: zone` | Zone CP (synced to Global read-only) | **skipped** + warning printed | extracted (origin: zone) |
 | All other policy types | Global CP | extracted normally | skipped unless `kuma.io/origin: zone` |
 
 > `MeshGatewayInstance` and `MeshGatewayConfig` are strictly zone-local and are never synced
@@ -140,6 +141,11 @@ Some resource types have a fixed home CP and are handled specially:
 > `MeshGateway` and route CRDs can be created on either the Global CP or a Zone CP.
 > When synced from Global to Zone they carry `kuma.io/origin: global` and are filtered out
 > on zone extraction. When created directly on a Zone CP they have no origin label and are kept.
+>
+> **Zone-origin resources on Global CP** — Kuma syncs zone-created policies to the Global CP
+> as read-only copies (labelled `kuma.io/origin: zone`). The tool skips these and prints a
+> warning after extraction listing each skipped resource and the zone to target (from the
+> `kuma.io/zone` label).
 
 The top-level directory encodes the kumactl/kubectl context name and CP mode, with mesh
 subdirectories inside. Global-scoped resources (Zone, HostnameGenerator, …) go into
@@ -188,7 +194,11 @@ Attached zones: zone-eu-west, zone-us-east
 [INFO] MeshGatewayInstance and MeshGatewayConfig are zone-local and skipped here.
        Run extract against each Zone CP to capture gateway instances.
 Found 24 writable resource type(s) (skip-list excluded)
-Extracted 87 resource(s) to ./raw-policies
+Extracted 83 resource(s) to ./raw-policies
+
+  ⚠  Zone-origin resources skipped on Global CP — extract from their zone instead:
+     MeshTimeout/my-timeout        →  zone: zone-eu-west
+     MeshRateLimit/rate-limit-svc  →  zone: zone-us-east
 ```
 
 #### Also extract from Zone CPs
