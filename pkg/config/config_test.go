@@ -13,11 +13,9 @@ func TestLoad_MissingFile_ReturnsDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(cfg.Skip) == 0 {
-		t.Error("expected default skip list, got empty")
-	}
+	// SkipSetForEnv must still return the built-in Kubernetes defaults.
 	set := cfg.SkipSet()
-	for _, kind := range DefaultSkipKinds {
+	for _, kind := range DefaultSkipKindsKubernetes {
 		if !set[kind] {
 			t.Errorf("expected default kind %q in skip set", kind)
 		}
@@ -32,12 +30,56 @@ func TestLoad_EmptySkipList_ReturnsDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(cfg.Skip) == 0 {
+	set := cfg.SkipSet()
+	if len(set) == 0 {
 		t.Error("expected defaults when skip is absent")
+	}
+	for _, kind := range DefaultSkipKindsKubernetes {
+		if !set[kind] {
+			t.Errorf("expected default kind %q in skip set when skip is absent", kind)
+		}
 	}
 }
 
-func TestLoad_CustomSkipList(t *testing.T) {
+// TestLoad_PerEnvSkipList verifies the new per-environment structured format.
+func TestLoad_PerEnvSkipList(t *testing.T) {
+	f := writeTempConfig(t, `
+skip:
+  kubernetes:
+    - Dataplane
+    - ZoneIngress
+    - CustomKubeKind
+  universal:
+    - AccessRole
+    - CustomUniversalKind
+`)
+	t.Setenv("KUMA_MIGRATOR_CONFIG", f)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	kubeSet := cfg.SkipSetForEnv("kubernetes")
+	if !kubeSet["Dataplane"] || !kubeSet["ZoneIngress"] || !kubeSet["CustomKubeKind"] {
+		t.Errorf("kubernetes skip set missing expected kinds: %v", kubeSet)
+	}
+	if kubeSet["AccessRole"] {
+		t.Error("AccessRole should not be in the kubernetes skip set (not listed there)")
+	}
+
+	univSet := cfg.SkipSetForEnv("universal")
+	if !univSet["AccessRole"] || !univSet["CustomUniversalKind"] {
+		t.Errorf("universal skip set missing expected kinds: %v", univSet)
+	}
+	if univSet["Dataplane"] {
+		t.Error("Dataplane should not be in the universal skip set (not listed there)")
+	}
+}
+
+// TestLoad_LegacyFlatSkipList verifies backward compatibility with the old
+// flat-list format: the same list is applied to both environments.
+func TestLoad_LegacyFlatSkipList(t *testing.T) {
 	f := writeTempConfig(t, `
 skip:
   - Dataplane
@@ -49,16 +91,19 @@ skip:
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	set := cfg.SkipSet()
-	if !set["Dataplane"] {
-		t.Error("expected Dataplane in skip set")
-	}
-	if !set["CustomKind"] {
-		t.Error("expected CustomKind in skip set")
-	}
-	// Default kinds not in custom list should be absent.
-	if set["Zone"] {
-		t.Error("Zone should not be in custom skip set")
+	// Flat list applies to both environments.
+	for _, env := range []string{"kubernetes", "universal", ""} {
+		set := cfg.SkipSetForEnv(env)
+		if !set["Dataplane"] {
+			t.Errorf("env=%q: expected Dataplane in skip set", env)
+		}
+		if !set["CustomKind"] {
+			t.Errorf("env=%q: expected CustomKind in skip set", env)
+		}
+		// Default-only kinds must not be present (user specified an explicit list).
+		if set["Zone"] {
+			t.Errorf("env=%q: Zone should not be in explicit skip set", env)
+		}
 	}
 }
 
@@ -73,7 +118,7 @@ func TestLoad_InvalidYAML(t *testing.T) {
 }
 
 func TestSkipSet_LookupIsCaseSensitive(t *testing.T) {
-	cfg := &Config{Skip: []string{"Dataplane"}}
+	cfg := &Config{Skip: SkipKindsConfig{Kubernetes: []string{"Dataplane"}}}
 	set := cfg.SkipSet()
 	if !set["Dataplane"] {
 		t.Error("expected Dataplane in skip set")
@@ -122,8 +167,11 @@ func TestSkipSetForEnv_UnknownFallsBackToKubernetes(t *testing.T) {
 }
 
 func TestSkipSetForEnv_ExplicitListTakesPrecedence(t *testing.T) {
-	// When the user sets an explicit skip list, it overrides the environment default.
-	cfg := &Config{Skip: []string{"CustomKind"}}
+	// When the user sets an explicit per-env skip list, it overrides the defaults.
+	cfg := &Config{Skip: SkipKindsConfig{
+		Kubernetes: []string{"CustomKind"},
+		Universal:  []string{"CustomKind"},
+	}}
 	set := cfg.SkipSetForEnv("universal")
 	if set["Dataplane"] {
 		t.Error("explicit skip list should override universal defaults; Dataplane should not be skipped")

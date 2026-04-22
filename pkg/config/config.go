@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -20,6 +21,8 @@ var DefaultSkipKindsKubernetes = []string{
 	"Zone",
 	"HostnameGenerator",
 	"Workload",
+	"Secret",
+	"GlobalSecret",
 }
 
 // DefaultSkipKindsUniversal is the built-in skip list for Universal deployments.
@@ -30,11 +33,62 @@ var DefaultSkipKindsUniversal = []string{
 	"AccessRoleBinding",
 	"Zone",
 	"HostnameGenerator",
+	"Secret",
+	"GlobalSecret",
 }
 
 // DefaultSkipKinds is an alias for DefaultSkipKindsKubernetes, used when the
 // deployment environment is unknown.
 var DefaultSkipKinds = DefaultSkipKindsKubernetes
+
+// SkipKindsConfig holds per-environment kind skip lists.
+//
+// The config file accepts two forms for the skip key:
+//
+//	New (per-environment):
+//	  skip:
+//	    kubernetes: [Dataplane, ZoneIngress, ...]
+//	    universal:  [AccessRole, ...]
+//
+//	Legacy (flat list — applies to all environments):
+//	  skip: [Dataplane, ZoneIngress, ...]
+//
+// The legacy form is kept for backward compatibility.
+type SkipKindsConfig struct {
+	Kubernetes []string
+	Universal  []string
+}
+
+// UnmarshalJSON implements json.Unmarshaler so that sigs.k8s.io/yaml (which
+// converts YAML → JSON before calling encoding/json) can decode both the new
+// per-environment map form and the legacy flat-list form.
+func (s *SkipKindsConfig) UnmarshalJSON(data []byte) error {
+	// sigs.k8s.io/yaml renders a YAML sequence as a JSON array and a YAML
+	// mapping as a JSON object, so the first byte unambiguously tells us
+	// which form was used in the config file.
+	if len(data) > 0 && data[0] == '[' {
+		// Legacy: a single flat list that applies to all environments.
+		var flat []string
+		if err := json.Unmarshal(data, &flat); err != nil {
+			return err
+		}
+		s.Kubernetes = flat
+		s.Universal = flat
+		return nil
+	}
+	// New: per-environment structured form.
+	type alias struct {
+		Kubernetes []string `json:"kubernetes"`
+		Universal  []string `json:"universal"`
+	}
+	var a alias
+	if err := json.Unmarshal(data, &a); err != nil {
+		return err
+	}
+	s.Kubernetes = a.Kubernetes
+	s.Universal = a.Universal
+	return nil
+}
 
 // AdminServerConfig holds settings for connecting to the Kuma CP admin server.
 type AdminServerConfig struct {
@@ -47,30 +101,36 @@ type AdminServerConfig struct {
 type Config struct {
 	// AdminServer holds connection settings for the Kuma CP admin server.
 	AdminServer AdminServerConfig `yaml:"adminServer"`
-	// Skip is the list of resource kinds to exclude from migration.
-	// Documents whose kind matches an entry in this list are not transformed
-	// and not written to the output directory.
-	Skip []string `yaml:"skip"`
+	// Skip holds per-environment kind skip lists.
+	// See SkipKindsConfig for supported YAML forms.
+	Skip SkipKindsConfig `yaml:"skip"`
 }
 
-// SkipSet returns a set (map for O(1) lookup) built from c.Skip,
-// using DefaultSkipKinds (Kubernetes) when no explicit list is configured.
+// SkipSet returns a skip set for the Kubernetes environment (default when the
+// deployment environment is not known, e.g. in the migrate pipeline).
 func (c *Config) SkipSet() map[string]bool {
 	return c.SkipSetForEnv("")
 }
 
 // SkipSetForEnv returns a skip set for the given deployment environment
 // ("kubernetes", "universal", or "" for unknown). When the user has provided
-// an explicit skip list in their config file it is always used. When the list
-// is empty (defaults), the appropriate built-in list is selected:
-//   - "universal"  → DefaultSkipKindsUniversal
-//   - anything else → DefaultSkipKindsKubernetes
+// an explicit list for the requested environment in their config file it is
+// used. When the list is empty (no config or omitted key), the appropriate
+// built-in default is selected:
+//
+//	"universal"   → DefaultSkipKindsUniversal
+//	anything else → DefaultSkipKindsKubernetes
 func (c *Config) SkipSetForEnv(env string) map[string]bool {
-	skip := c.Skip
-	if len(skip) == 0 {
-		if env == "universal" {
+	var skip []string
+	switch env {
+	case "universal":
+		skip = c.Skip.Universal
+		if len(skip) == 0 {
 			skip = DefaultSkipKindsUniversal
-		} else {
+		}
+	default:
+		skip = c.Skip.Kubernetes
+		if len(skip) == 0 {
 			skip = DefaultSkipKindsKubernetes
 		}
 	}
@@ -85,14 +145,15 @@ func (c *Config) SkipSetForEnv(env string) map[string]bool {
 //  1. $KUMA_MIGRATOR_CONFIG environment variable, if set
 //  2. ~/.config/kuma-migrator.yaml
 //
-// If the file does not exist, Load returns a Config with DefaultSkipKinds.
+// If the file does not exist, Load returns an empty Config (built-in defaults
+// are applied lazily by SkipSetForEnv).
 // Parse errors are returned as an error.
 func Load() (*Config, error) {
 	path := configFilePath()
 
 	data, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
-		return defaults(), nil
+		return &Config{}, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("read config %q: %w", path, err)
@@ -102,16 +163,7 @@ func Load() (*Config, error) {
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, fmt.Errorf("parse config %q: %w", path, err)
 	}
-
-	// If the file exists but skip is empty, apply defaults.
-	if len(cfg.Skip) == 0 {
-		cfg.Skip = DefaultSkipKinds
-	}
 	return &cfg, nil
-}
-
-func defaults() *Config {
-	return &Config{Skip: DefaultSkipKinds}
 }
 
 func configFilePath() string {
