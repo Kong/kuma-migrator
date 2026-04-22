@@ -240,6 +240,49 @@ func TestConvertTargetRef(t *testing.T) {
 			}},
 		},
 
+		// --- MeshService with old Kuma-internal name (partially migrated input) ---
+		{
+			name:            "MeshService with old internal name, same namespace → name+namespace",
+			input:           TargetRef{Kind: "MeshService", Name: strPtr("echo_demo_svc_8000")},
+			policyNamespace: "demo",
+			topLevel:        false,
+			want:            TargetRef{Kind: "MeshService", Name: strPtr("echo"), Namespace: strPtr("demo")},
+		},
+		{
+			name:            "MeshService with old internal name, different namespace → labels",
+			input:           TargetRef{Kind: "MeshService", Name: strPtr("redis_demo_svc_6379")},
+			policyNamespace: "kong-mesh-system",
+			topLevel:        false,
+			want: TargetRef{Kind: "MeshService", Labels: map[string]string{
+				"kuma.io/display-name":  "redis",
+				"k8s.kuma.io/namespace": "demo",
+			}},
+		},
+		{
+			name:     "MeshService with display name (no _svc_) → unchanged",
+			input:    TargetRef{Kind: "MeshService", Name: strPtr("echo"), Namespace: strPtr("demo")},
+			topLevel: false,
+			want:     TargetRef{Kind: "MeshService", Name: strPtr("echo"), Namespace: strPtr("demo")},
+		},
+		{
+			name:            "MeshService with old internal name at top-level, same ns → Dataplane with name+namespace",
+			input:           TargetRef{Kind: "MeshService", Name: strPtr("echo_demo_svc_8000")},
+			policyNamespace: "demo",
+			topLevel:        true,
+			want:            TargetRef{Kind: "Dataplane", Name: strPtr("echo"), Namespace: strPtr("demo")},
+		},
+		{
+			name:            "MeshService with old internal name at top-level, different ns → Dataplane with labels (warns)",
+			input:           TargetRef{Kind: "MeshService", Name: strPtr("client-app_demo_svc_80")},
+			policyNamespace: "kong-mesh-system",
+			topLevel:        true,
+			want: TargetRef{Kind: "Dataplane", Labels: map[string]string{
+				"app":                   "client-app",
+				"k8s.kuma.io/namespace": "demo",
+			}},
+			wantWarn: true,
+		},
+
 		// --- Universal mode ---
 		{
 			name:     "Universal mode kuma.io/service (no _svc_ marker) → MeshService, empty namespace (to[])",

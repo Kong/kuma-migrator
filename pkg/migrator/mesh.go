@@ -157,8 +157,9 @@ func TransformMesh(raw []byte) ([][]byte, []string, error) {
 
 	spec, _ := obj["spec"].(map[string]interface{})
 	if spec == nil {
-		// No spec, nothing to migrate — pass through unchanged.
-		return [][]byte{raw}, nil, nil
+		// Universal format: fields (meshServices, metrics, etc.) live at the top level
+		// with no spec wrapper. Point spec at obj so the rest of the logic works uniformly.
+		spec = obj
 	}
 
 	var companions [][]byte

@@ -45,6 +45,7 @@ type probeEntry struct {
 
 type probeRef struct {
 	Kind string            `json:"kind"`
+	Name string            `json:"name,omitempty"`
 	Tags map[string]string `json:"tags"`
 }
 
@@ -130,16 +131,16 @@ func DetectScenario(raw []byte) (Scenario, error) {
 	// MeshSubset is deprecated even without service tags, and ConvertTargetRef will
 	// migrate it to Dataplane+labels.
 	if p.Spec != nil {
-		if probeRefHasServiceTag(p.Spec.TargetRef) || probeRefIsMeshSubset(p.Spec.TargetRef) {
+		if probeRefHasServiceTag(p.Spec.TargetRef) || probeRefIsMeshSubset(p.Spec.TargetRef) || probeRefHasOldMeshServiceName(p.Spec.TargetRef) {
 			return ScenarioSubset, nil
 		}
 		for i := range p.Spec.To {
-			if probeRefHasServiceTag(p.Spec.To[i].TargetRef) {
+			if probeRefHasServiceTag(p.Spec.To[i].TargetRef) || probeRefHasOldMeshServiceName(p.Spec.To[i].TargetRef) {
 				return ScenarioSubset, nil
 			}
 		}
 		for i := range p.Spec.From {
-			if probeRefHasServiceTag(p.Spec.From[i].TargetRef) {
+			if probeRefHasServiceTag(p.Spec.From[i].TargetRef) || probeRefHasOldMeshServiceName(p.Spec.From[i].TargetRef) {
 				return ScenarioSubset, nil
 			}
 		}
@@ -153,6 +154,17 @@ func DetectScenario(raw []byte) (Scenario, error) {
 // Used to ensure non-service-tag MeshSubset at spec.targetRef is migrated to Dataplane.
 func probeRefIsMeshSubset(ref *probeRef) bool {
 	return ref != nil && ref.Kind == "MeshSubset"
+}
+
+// probeRefHasOldMeshServiceName reports whether the ref is a MeshService using a
+// Kuma-generated internal name (e.g. "echo_demo_svc_8000"). These refs need the same
+// normalisation as MeshSubset refs even though the kind is already correct.
+func probeRefHasOldMeshServiceName(ref *probeRef) bool {
+	if ref == nil || ref.Kind != "MeshService" || ref.Name == "" {
+		return false
+	}
+	_, ns := ParseKumaServiceTag(ref.Name)
+	return ns != ""
 }
 
 func probeRefHasServiceTag(ref *probeRef) bool {

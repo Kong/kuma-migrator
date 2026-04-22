@@ -78,6 +78,33 @@ func ParseKumaServiceTag(value string) (name, namespace string) {
 // Dataplane labels ref is emitted and the "app" label key is a best-guess).
 func ConvertTargetRef(ref TargetRef, policyNamespace string, topLevel bool) (TargetRef, string) {
 	if ref.Kind != "MeshSubset" && ref.Kind != "MeshServiceSubset" {
+		// Normalise a MeshService ref that still carries the old Kuma-generated internal
+		// name format (e.g. "echo_demo_svc_8000" = service_namespace_svc_port).
+		// This happens when a policy was partially migrated: the kind was updated from
+		// MeshSubset to MeshService but the CP-generated CRD name was left unchanged.
+		// At top-level (spec.targetRef), MeshService is invalid in Kuma 2.13.x — convert
+		// to Dataplane. In to[]/from[] position, keep MeshService and decode the name.
+		if ref.Kind == "MeshService" && ref.Name != nil {
+			if name, ns := ParseKumaServiceTag(*ref.Name); ns != "" {
+				// Encoded namespace found — this is the old internal format.
+				outputKind := "MeshService"
+				if topLevel {
+					outputKind = "Dataplane"
+				}
+				if ns == "" {
+					ns = policyNamespace
+				}
+				if policyNamespace != "" && policyNamespace != ns {
+					labels, warn := buildLabels(name, ns, "", nil, topLevel)
+					return TargetRef{Kind: outputKind, Labels: labels}, warn
+				}
+				result := TargetRef{Kind: outputKind, Name: strPtr(name)}
+				if ns != "" {
+					result.Namespace = strPtr(ns)
+				}
+				return result, ""
+			}
+		}
 		return ref, "" // already correct (Mesh, MeshService, Dataplane, …)
 	}
 
