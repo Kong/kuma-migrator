@@ -120,11 +120,20 @@ Constants `CPEnvKubernetes = "kubernetes"` and `CPEnvUniversal = "universal"` li
   `kumactlAPIServer.Headers` for the `Authorization` key and strips the `Bearer ` prefix.
   Struct: `type kumactlHeader struct { Key, Value string }`.
 - **CP mode**: Konnect has no `/config` endpoint. Always treated as Global CP.
+- **Resource fetching**: for Konnect, `dumpKumactlResources` bypasses the kumactl CLI and
+  makes a direct authenticated HTTP GET with `?format=kubernetes` so the response is in
+  Kubernetes format (kind/metadata) rather than Universal format. URL shape:
+  global-scoped: `<cpURL>/<path>?format=kubernetes`;
+  mesh-scoped: `<cpURL>/meshes/<mesh>/<path>?format=kubernetes`.
+  The Konnect check is done via `konnectURLCheck` (a package-level `var` defaulting to
+  `isKonnectURL`), which tests can override without needing a real `api.konghq.com` URL.
 - **Scope fallback**: `/_resources` sometimes reports resource types as Mesh-scoped but kumactl
   rejects `--mesh` for them ("unknown flag: --mesh"). `isUnknownMeshFlag(err)` detects this
-  and retries the extraction globally (breaking out of the mesh loop).
-- **Universal list format**: kumactl on Konnect returns `{total: N, items: [...]}` JSON with
-  no top-level `kind`. `writeSingleResourceDoc` detects this and recurses into `items`.
+  and retries the extraction globally (breaking out of the mesh loop). This check only applies
+  to the kumactl CLI path; Konnect uses direct HTTP and does not trigger it.
+- **Universal list format**: kumactl on self-hosted CPs (not Konnect) may return
+  `{total: N, items: [...]}` JSON with no top-level `kind`. `writeSingleResourceDoc` detects
+  this and recurses into `items`. Konnect avoids this with `?format=kubernetes`.
 
 ### migrate / plan pipeline
 

@@ -104,12 +104,12 @@ func ExtractViaKumactl(contextName, outputDir, meshFilter string) error {
 		if rt.Scope == "Mesh" {
 			extracted := false
 			for _, mesh := range loopMeshes {
-				n, err := dumpKumactlResources(resolvedCtx, rt, mesh, outputDir, skipSet, cpMode, dirLabel, meshFilter)
+				n, err := dumpKumactlResources(resolvedCtx, cpURL, bearerToken, rt, mesh, outputDir, skipSet, cpMode, dirLabel, meshFilter)
 				if err != nil {
 					if isUnknownMeshFlag(err) {
 						// API reported Mesh-scoped but kumactl rejects --mesh:
 						// fall back to a single global extraction.
-						n2, err2 := dumpKumactlResources(resolvedCtx, rt, "", outputDir, skipSet, cpMode, dirLabel, meshFilter)
+						n2, err2 := dumpKumactlResources(resolvedCtx, cpURL, bearerToken, rt, "", outputDir, skipSet, cpMode, dirLabel, meshFilter)
 						if err2 != nil {
 							ui.Warn(fmt.Sprintf("%s: %v", rt.Path, err2))
 						}
@@ -126,7 +126,7 @@ func ExtractViaKumactl(contextName, outputDir, meshFilter string) error {
 			_ = extracted
 		} else {
 			// Global-scoped resources: no mesh association — always extracted.
-			n, err := dumpKumactlResources(resolvedCtx, rt, "", outputDir, skipSet, cpMode, dirLabel, meshFilter)
+			n, err := dumpKumactlResources(resolvedCtx, cpURL, bearerToken, rt, "", outputDir, skipSet, cpMode, dirLabel, meshFilter)
 			if err != nil {
 				ui.Warn(fmt.Sprintf("%s: %v", rt.Path, err))
 			}
@@ -169,6 +169,10 @@ func listZoneNamesKumactl(kumactlCtx string) []string {
 func isKonnectURL(cpURL string) bool {
 	return strings.Contains(cpURL, "api.konghq.com")
 }
+
+// konnectURLCheck is the predicate used by dumpKumactlResources to decide
+// whether to use the direct-HTTP Konnect path. Overridable in tests.
+var konnectURLCheck = isKonnectURL
 
 // detectKumactlCPMode returns the lower-cased CP mode ("global", "zone", "standalone"),
 // the zone name (non-empty only for zone CPs), and the deployment environment
@@ -332,21 +336,55 @@ func parseMeshNamesFromYAML(data []byte) []string {
 // dumpKumactlResources fetches all instances of a resource type (optionally scoped
 // to a mesh) and writes one YAML file per resource to outputDir.
 // mesh is the Kuma mesh name for Mesh-scoped resources (empty for Global-scoped).
-// cpModeDir is the CP mode directory label (e.g. "global", "zone-eu-west").
+// cpModeDir is the CP mode directory label.
 // meshFilter restricts extraction to the named mesh when non-empty.
-func dumpKumactlResources(kumactlCtx string, rt resourceTypeEntry, mesh, outputDir string, skipSet map[string]bool, cpMode, cpModeDir, meshFilter string) (int, error) {
-	args := []string{"get", rt.Path, "-o", "yaml"}
-	if mesh != "" {
-		args = append(args, "--mesh", mesh)
-	}
+//
+// For Konnect-hosted CPs (cpURL contains api.konghq.com), resources are fetched
+// via a direct authenticated HTTP GET with ?format=kubernetes so that the response
+// is in Kubernetes format rather than Universal format. For all other CPs the
+// kumactl CLI is used.
+func dumpKumactlResources(kumactlCtx, cpURL, bearerToken string, rt resourceTypeEntry, mesh, outputDir string, skipSet map[string]bool, cpMode, cpModeDir, meshFilter string) (int, error) {
+	var (
+		out []byte
+		err error
+	)
 
-	out, err := kumactl(kumactlCtx, args...)
-	if err != nil {
-		// A "not found" / empty result is not an error worth surfacing.
-		if isEmptyResult(err) {
-			return 0, nil
+	if konnectURLCheck(cpURL) {
+		// Konnect: direct HTTP GET with format=kubernetes query parameter.
+		// Resource URL shape:
+		//   global-scoped: <cpURL>/<path>?format=kubernetes
+		//   mesh-scoped:   <cpURL>/meshes/<mesh>/<path>?format=kubernetes
+		base := strings.TrimRight(cpURL, "/")
+		var resourceURL string
+		if mesh != "" {
+			resourceURL = base + "/meshes/" + mesh + "/" + rt.Path + "?format=kubernetes"
+		} else {
+			resourceURL = base + "/" + rt.Path + "?format=kubernetes"
 		}
-		return 0, err
+		var status int
+		out, status, err = authenticatedGet(resourceURL, bearerToken, 30*time.Second)
+		if err != nil {
+			return 0, err
+		}
+		if status == http.StatusNotFound {
+			return 0, nil // resource type not present — not an error
+		}
+		if status != http.StatusOK {
+			return 0, fmt.Errorf("GET %s: unexpected status %d", resourceURL, status)
+		}
+	} else {
+		// Self-hosted CP: delegate to kumactl CLI.
+		args := []string{"get", rt.Path, "-o", "yaml"}
+		if mesh != "" {
+			args = append(args, "--mesh", mesh)
+		}
+		out, err = kumactl(kumactlCtx, args...)
+		if err != nil {
+			if isEmptyResult(err) {
+				return 0, nil
+			}
+			return 0, err
+		}
 	}
 
 	n, err := writeResourceFiles(out, outputDir, skipSet, cpMode, cpModeDir, mesh, meshFilter)

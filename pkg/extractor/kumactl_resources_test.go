@@ -332,6 +332,87 @@ func TestListKumaResourceTypes_NoTokenOmitsHeader(t *testing.T) {
 	}
 }
 
+// ---- dumpKumactlResources Konnect path --------------------------------------
+
+// TestDumpKumactlResources_KonnectAddsFormatKubernetes verifies that when the
+// CP URL is identified as Konnect, dumpKumactlResources makes a direct HTTP
+// GET to <cpURL>/<path>?format=kubernetes (global-scoped resource).
+func TestDumpKumactlResources_KonnectAddsFormatKubernetes(t *testing.T) {
+	var gotURL string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotURL = r.URL.String()
+		// Return a minimal Kubernetes-style list so writeResourceFiles has something to process.
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"kind":"MeshTimeoutList","items":[]}`))
+	}))
+	defer srv.Close()
+
+	// Override the Konnect URL check so our test server is treated as Konnect.
+	old := konnectURLCheck
+	konnectURLCheck = func(url string) bool { return url == srv.URL }
+	defer func() { konnectURLCheck = old }()
+
+	rt := resourceTypeEntry{Name: "MeshTimeout", Path: "meshtimeouts", Scope: "Global"}
+	dir := t.TempDir()
+	_, err := dumpKumactlResources("ctx", srv.URL, "token", rt, "", dir, map[string]bool{}, CPModeGlobal, "my-cp-global-ctx", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotURL != "/meshtimeouts?format=kubernetes" {
+		t.Errorf("expected request to /meshtimeouts?format=kubernetes, got %q", gotURL)
+	}
+}
+
+// TestDumpKumactlResources_KonnectMeshScopedURL verifies that mesh-scoped Konnect
+// requests use the /meshes/<mesh>/<path>?format=kubernetes URL pattern.
+func TestDumpKumactlResources_KonnectMeshScopedURL(t *testing.T) {
+	var gotURL string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotURL = r.URL.String()
+		w.Write([]byte(`{"kind":"MeshTimeoutList","items":[]}`))
+	}))
+	defer srv.Close()
+
+	old := konnectURLCheck
+	konnectURLCheck = func(url string) bool { return url == srv.URL }
+	defer func() { konnectURLCheck = old }()
+
+	rt := resourceTypeEntry{Name: "MeshTimeout", Path: "meshtimeouts", Scope: "Mesh"}
+	dir := t.TempDir()
+	_, err := dumpKumactlResources("ctx", srv.URL, "token", rt, "default", dir, map[string]bool{}, CPModeGlobal, "my-cp-global-ctx", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotURL != "/meshes/default/meshtimeouts?format=kubernetes" {
+		t.Errorf("expected request to /meshes/default/meshtimeouts?format=kubernetes, got %q", gotURL)
+	}
+}
+
+// TestDumpKumactlResources_KonnectSendsAuthHeader verifies the bearer token is
+// forwarded in the Authorization header on the Konnect HTTP path.
+func TestDumpKumactlResources_KonnectSendsAuthHeader(t *testing.T) {
+	var gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		w.Write([]byte(`{"kind":"MeshTimeoutList","items":[]}`))
+	}))
+	defer srv.Close()
+
+	old := konnectURLCheck
+	konnectURLCheck = func(url string) bool { return url == srv.URL }
+	defer func() { konnectURLCheck = old }()
+
+	rt := resourceTypeEntry{Name: "MeshTimeout", Path: "meshtimeouts", Scope: "Global"}
+	dir := t.TempDir()
+	_, err := dumpKumactlResources("ctx", srv.URL, "kpat_secret", rt, "", dir, map[string]bool{}, CPModeGlobal, "my-cp-global-ctx", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotAuth != "Bearer kpat_secret" {
+		t.Errorf("expected Authorization: Bearer kpat_secret, got %q", gotAuth)
+	}
+}
+
 // ---- helpers ----------------------------------------------------------------
 
 // fakeResourcesServer starts an httptest server that returns the given payload
