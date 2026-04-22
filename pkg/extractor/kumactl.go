@@ -34,7 +34,7 @@ var TLSSkipVerify bool
 //
 // meshFilter, when non-empty, restricts extraction to the named mesh only.
 // Global-scoped resources are always extracted regardless of meshFilter.
-func ExtractViaKumactl(contextName, outputDir, meshFilter string) error {
+func ExtractViaKumactl(contextName, outputDir, meshFilter, outputFormat string) error {
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		return fmt.Errorf("create output directory: %w", err)
 	}
@@ -97,38 +97,48 @@ func ExtractViaKumactl(contextName, outputDir, meshFilter string) error {
 		}
 		ui.KV("Mesh filter:", meshFilter)
 	}
-	ui.KV("Meshes found:", strings.Join(meshNames, ", "))
+	ui.KV("Meshes found:", ui.MeshNames(meshNames))
 
-	total := 0
+	// Partition resource types into mesh-scoped and global-scoped so we can
+	// iterate meshes as the outer loop and print one banner per mesh.
+	var meshScopedTypes, globalScopedTypes []resourceTypeEntry
 	for _, rt := range types {
 		if rt.Scope == "Mesh" {
-			extracted := false
-			for _, mesh := range loopMeshes {
-				n, err := dumpKumactlResources(resolvedCtx, cpURL, bearerToken, rt, mesh, outputDir, skipSet, cpMode, dirLabel, meshFilter)
-				if err != nil {
-					if isUnknownMeshFlag(err) {
-						// API reported Mesh-scoped but kumactl rejects --mesh:
-						// fall back to a single global extraction.
-						n2, err2 := dumpKumactlResources(resolvedCtx, cpURL, bearerToken, rt, "", outputDir, skipSet, cpMode, dirLabel, meshFilter)
-						if err2 != nil {
-							ui.Warn(fmt.Sprintf("%s: %v", rt.Path, err2))
-						}
-						total += n2
-						extracted = true
-						break
-					}
-					ui.Warn(fmt.Sprintf("%s (mesh %s): %v", rt.Path, mesh, err))
-					continue
-				}
-				total += n
-				extracted = true
-			}
-			_ = extracted
+			meshScopedTypes = append(meshScopedTypes, rt)
 		} else {
-			// Global-scoped resources: no mesh association — always extracted.
-			n, err := dumpKumactlResources(resolvedCtx, cpURL, bearerToken, rt, "", outputDir, skipSet, cpMode, dirLabel, meshFilter)
+			globalScopedTypes = append(globalScopedTypes, rt)
+		}
+	}
+
+	total := 0
+
+	// Global-scoped resources first (no mesh association).
+	for _, rt := range globalScopedTypes {
+		n, err := dumpKumactlResources(resolvedCtx, cpURL, bearerToken, rt, "", outputDir, skipSet, cpMode, dirLabel, meshFilter, outputFormat)
+		if err != nil {
+			ui.Warn(fmt.Sprintf("%s: %v", rt.Path, err))
+		}
+		total += n
+	}
+
+	// Mesh-scoped resources: one banner per mesh, then all types for that mesh.
+	for _, mesh := range loopMeshes {
+		ui.StartMesh(mesh)
+		for _, rt := range meshScopedTypes {
+			n, err := dumpKumactlResources(resolvedCtx, cpURL, bearerToken, rt, mesh, outputDir, skipSet, cpMode, dirLabel, meshFilter, outputFormat)
 			if err != nil {
-				ui.Warn(fmt.Sprintf("%s: %v", rt.Path, err))
+				if isUnknownMeshFlag(err) {
+					// API reported Mesh-scoped but kumactl rejects --mesh:
+					// fall back to a single global extraction.
+					n2, err2 := dumpKumactlResources(resolvedCtx, cpURL, bearerToken, rt, "", outputDir, skipSet, cpMode, dirLabel, meshFilter, outputFormat)
+					if err2 != nil {
+						ui.Warn(fmt.Sprintf("%s: %v", rt.Path, err2))
+					}
+					total += n2
+					break
+				}
+				ui.Warn(fmt.Sprintf("%s (mesh %s): %v", rt.Path, mesh, err))
+				continue
 			}
 			total += n
 		}
@@ -343,7 +353,7 @@ func parseMeshNamesFromYAML(data []byte) []string {
 // via a direct authenticated HTTP GET with ?format=kubernetes so that the response
 // is in Kubernetes format rather than Universal format. For all other CPs the
 // kumactl CLI is used.
-func dumpKumactlResources(kumactlCtx, cpURL, bearerToken string, rt resourceTypeEntry, mesh, outputDir string, skipSet map[string]bool, cpMode, cpModeDir, meshFilter string) (int, error) {
+func dumpKumactlResources(kumactlCtx, cpURL, bearerToken string, rt resourceTypeEntry, mesh, outputDir string, skipSet map[string]bool, cpMode, cpModeDir, meshFilter, outputFormat string) (int, error) {
 	var (
 		out []byte
 		err error
@@ -351,10 +361,15 @@ func dumpKumactlResources(kumactlCtx, cpURL, bearerToken string, rt resourceType
 
 	if konnectURLCheck(cpURL) {
 		// Konnect: direct HTTP GET with format=kubernetes query parameter.
-		// Resource URL shape:
-		//   global-scoped: <cpURL>/<path>?format=kubernetes
-		//   mesh-scoped:   <cpURL>/meshes/<mesh>/<path>?format=kubernetes
+		// The cpURL stored in kumactl config ends with "/api" (the Kuma CP API root),
+		// but the Konnect portal REST API lives at the parent path (without "/api").
+		// Strip the trailing "/api" so the resource URLs are correct.
+		//
+		// Resource URL shape (portal base = cpURL minus trailing "/api"):
+		//   global-scoped: <base>/<path>?format=kubernetes
+		//   mesh-scoped:   <base>/meshes/<mesh>/<path>?format=kubernetes
 		base := strings.TrimRight(cpURL, "/")
+		base = strings.TrimSuffix(base, "/api")
 		var resourceURL string
 		if mesh != "" {
 			resourceURL = base + "/meshes/" + mesh + "/" + rt.Path + "?format=kubernetes"
@@ -387,7 +402,7 @@ func dumpKumactlResources(kumactlCtx, cpURL, bearerToken string, rt resourceType
 		}
 	}
 
-	n, err := writeResourceFiles(out, outputDir, skipSet, cpMode, cpModeDir, mesh, meshFilter)
+	n, err := writeResourceFiles(out, outputDir, skipSet, cpMode, cpModeDir, mesh, meshFilter, outputFormat)
 	return n, err
 }
 

@@ -155,7 +155,10 @@ func runMigration(inputDir, outputDir string, writeFiles bool, meshFilter string
 		//
 		// Detection rule: a path component is a kind-subfolder (leaf) if isKindSubfolder
 		// returns true. The first non-kind-subfolder component is cpModeDir; the second
-		// non-kind-subfolder component that is not the reserved "global" is meshDir.
+		// non-kind-subfolder component that is not the reserved "global-scoped-resources"
+		// directory is meshDir. Mesh dirs may carry the "mesh-" prefix (current extract
+		// output); the prefix is stripped to obtain the plain Kuma mesh name used for
+		// filtering and FileReport.MeshDir.
 		meshDir := ""
 		cpModeDir := ""
 		if rel, relErr := filepath.Rel(inputDir, path); relErr == nil {
@@ -166,8 +169,10 @@ func runMigration(inputDir, outputDir string, writeFiles bool, meshFilter string
 					cpModeDir = first
 					if len(parts) >= 3 {
 						second := parts[1]
-						if !isKindSubfolder(second) && second != "global" {
-							meshDir = second
+						if !isKindSubfolder(second) && second != "global-scoped-resources" {
+							// Strip the "mesh-" prefix added by the extractor so that
+							// meshDir holds the plain Kuma mesh name for filtering.
+							meshDir = strings.TrimPrefix(second, "mesh-")
 						}
 					}
 				}
@@ -350,14 +355,14 @@ func processFile(inputPath, outputDir, cpModeDir, meshDir string, writeFile bool
 				if isGatewayAPIOutputKind(kind) {
 					// Gateway API resources (Gateway, HTTPRoute, …) are Kubernetes-native and
 					// must be applied to zone clusters, not to the Global CP. Redirect them to
-					// the global/ sub-directory so it is clear where they belong.
-					dir = filepath.Join(outputDir, cpModeDir, "global", sub)
-					fr.OutputCPModeDir = "global"
+					// the global-scoped-resources/ sub-directory so it is clear where they belong.
+					dir = filepath.Join(outputDir, cpModeDir, "global-scoped-resources", sub)
+					fr.OutputCPModeDir = "global-scoped-resources"
 				} else {
-					dir = filepath.Join(outputDir, cpModeDir, meshDir, sub)
+					dir = filepath.Join(outputDir, cpModeDir, "mesh-"+meshDir, sub)
 				}
 			} else if cpModeDir != "" {
-				dir = filepath.Join(outputDir, cpModeDir, "global", sub)
+				dir = filepath.Join(outputDir, cpModeDir, "global-scoped-resources", sub)
 			} else {
 				dir = filepath.Join(outputDir, sub)
 			}

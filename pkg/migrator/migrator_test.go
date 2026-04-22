@@ -454,9 +454,9 @@ func TestRunMigration_ContextAndMeshDirDetected(t *testing.T) {
 	in := tempDir(t)
 	out := tempDir(t)
 
-	// Create file at <in>/my-cp-global-ctx/default/resiliency/timeout.yaml
+	// Create file at <in>/my-cp-global-ctx/mesh-default/resiliency/timeout.yaml
 	// (context-first layout produced by current extract).
-	subDir := filepath.Join(in, "my-cp-global-ctx", "default", "resiliency")
+	subDir := filepath.Join(in, "my-cp-global-ctx", "mesh-default", "resiliency")
 	if err := os.MkdirAll(subDir, 0755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
@@ -498,7 +498,7 @@ func TestRunMigration_MeshFilter_SkipsOtherMesh(t *testing.T) {
 
 	// Context-first layout: two mesh subdirs under the same context dir.
 	for _, mesh := range []string{"default", "prod"} {
-		subDir := filepath.Join(in, "my-cp-global-ctx", mesh, "resiliency")
+		subDir := filepath.Join(in, "my-cp-global-ctx", "mesh-"+mesh, "resiliency")
 		if err := os.MkdirAll(subDir, 0755); err != nil {
 			t.Fatalf("mkdir: %v", err)
 		}
@@ -557,9 +557,9 @@ func TestMigrate_MeshSubdir_OutputMirrorsInputLayout(t *testing.T) {
 	in := tempDir(t)
 	out := tempDir(t)
 
-	// Input: <in>/my-cp-global-ctx/default/resiliency/timeout.yaml
+	// Input: <in>/my-cp-global-ctx/mesh-default/resiliency/timeout.yaml
 	// (context-first layout produced by current extract)
-	subDir := filepath.Join(in, "my-cp-global-ctx", "default", "resiliency")
+	subDir := filepath.Join(in, "my-cp-global-ctx", "mesh-default", "resiliency")
 	if err := os.MkdirAll(subDir, 0755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
@@ -579,8 +579,8 @@ conf:
 	if err := Migrate(in, out, ""); err != nil {
 		t.Fatalf("Migrate: %v", err)
 	}
-	// Output must mirror context-first layout: <out>/my-cp-global-ctx/default/resiliency/MeshTimeout-my-timeout.yaml
-	outPath := filepath.Join(out, "my-cp-global-ctx", "default", "resiliency", "MeshTimeout-my-timeout.yaml")
+	// Output must mirror context-first layout: <out>/my-cp-global-ctx/mesh-default/resiliency/MeshTimeout-my-timeout.yaml
+	outPath := filepath.Join(out, "my-cp-global-ctx", "mesh-default", "resiliency", "MeshTimeout-my-timeout.yaml")
 	if _, err := os.Stat(outPath); os.IsNotExist(err) {
 		t.Errorf("expected output at %s", outPath)
 	}

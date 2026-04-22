@@ -50,12 +50,15 @@ Two connection modes are supported (mutually exclusive):
 		}
 		// Config file can enable TLS skip verify; the -k flag also enables it.
 		// Either source being true is sufficient.
+		if extractOutputFormat != "kubernetes" && extractOutputFormat != "universal" {
+			return fmt.Errorf("--output-format must be %q or %q, got %q", "kubernetes", "universal", extractOutputFormat)
+		}
 		cfg, _ := config.Load()
 		extractor.TLSSkipVerify = extractTLSSkipVerify || (cfg != nil && cfg.AdminServer.TLSSkipVerify)
 		if extractKubeContext != "" {
-			return extractor.ExtractViaKubectl(extractKubeContext, extractOutputDir, extractMesh)
+			return extractor.ExtractViaKubectl(extractKubeContext, extractOutputDir, extractMesh, extractOutputFormat)
 		}
-		return extractor.ExtractViaKumactl(extractKumactlContext, extractOutputDir, extractMesh)
+		return extractor.ExtractViaKumactl(extractKumactlContext, extractOutputDir, extractMesh, extractOutputFormat)
 	},
 }
 
@@ -64,6 +67,7 @@ var extractKumactlContext string
 var extractOutputDir string
 var extractTLSSkipVerify bool
 var extractMesh string
+var extractOutputFormat string
 
 func init() {
 	extractCmd.Flags().StringVar(&extractKubeContext, "kube-context", "", "Kubernetes context to use for resource extraction (kubectl)")
@@ -71,6 +75,7 @@ func init() {
 	extractCmd.Flags().StringVarP(&extractOutputDir, "output-dir", "o", "", "directory to write extracted YAML files (required)")
 	extractCmd.Flags().BoolVarP(&extractTLSSkipVerify, "tls-skip-verify", "k", false, "disable TLS certificate verification for the control plane admin server (use for self-signed certs)")
 	extractCmd.Flags().StringVar(&extractMesh, "mesh", "", "restrict extraction to the named Kuma mesh (default: all meshes)")
+	extractCmd.Flags().StringVarP(&extractOutputFormat, "output-format", "f", "universal", `output format for extracted resources: "kubernetes" (apiVersion/kind/metadata) or "universal" (type/name/mesh)`)
 	_ = extractCmd.MarkFlagRequired("output-dir")
 	rootCmd.AddCommand(extractCmd)
 }

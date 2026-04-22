@@ -13,16 +13,17 @@ import (
 // ── Colour palette ────────────────────────────────────────────────────────────
 
 var (
-	bold      = color.New(color.Bold)
-	faint     = color.New(color.Faint)
-	green     = color.New(color.FgGreen)
-	boldGreen = color.New(color.FgGreen, color.Bold)
-	yellow    = color.New(color.FgYellow, color.Bold)
-	red       = color.New(color.FgRed, color.Bold)
-	cyan      = color.New(color.FgCyan)
-	boldCyan  = color.New(color.FgCyan, color.Bold)
-	blue      = color.New(color.FgBlue)
-	white     = color.New(color.FgHiWhite, color.Bold)
+	bold        = color.New(color.Bold)
+	faint       = color.New(color.Faint)
+	green       = color.New(color.FgGreen)
+	boldGreen   = color.New(color.FgGreen, color.Bold)
+	yellow      = color.New(color.FgYellow, color.Bold)
+	red         = color.New(color.FgRed, color.Bold)
+	cyan        = color.New(color.FgCyan)
+	boldCyan    = color.New(color.FgCyan, color.Bold)
+	blue        = color.New(color.FgBlue)
+	white       = color.New(color.FgHiWhite, color.Bold)
+	boldMagenta = color.New(color.FgMagenta, color.Bold)
 )
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
@@ -92,6 +93,31 @@ func WarnIndented(msg string) {
 func Errorf(format string, args ...interface{}) {
 	msg := fmt.Sprintf(format, args...)
 	fmt.Printf("  %s  %s\n", red.Sprint(iconError), red.Sprint(msg))
+}
+
+// ── Mesh name formatting ──────────────────────────────────────────────────────
+
+// MeshName returns the mesh name formatted in bold magenta, suitable for
+// embedding in KV values or inline messages.
+func MeshName(name string) string {
+	return boldMagenta.Sprint(name)
+}
+
+// MeshNames returns a comma-separated list of mesh names, each in bold magenta.
+func MeshNames(names []string) string {
+	parts := make([]string, len(names))
+	for i, n := range names {
+		parts[i] = boldMagenta.Sprint(n)
+	}
+	return strings.Join(parts, faint.Sprint(", "))
+}
+
+// StartMesh prints a section separator that marks the start of extraction for
+// a specific mesh:
+//
+//	  ◆  mesh  default
+func StartMesh(meshName string) {
+	fmt.Printf("\n  %s  %s  %s\n", boldMagenta.Sprint("◆"), faint.Sprint("mesh"), boldMagenta.Sprint(meshName))
 }
 
 // ── Extract progress ──────────────────────────────────────────────────────────

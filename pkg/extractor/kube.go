@@ -29,7 +29,7 @@ import (
 //
 // meshFilter, when non-empty, restricts extraction to the named mesh only.
 // Global-scoped resources (no kuma.io/mesh label) are always extracted.
-func ExtractViaKubectl(kubeContext, outputDir, meshFilter string) error {
+func ExtractViaKubectl(kubeContext, outputDir, meshFilter, outputFormat string) error {
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		return fmt.Errorf("create output directory: %w", err)
 	}
@@ -312,11 +312,11 @@ func dumpCRDInstances(kubeContext string, crd crdEntry, outputDir, cpMode, cpMod
 		var dir string
 		switch {
 		case cpModeDir != "" && meshName != "":
-			dir = filepath.Join(outputDir, cpModeDir, meshName, sub)
+			dir = filepath.Join(outputDir, cpModeDir, MeshDirPrefix+meshName, sub)
 		case cpModeDir != "":
-			dir = filepath.Join(outputDir, cpModeDir, "global", sub)
+			dir = filepath.Join(outputDir, cpModeDir, GlobalScopedDir, sub)
 		case meshName != "":
-			dir = filepath.Join(outputDir, meshName, sub)
+			dir = filepath.Join(outputDir, MeshDirPrefix+meshName, sub)
 		default:
 			dir = filepath.Join(outputDir, sub)
 		}

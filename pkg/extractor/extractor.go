@@ -79,14 +79,16 @@ func isZoneOnlyKind(kind string) bool {
 // Files are written into per-kind subfolders under <outputDir>/<cpModeDir>/<meshName>/<sub>/
 // (context-first layout). Global-scoped resources go to <outputDir>/<cpModeDir>/global/<sub>/.
 //
-//   - cpModeDir: the CP mode directory label (e.g. "global", "zone-eu-west"); empty means flat output.
-//   - meshName:  the mesh these resources belong to; when non-empty, files are written under
+//   - cpModeDir:    the CP mode directory label (e.g. "global", "zone-eu-west"); empty means flat output.
+//   - meshName:     the mesh these resources belong to; when non-empty, files are written under
 //     <outputDir>/<meshName>/<cpModeDir>/<sub>/ so each mesh has its own top-level directory.
-//   - meshFilter: when non-empty, resources whose meshName does not match are skipped.
+//   - meshFilter:   when non-empty, resources whose meshName does not match are skipped.
 //     Resources with no mesh association (global-scoped) are never filtered out.
+//   - outputFormat: "kubernetes" converts Universal-format resources (type/name/mesh) to
+//     Kubernetes format (apiVersion/kind/metadata) before writing. "universal" writes as-is.
 //
 // Returns the number of files written.
-func writeResourceFiles(data []byte, outputDir string, skipSet map[string]bool, cpMode, cpModeDir, meshName, meshFilter string) (int, error) {
+func writeResourceFiles(data []byte, outputDir string, skipSet map[string]bool, cpMode, cpModeDir, meshName, meshFilter, outputFormat string) (int, error) {
 	docs := splitYAMLDocs(data)
 	count := 0
 	for _, doc := range docs {
@@ -94,7 +96,7 @@ func writeResourceFiles(data []byte, outputDir string, skipSet map[string]bool, 
 		if doc == "" {
 			continue
 		}
-		n, err := writeSingleResourceDoc(doc, outputDir, skipSet, cpMode, cpModeDir, meshName, meshFilter)
+		n, err := writeSingleResourceDoc(doc, outputDir, skipSet, cpMode, cpModeDir, meshName, meshFilter, outputFormat)
 		if err != nil {
 			return count, err
 		}
@@ -112,11 +114,15 @@ func writeResourceFiles(data []byte, outputDir string, skipSet map[string]bool, 
 //   - Kubernetes list: kind ends in "List", items[]      (kumactl -o yaml on Kube returns MeshMetricList)
 //   - Universal list:  top-level items[], no kind/type   ({total: N, items: [...]})
 //
+// When outputFormat is "kubernetes", Universal-format documents (type/name/mesh at top level)
+// are converted to Kubernetes format (apiVersion/kind/metadata) before writing. This applies
+// to both standalone documents and items within list responses (e.g. Konnect API responses).
+//
 // When cpModeDir is non-empty, the file is written to <outputDir>/<cpModeDir>/<meshName>/<sub>/
 // for mesh-scoped resources, or <outputDir>/<cpModeDir>/global/<sub>/ for global-scoped ones.
 // When meshFilter is non-empty, resources whose meshName does not match are skipped (resources
 // with no mesh association are always kept).
-func writeSingleResourceDoc(doc string, outputDir string, skipSet map[string]bool, cpMode, cpModeDir, meshName, meshFilter string) (int, error) {
+func writeSingleResourceDoc(doc string, outputDir string, skipSet map[string]bool, cpMode, cpModeDir, meshName, meshFilter, outputFormat string) (int, error) {
 	var obj map[string]interface{}
 	if err := yaml.Unmarshal([]byte(doc), &obj); err != nil || obj == nil {
 		return 0, nil
@@ -141,10 +147,26 @@ func writeSingleResourceDoc(doc string, outputDir string, skipSet map[string]boo
 			if err != nil {
 				continue
 			}
-			n, _ := writeSingleResourceDoc(strings.TrimSpace(string(itemBytes)), outputDir, skipSet, cpMode, cpModeDir, meshName, meshFilter)
+			n, _ := writeSingleResourceDoc(strings.TrimSpace(string(itemBytes)), outputDir, skipSet, cpMode, cpModeDir, meshName, meshFilter, outputFormat)
 			count += n
 		}
 		return count, nil
+	}
+
+	// Convert Universal-format documents to Kubernetes format when requested.
+	// A Universal document has "type" but no "kind" at the top level.
+	// universalToKubernetes maps type→kind, name→metadata.name, mesh→metadata.labels,
+	// preserves spec/status, and drops CP-internal fields (kri, creationTime, modificationTime).
+	if outputFormat == "kubernetes" {
+		if _, hasKind := obj["kind"]; !hasKind {
+			if _, hasType := obj["type"]; hasType {
+				obj = universalToKubernetes(obj)
+				kind, _ = obj["kind"].(string)
+				if converted, err := yaml.Marshal(obj); err == nil {
+					doc = strings.TrimSpace(string(converted))
+				}
+			}
+		}
 	}
 
 	if isInsightKind(kind) || skipSet[kind] {
@@ -212,11 +234,11 @@ func writeSingleResourceDoc(doc string, outputDir string, skipSet map[string]boo
 	var dir string
 	switch {
 	case cpModeDir != "" && meshName != "":
-		dir = filepath.Join(outputDir, cpModeDir, meshName, sub)
+		dir = filepath.Join(outputDir, cpModeDir, MeshDirPrefix+meshName, sub)
 	case cpModeDir != "":
-		dir = filepath.Join(outputDir, cpModeDir, "global", sub)
+		dir = filepath.Join(outputDir, cpModeDir, GlobalScopedDir, sub)
 	case meshName != "":
-		dir = filepath.Join(outputDir, meshName, sub)
+		dir = filepath.Join(outputDir, MeshDirPrefix+meshName, sub)
 	default:
 		dir = filepath.Join(outputDir, sub)
 	}
@@ -233,6 +255,58 @@ func writeSingleResourceDoc(doc string, outputDir string, skipSet map[string]boo
 	return 1, nil
 }
 
+
+// universalToKubernetes converts a Universal-format resource map to Kubernetes format.
+//
+// Universal format (Konnect REST API and kumactl Universal output):
+//
+//	{ type, name, mesh, spec, status, labels, kri, creationTime, modificationTime }
+//
+// Kubernetes format:
+//
+//	{ apiVersion: kuma.io/v1alpha1, kind, metadata: { name, labels }, spec, status }
+//
+// CP-internal fields (kri, creationTime, modificationTime) are dropped.
+// Top-level labels and the mesh name are merged into metadata.labels.
+func universalToKubernetes(obj map[string]interface{}) map[string]interface{} {
+	typeName, _ := obj["type"].(string)
+	name, _ := obj["name"].(string)
+	mesh, _ := obj["mesh"].(string)
+
+	metaLabels := map[string]interface{}{}
+	if existing, ok := obj["labels"].(map[string]interface{}); ok {
+		for k, v := range existing {
+			metaLabels[k] = v
+		}
+	}
+	if mesh != "" {
+		metaLabels["kuma.io/mesh"] = mesh
+	}
+
+	metadata := map[string]interface{}{"name": name}
+	if len(metaLabels) > 0 {
+		metadata["labels"] = metaLabels
+	}
+
+	result := map[string]interface{}{
+		"apiVersion": "kuma.io/v1alpha1",
+		"kind":       typeName,
+		"metadata":   metadata,
+	}
+
+	// Copy remaining fields verbatim (spec, status, conf, …).
+	// Drop Universal-specific top-level fields already promoted or CP-internal.
+	drop := map[string]bool{
+		"type": true, "name": true, "mesh": true, "labels": true,
+		"kri": true, "creationTime": true, "modificationTime": true,
+	}
+	for k, v := range obj {
+		if !drop[k] {
+			result[k] = v
+		}
+	}
+	return result
+}
 
 // splitYAMLDocs splits a byte slice on YAML document separators (---).
 func splitYAMLDocs(data []byte) []string {

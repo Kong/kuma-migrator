@@ -13,6 +13,18 @@ const (
 	CPEnvUniversal  = "universal"
 )
 
+// Output directory naming conventions shared between the extractor and migrator.
+const (
+	// GlobalScopedDir is the level-2 subdirectory that holds global-scoped resources
+	// (those with no mesh association: Zone, HostnameGenerator, Gateway API CRDs, …).
+	// It sits at <outputDir>/<cpModeDir>/global-scoped-resources/<sub>/.
+	GlobalScopedDir = "global-scoped-resources"
+
+	// MeshDirPrefix is prepended to the Kuma mesh name when forming the level-2
+	// subdirectory for mesh-scoped resources, e.g. "mesh-default".
+	MeshDirPrefix = "mesh-"
+)
+
 // cpModeDirectoryLabel returns the top-level output directory label for a CP
 // extraction. The name combines the kumactl/kubectl context name with a suffix
 // that encodes the CP mode, making it easy to identify the origin of each file
