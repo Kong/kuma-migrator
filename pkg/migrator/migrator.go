@@ -34,6 +34,8 @@ type FileReport struct {
 	CPModeDir       string // CP mode prefix from input path (e.g. "global", "zone", "standalone")
 	OutputCPModeDir string // effective output CP mode dir (may differ from CPModeDir for GW resources from global)
 	MeshDir         string // mesh directory from input path (e.g. "default", "prod"); empty for flat/legacy layout
+	InputRelPath    string // input file path relative to inputDir
+	OutputRelPath   string // primary output file path relative to outputDir
 	HasError        bool
 	Changes         []DocChange
 	EnvVarHits      []EnvVarHit
@@ -187,6 +189,9 @@ func runMigration(inputDir, outputDir string, writeFiles bool, meshFilter string
 
 		report.TotalFiles++
 		fr := processFile(path, outputDir, cpModeDir, meshDir, writeFiles, skipSet)
+		if rel, relErr := filepath.Rel(inputDir, path); relErr == nil {
+			fr.InputRelPath = filepath.ToSlash(rel)
+		}
 		report.Files = append(report.Files, fr)
 
 		for _, h := range fr.EnvVarHits {
@@ -342,36 +347,44 @@ func processFile(inputPath, outputDir, cpModeDir, meshDir string, writeFile bool
 		fr.Subfolder = resource.KindSubfolder(kind)
 	}
 
-	if writeFile {
-		for _, doc := range outputDocs {
-			kind, _ := probeKindName(doc)
-			sub := resource.KindSubfolder(kind)
-			// Compute output directory (context-first layout, mirrors extract output):
-			//   <outputDir>/<cpModeDir>/<meshDir>/<sub>   when context+mesh present; GW API → global/
-			//   <outputDir>/<cpModeDir>/global/<sub>       when context set but no mesh (or GW API redirect)
-			//   <outputDir>/<sub>                          otherwise (flat / legacy)
-			var dir string
-			if cpModeDir != "" && meshDir != "" {
-				if isGatewayAPIOutputKind(kind) {
-					// Gateway API resources (Gateway, HTTPRoute, …) are Kubernetes-native and
-					// must be applied to zone clusters, not to the Global CP. Redirect them to
-					// the global-scoped-resources/ sub-directory so it is clear where they belong.
-					dir = filepath.Join(outputDir, cpModeDir, "global-scoped-resources", sub)
-					fr.OutputCPModeDir = "global-scoped-resources"
-				} else {
-					dir = filepath.Join(outputDir, cpModeDir, "mesh-"+meshDir, sub)
-				}
-			} else if cpModeDir != "" {
+	for _, doc := range outputDocs {
+		kind, _ := probeKindName(doc)
+		sub := resource.KindSubfolder(kind)
+		// Compute output directory (context-first layout, mirrors extract output):
+		//   <outputDir>/<cpModeDir>/<meshDir>/<sub>   when context+mesh present; GW API → global/
+		//   <outputDir>/<cpModeDir>/global/<sub>       when context set but no mesh (or GW API redirect)
+		//   <outputDir>/<sub>                          otherwise (flat / legacy)
+		var dir string
+		if cpModeDir != "" && meshDir != "" {
+			if isGatewayAPIOutputKind(kind) {
+				// Gateway API resources (Gateway, HTTPRoute, …) are Kubernetes-native and
+				// must be applied to zone clusters, not to the Global CP. Redirect them to
+				// the global-scoped-resources/ sub-directory so it is clear where they belong.
 				dir = filepath.Join(outputDir, cpModeDir, "global-scoped-resources", sub)
+				fr.OutputCPModeDir = "global-scoped-resources"
 			} else {
-				dir = filepath.Join(outputDir, sub)
+				dir = filepath.Join(outputDir, cpModeDir, "mesh-"+meshDir, sub)
 			}
+		} else if cpModeDir != "" {
+			dir = filepath.Join(outputDir, cpModeDir, "global-scoped-resources", sub)
+		} else {
+			dir = filepath.Join(outputDir, sub)
+		}
+		fname := outputDocFilename(doc)
+
+		// Record the first output doc's path for display purposes.
+		if fr.OutputRelPath == "" {
+			if rel, relErr := filepath.Rel(outputDir, filepath.Join(dir, fname)); relErr == nil {
+				fr.OutputRelPath = filepath.ToSlash(rel)
+			}
+		}
+
+		if writeFile {
 			if err := os.MkdirAll(dir, 0755); err != nil {
 				fr.Label = labelError
 				fr.HasError = true
 				return fr
 			}
-			fname := outputDocFilename(doc)
 			if err := os.WriteFile(filepath.Join(dir, fname), append(doc, '\n'), 0644); err != nil {
 				fr.Label = labelError
 				fr.HasError = true
@@ -428,32 +441,34 @@ func probeKindName(raw []byte) (kind, name string) {
 
 func printReportToStdout(r *MigrationReport) {
 	for _, fr := range r.Files {
+		mesh := fr.MeshDir
 		switch fr.Label {
 		case labelError:
-			ui.FileError(fr.FileName)
+			ui.FileError(mesh, fr.FileName)
 		case labelPartialError:
-			ui.FilePartialError(fr.FileName)
+			ui.FilePartialError(mesh, fr.FileName)
 		case labelMigratedLegacy:
-			ui.FileMigrated("LEGACY", fr.FileName)
+			ui.FileMigrated("LEGACY", mesh, fr.FileName)
 		case labelMigratedSubset:
-			ui.FileMigrated("SUBSET", fr.FileName)
+			ui.FileMigrated("SUBSET", mesh, fr.FileName)
 		case labelMigratedRules:
-			ui.FileMigrated("RULES", fr.FileName)
+			ui.FileMigrated("RULES", mesh, fr.FileName)
 		case labelMigratedMesh:
-			ui.FileMigrated("MESH", fr.FileName)
+			ui.FileMigrated("MESH", mesh, fr.FileName)
 		case labelMigratedES:
-			ui.FileMigrated("EXTERNAL SERVICE", fr.FileName)
+			ui.FileMigrated("EXTERNAL SERVICE", mesh, fr.FileName)
 		case labelMigratedGW:
-			ui.FileMigrated("GATEWAY", fr.FileName)
+			ui.FileMigrated("GATEWAY", mesh, fr.FileName)
 		case labelMigratedOPA:
-			ui.FileMigrated("OPA", fr.FileName)
+			ui.FileMigrated("OPA", mesh, fr.FileName)
 		case labelAlreadyDone:
-			ui.FileAlreadyMigrated(fr.FileName)
+			ui.FileAlreadyMigrated(mesh, fr.FileName)
 		case labelSkipped:
-			ui.FileSkipped(fr.FileName, "no recognised Kuma policy documents")
+			ui.FileSkipped(mesh, fr.FileName, "no recognised Kuma policy documents")
 		default:
-			ui.FileSkipped(fr.FileName, "empty after parsing")
+			ui.FileSkipped(mesh, fr.FileName, "empty after parsing")
 		}
+		ui.DocRelPaths(fr.InputRelPath, fr.OutputRelPath)
 
 		for _, dc := range fr.Changes {
 			if dc.ErrMsg != "" {

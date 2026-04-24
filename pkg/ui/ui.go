@@ -157,24 +157,35 @@ func padLabel(s string) string {
 	return s + strings.Repeat(" ", labelWidth-len(s))
 }
 
+// meshPrefix returns a bold-magenta mesh name followed by two spaces, or an
+// empty string when meshName is empty (global-scoped resources).
+func meshPrefix(meshName string) string {
+	if meshName == "" {
+		return ""
+	}
+	return boldMagenta.Sprint(meshName) + "  "
+}
+
 // FileMigrated prints a green success line for a migrated file.
 //
-//	  ✓  LEGACY             timeout-policy.yaml
-func FileMigrated(scenario, filename string) {
-	fmt.Printf("  %s  %s%s\n",
+//	  ✓  LEGACY             default  timeout-policy.yaml
+func FileMigrated(scenario, meshName, filename string) {
+	fmt.Printf("  %s  %s%s%s\n",
 		boldGreen.Sprint(iconOK),
 		boldGreen.Sprint(padLabel(scenario)),
+		meshPrefix(meshName),
 		filename,
 	)
 }
 
 // FileAlreadyMigrated prints a blue line for a passthrough file.
 //
-//	  ●  ALREADY MIGRATED   mesh-retry.yaml
-func FileAlreadyMigrated(filename string) {
-	fmt.Printf("  %s  %s%s\n",
+//	  ●  ALREADY MIGRATED   default  mesh-retry.yaml
+func FileAlreadyMigrated(meshName, filename string) {
+	fmt.Printf("  %s  %s%s%s\n",
 		blue.Sprint("●"),
 		blue.Sprint(padLabel("ALREADY MIGRATED")),
+		meshPrefix(meshName),
 		faint.Sprint(filename),
 	)
 }
@@ -182,15 +193,16 @@ func FileAlreadyMigrated(filename string) {
 // FileSkipped prints a faint line for a skipped file.
 //
 //	  –  SKIP               deployment.yaml
-func FileSkipped(filename, reason string) {
+func FileSkipped(meshName, filename, reason string) {
 	label := "SKIP"
 	line := filename
 	if reason != "" {
 		line = filename + faint.Sprintf(": %s", reason)
 	}
-	fmt.Printf("  %s  %s%s\n",
+	fmt.Printf("  %s  %s%s%s\n",
 		faint.Sprint("–"),
 		faint.Sprint(padLabel(label)),
+		meshPrefix(meshName),
 		faint.Sprint(line),
 	)
 }
@@ -198,21 +210,34 @@ func FileSkipped(filename, reason string) {
 // FileError prints a red line for a file that could not be migrated.
 //
 //	  ✗  ERROR              broken.yaml
-func FileError(filename string) {
-	fmt.Printf("  %s  %s%s\n",
+func FileError(meshName, filename string) {
+	fmt.Printf("  %s  %s%s%s\n",
 		red.Sprint(iconError),
 		red.Sprint(padLabel("ERROR")),
+		meshPrefix(meshName),
 		red.Sprint(filename),
 	)
 }
 
 // FilePartialError prints a yellow line for a partially-migrated file.
-func FilePartialError(filename string) {
-	fmt.Printf("  %s  %s%s\n",
+func FilePartialError(meshName, filename string) {
+	fmt.Printf("  %s  %s%s%s\n",
 		yellow.Sprint(iconWarn),
 		yellow.Sprint(padLabel("PARTIAL ERROR")),
+		meshPrefix(meshName),
 		yellow.Sprint(filename),
 	)
+}
+
+// DocRelPaths prints the input (←) and output (→) relative paths in faint gray,
+// indented under the file line. Empty strings are silently skipped.
+func DocRelPaths(inputRel, outputRel string) {
+	if inputRel != "" {
+		fmt.Printf("       %s  %s\n", faint.Sprint("←"), faint.Sprint(inputRel))
+	}
+	if outputRel != "" {
+		fmt.Printf("       %s  %s\n", faint.Sprint("→"), faint.Sprint(outputRel))
+	}
 }
 
 // DocError prints a per-document error indented under a file line.
