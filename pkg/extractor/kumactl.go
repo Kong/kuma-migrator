@@ -59,7 +59,7 @@ func ExtractViaKumactl(contextName, outputDir, meshFilter, outputFormat string) 
 	dirLabel := cpModeDirectoryLabel(resolvedCtx, cpMode)
 	var zones []string
 	if cpMode == CPModeGlobal {
-		zones = listZoneNamesKumactl(resolvedCtx)
+		zones = listZoneNamesKumactl(resolvedCtx, cpURL, bearerToken)
 	}
 	PrintCPModeInfo(cpMode, zoneName, zones)
 	fmt.Println()
@@ -73,7 +73,7 @@ func ExtractViaKumactl(contextName, outputDir, meshFilter, outputFormat string) 
 	fmt.Println()
 
 	// Collect all Mesh names — needed to iterate Mesh-scoped resources.
-	meshNames, err := listMeshNames(resolvedCtx)
+	meshNames, err := listMeshNames(resolvedCtx, cpURL, bearerToken)
 	if err != nil {
 		return fmt.Errorf("list meshes: %w", err)
 	}
@@ -149,11 +149,24 @@ func ExtractViaKumactl(contextName, outputDir, meshFilter, outputFormat string) 
 	return nil
 }
 
-// listZoneNamesKumactl returns the names of all Zone resources via kumactl.
-func listZoneNamesKumactl(kumactlCtx string) []string {
-	out, err := kumactl(kumactlCtx, "get", "zones", "-o", "yaml")
-	if err != nil {
-		return nil
+// listZoneNamesKumactl returns the names of all Zone resources.
+// For Konnect-hosted CPs it uses direct HTTP; for self-hosted CPs it uses kumactl.
+func listZoneNamesKumactl(kumactlCtx, cpURL, bearerToken string) []string {
+	var out []byte
+	if isKonnectURL(cpURL) {
+		base := strings.TrimRight(cpURL, "/")
+		base = strings.TrimSuffix(base, "/api")
+		body, status, err := authenticatedGet(base+"/zones", bearerToken, 15*time.Second)
+		if err != nil || status != http.StatusOK {
+			return nil
+		}
+		out = body
+	} else {
+		var err error
+		out, err = kumactl(kumactlCtx, "get", "zones", "-o", "yaml")
+		if err != nil {
+			return nil
+		}
 	}
 	// Response is a Kuma list: top-level "items" array, each item has a "name" field.
 	var list struct {
@@ -276,8 +289,21 @@ func listKumaResourceTypes(cpURL string, skipSet map[string]bool, bearerToken st
 
 // ---- Mesh name discovery ----------------------------------------------------
 
-// listMeshNames returns the names of all Mesh resources via kumactl.
-func listMeshNames(kumactlCtx string) ([]string, error) {
+// listMeshNames returns the names of all Mesh resources.
+// For Konnect-hosted CPs it uses direct HTTP; for self-hosted CPs it uses kumactl.
+func listMeshNames(kumactlCtx, cpURL, bearerToken string) ([]string, error) {
+	if isKonnectURL(cpURL) {
+		base := strings.TrimRight(cpURL, "/")
+		base = strings.TrimSuffix(base, "/api")
+		body, status, err := authenticatedGet(base+"/meshes", bearerToken, 15*time.Second)
+		if err != nil {
+			return nil, err
+		}
+		if status != http.StatusOK {
+			return nil, fmt.Errorf("GET meshes: unexpected status %d", status)
+		}
+		return parseMeshNamesFromYAML(body), nil
+	}
 	out, err := kumactl(kumactlCtx, "get", "meshes", "-o", "yaml")
 	if err != nil {
 		return nil, err
