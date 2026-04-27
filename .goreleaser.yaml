@@ -50,6 +50,11 @@ changelog:
       - Merge pull request
       - Merge branch
 
+release:
+  github:
+    owner: bcollard
+    name: kuma-migrator
+
 homebrew_casks:
   - name: kuma-migrator
     repository:
