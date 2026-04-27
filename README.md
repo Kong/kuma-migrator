@@ -66,7 +66,7 @@ brew upgrade --cask kuma-migrator
 ### Pre-built binaries
 
 Download the binary for your platform from the
-[GitHub Releases](https://github.com/Kong/kuma-migrator/releases) page.
+[GitHub Releases](https://github.com/bcollard/kuma-migrator/releases) page.
 Archives are provided for:
 
 | Platform | Architecture |
@@ -74,6 +74,22 @@ Archives are provided for:
 | Linux | `amd64`, `arm64` |
 | macOS | `amd64` (Intel), `arm64` (Apple Silicon) |
 | Windows | `amd64` |
+
+**Linux (amd64):**
+
+```bash
+VERSION=$(gh release view --repo bcollard/kuma-migrator --json tagName --jq '.tagName' | tr -d 'v')
+curl -L "https://github.com/bcollard/kuma-migrator/releases/latest/download/kuma-migrator_${VERSION}_linux_amd64.tar.gz" | tar xz
+sudo mv kuma-migrator /usr/local/bin/
+```
+
+**Linux (arm64):**
+
+```bash
+VERSION=$(gh release view --repo bcollard/kuma-migrator --json tagName --jq '.tagName' | tr -d 'v')
+curl -L "https://github.com/bcollard/kuma-migrator/releases/latest/download/kuma-migrator_${VERSION}_linux_arm64.tar.gz" | tar xz
+sudo mv kuma-migrator /usr/local/bin/
+```
 
 ### From source
 
