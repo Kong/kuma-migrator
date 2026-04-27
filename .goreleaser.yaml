@@ -53,7 +53,7 @@ changelog:
 homebrew_casks:
   - name: kuma-migrator
     repository:
-      owner: Kong
+      owner: bcollard
       name: homebrew-kuma-migrator
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     homepage: https://github.com/Kong/kuma-migrator

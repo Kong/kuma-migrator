@@ -47,14 +47,14 @@ Supported platforms: macOS Apple Silicon (`arm64`), macOS Intel (`amd64`),
 Linux `amd64`, Linux `arm64`.
 
 ```bash
-brew tap Kong/kuma-migrator
+brew tap bcollard/kuma-migrator
 brew install --cask kuma-migrator
 ```
 
 Or as a one-liner:
 
 ```bash
-brew install --cask Kong/kuma-migrator/kuma-migrator
+brew install --cask bcollard/kuma-migrator/kuma-migrator
 ```
 
 Upgrade to the latest version at any time:
