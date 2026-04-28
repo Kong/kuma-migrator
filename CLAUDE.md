@@ -45,9 +45,9 @@ Two mutually-exclusive modes, both write one YAML file per resource:
 every instance with `kubectl get <kind> -o yaml`. Insight kinds are excluded via `isInsightKind`.
 
 **`--kumactl-context`** — resolves the context from `~/.kumactl/config` (or `$KUMACTL_CONFIG`),
-calls `GET <cpURL>/_resources` to discover all writable resource types, lists mesh names via
-`kumactl get meshes -o yaml`, then calls `kumactl get <path> [--mesh <mesh>] -o yaml` for
-each type × mesh combination.
+calls `GET <cpURL>/_resources` to discover all writable resource types, lists mesh names (via
+direct HTTP for Konnect, `kumactl get meshes -o yaml` for self-hosted CPs), then calls
+`kumactl get <path> [--mesh <mesh>] -o yaml` for each type × mesh combination.
 
 The `readOnly` field from `/_resources` is intentionally **ignored**. When the CP API server
 is configured with `ApiServer.ReadOnly=true` (common on self-hosted Global CPs), every type
@@ -132,6 +132,24 @@ passes the detected environment from `/config`.
 Constants `CPEnvKubernetes = "kubernetes"` and `CPEnvUniversal = "universal"` live in
 `pkg/extractor/cpmode.go` alongside the `CPMode*` constants.
 
+### Context metadata file
+
+`ExtractViaKubectl` and `ExtractViaKumactl` both write a `.kuma-migrator.json` file into
+the top-level context directory (`<outputDir>/<cpModeDir>/.kuma-migrator.json`) immediately
+after `dirLabel` is computed. This records how the extraction was performed:
+
+```json
+{"tool":"kubectl","context":"my-kube-ctx","cpMode":"global","isKonnect":false}
+```
+
+`ContextMeta` struct and `WriteContextMeta` / `ReadContextMeta` helpers live in
+`pkg/extractor/cpmode.go`. The migrator's `report.go` imports the extractor package to call
+`ReadContextMeta(inputDir, cpModeDir)` when building the Apply Checklist — it uses `tool`
+to decide between `kubectl apply -f <dir>/` (kubectl) and `kumactl apply -f <file>` per file
+(kumactl). `kumactl` does not accept a directory as the `-f` argument, so each file is listed
+individually. `isKonnect` in the metadata adds a Konnect-specific label to the checklist.
+Falls back to `kubectl` when the metadata file is absent (older extract output).
+
 ### Konnect (hosted) specifics
 
 - **Detection**: URL contains `api.konghq.com`. Logged as `Platform: Kong Konnect (hosted)`.
@@ -152,6 +170,11 @@ Constants `CPEnvKubernetes = "kubernetes"` and `CPEnvUniversal = "universal"` li
   handles this transparently when `outputFormat == "kubernetes"`.
   The Konnect check is done via `konnectURLCheck` (a package-level `var` defaulting to
   `isKonnectURL`), which tests can override without needing a real `api.konghq.com` URL.
+- **Mesh and zone listing**: `listMeshNames` and `listZoneNamesKumactl` both accept `cpURL`
+  and `bearerToken`. For Konnect URLs they use `authenticatedGet(<base>/meshes)` /
+  `authenticatedGet(<base>/zones)` directly; for self-hosted CPs they fall back to
+  `kumactl --context <ctx> get meshes/zones -o yaml`. The kumactl CLI path fails on Konnect
+  because the context is not registered in the local kumactl installation.
 - **Scope fallback**: `/_resources` sometimes reports resource types as Mesh-scoped but kumactl
   rejects `--mesh` for them ("unknown flag: --mesh"). `isUnknownMeshFlag(err)` detects this
   and retries the extraction globally (breaking out of the mesh loop). This check only applies
@@ -188,7 +211,24 @@ Files with `meshDir == ""` (no mesh dir detected) are **always** processed regar
 - `<outputDir>/<cpModeDir>/global-scoped-resources/<sub>/` when only cpModeDir is set (no mesh → global subdir)
 - `<outputDir>/<sub>/` when both are empty (flat / legacy)
 
-`FileReport.CPModeDir` holds the context directory label; `FileReport.MeshDir` holds the plain mesh name (no `mesh-` prefix).
+`FileReport.CPModeDir` holds the context directory label; `FileReport.MeshDir` holds the plain mesh name (no `mesh-` prefix); `FileReport.InputRelPath` and `FileReport.OutputRelPath` hold the input/output paths relative to their respective root directories (computed in `runMigration` and `processFile` respectively). `FileReport.OutputRelPaths []string` holds **all** output file paths (every doc produced, including split docs like the `-outbound` counterpart from the `from[]`+`to[]` split) — used by the Apply Checklist to enumerate individual files for `kumactl apply`.
+
+**migrate/plan stdout format** — each file line shows: scenario label (fixed 18-char column) · mesh name in bold magenta (omitted for global-scoped) · filename. Two faint gray lines below show `← <inputRelPath>` and `→ <outputRelPath>`. UI helpers: `ui.FileMigrated(scenario, meshName, filename)`, `ui.DocRelPaths(inputRel, outputRel)`.
+
+### Partially-migrated policies (old Kuma-internal MeshService names)
+
+Policies in the wild are sometimes partially migrated: `kind: MeshSubset` was changed to
+`kind: MeshService` but the Kuma-generated internal CRD name (e.g. `echo_demo_svc_8000`)
+was left unchanged. The migrator handles these transparently:
+
+- **Detection** (`detect.go`): `probeRefHasOldMeshServiceName` fires when a `probeRef` has
+  `kind: MeshService` and a name matching the `_svc_` pattern. Checked for `spec.targetRef`,
+  `to[]`, and `from[]`. Triggers `ScenarioSubset` even without any `MeshSubset` ref.
+- **Conversion** (`convert.go`): `ConvertTargetRef` decodes old-format names via
+  `ParseKumaServiceTag` when `kind == "MeshService"` and the name contains `_svc_`.
+  - `topLevel=true` (spec.targetRef): → `kind: Dataplane` (MeshService invalid at top level)
+  - `topLevel=false` (to[]/from[]): → `kind: MeshService` with decoded `name`/`namespace`
+  - Namespace scoping rule applied: same namespace → `name+namespace`; cross-namespace → `labels`
 
 ### Universal format YAML (migrate pipeline)
 
@@ -200,10 +240,17 @@ instead of `metadata`. All migrate-side parsing must normalise these:
 - **`meshNeedsMigration`** (`mesh.go`): `meshProbe` has both `Spec.{Metrics,Tracing,...}` and
   top-level `{Metrics,Tracing,...}` fields. Effective values are resolved with fallback:
   `metrics := p.Spec.Metrics; if metrics == nil { metrics = p.Metrics }`.
+- **`TransformMesh`** (`mesh.go`): when `obj["spec"]` is nil (Universal format — no `spec`
+  wrapper), sets `spec = obj` so `meshServices`, `metrics`, etc. are read and written at
+  the top level. The final `yaml.Marshal(obj)` then produces correct Universal-format output.
 - **`TransformFromToRules`** (`rulesapi.go`): uses a `map[string]interface{}` round-trip via
   `applyFromToRulesMap` to preserve all top-level Universal fields (`type`, `name`, `mesh`,
   `kri`, `creationTime`, `labels`). The typed `KubePolicy` struct path (`applyFromToRules`)
   is kept only for the second-pass inside `transformScenarioSubset`.
+  **Split when `from[]` + `to[]` coexist**: Kuma 2.10+ forbids `rules[]` and `to[]` in the
+  same spec. When both are present `TransformFromToRules` produces **two output documents**:
+  the first keeps the original name with `rules[]` (inbound); the second appends `-outbound`
+  to the name and carries `to[]` (outbound). A warning is emitted and both must be applied.
 - **`extractNameFromObj`**: checks `obj["metadata"]["name"]` first, falls back to `obj["name"]`.
 
 ### Kuma resource labels relevant to extraction and migration
@@ -221,7 +268,7 @@ instead of `metadata`. All migrate-side parsing must normalise these:
 | Scenario | Trigger | Output |
 |---|---|---|
 | Legacy | `sources`/`destinations` policies or legacy type names | `targetRef`/`to`/`from` |
-| Subset | `MeshSubset` with `kuma.io/service` or `k8s.kuma.io/service-name` tags | `Dataplane`/`MeshService` |
+| Subset | `MeshSubset` **or `MeshService` with old Kuma-internal name** in any targetRef | `Dataplane`/`MeshService` |
 | Passthrough | Already using `MeshService` — pass-through | unchanged |
 | Rules | New-style Mesh* with deprecated `from[]` (Kuma 2.10+) | `rules[]` |
 | Mesh | `Mesh` CRD with embedded observability | standalone companion CRDs |
@@ -265,6 +312,11 @@ Skipping more than one minor version is unsupported.
 - **Static** (current `MeshOPA`): `spec.default.appendPolicies[].rego.inlineString`
 - **Dynamic** (via `MeshOPAPolicy` resource): separate resource for runtime policy updates.
   `kuma-migrator` produces static `MeshOPA` output; dynamic config requires manual setup.
+
+## Distribution
+
+Homebrew tap: **`bcollard/homebrew-kuma-migrator`** (GitHub: `bcollard/homebrew-kuma-migrator`).
+Do **not** publish to `Kong/homebrew-kuma-migrator`.
 
 ## Coding Standards
 

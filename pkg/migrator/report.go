@@ -3,9 +3,13 @@ package migrator
 import (
 	"fmt"
 	"os"
+	"path"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/Kong/kuma-migrator/pkg/extractor"
 )
 
 // WriteMarkdownReport renders the MigrationReport as a Markdown file and
@@ -500,54 +504,54 @@ func writeApplyChecklist(b *strings.Builder, r *MigrationReport, isPlan bool) {
 		n++
 	}
 
-	// Determine which CP mode prefixes are present in the output.
-	globalDir, zoneDir, meshDir := globalOutputDir(r), zoneOutputDir(r), meshOutputDir(r)
-	allZonesDir := r.OutputDir + "/all-zones"
+	// Build apply steps from actual output directories found in the report.
+	applyDirs := collectApplyDirs(r)
 
-	linef(b, "**%d. Apply Global CP policies** (resiliency, routing, zero-trust, observability):", n)
-	line(b, "   ```bash")
-	linef(b, "   kubectl apply -f %s/resiliency/", globalDir)
-	linef(b, "   kubectl apply -f %s/routing/", globalDir)
-	linef(b, "   kubectl apply -f %s/zero-trust/", globalDir)
-	linef(b, "   kubectl apply -f %s/observability/", globalDir)
-	line(b, "   ```")
-	line(b, "")
-	n++
-
-	if hasAllZonesOutput(r) {
-		linef(b, "**%d. Apply Gateway API resources to every Zone cluster** (MeshGateway → Gateway, MeshHTTPRoute → HTTPRoute, etc.):", n)
-		line(b, "   > These resources were created on the Global CP but must be applied to each Zone cluster.")
-		line(b, "   > Repeat the commands below for each Zone context.")
-		line(b, "   ```bash")
-		linef(b, "   kubectl --context <zone-context> apply -f %s/routing/", allZonesDir)
-		line(b, "   ```")
-		line(b, "")
-		n++
+	// Separate mesh dirs (apply last) from the rest.
+	var nonMeshDirs, meshDirs []applyDirInfo
+	for _, d := range applyDirs {
+		if d.Subfolder == "mesh" {
+			meshDirs = append(meshDirs, d)
+		} else {
+			nonMeshDirs = append(nonMeshDirs, d)
+		}
 	}
 
-	linef(b, "**%d. Apply Zone-origin policies** (skip if you did not extract from any Zone CPs):", n)
-	line(b, "   ```bash")
-	linef(b, "   kubectl apply -f %s/resiliency/", zoneDir)
-	linef(b, "   kubectl apply -f %s/routing/", zoneDir)
-	linef(b, "   kubectl apply -f %s/zero-trust/", zoneDir)
-	linef(b, "   kubectl apply -f %s/observability/", zoneDir)
-	line(b, "   ```")
-	line(b, "   > Zone-origin policies are resources with `kuma.io/origin: zone` extracted from Zone CPs.")
-	line(b, "")
-	n++
+	if len(nonMeshDirs) > 0 {
+		linef(b, "**%d. Apply policies** (resiliency, routing, zero-trust, observability) in the order below:", n)
+		line(b, "")
+		n++
+		var prevCPDir string
+		for _, d := range nonMeshDirs {
+			if d.CPModeDir != prevCPDir {
+				prevCPDir = d.CPModeDir
+				writeContextHeader(b, d)
+			}
+			writeApplyDirCommands(b, d, r.OutputDir)
+		}
+	}
 
-	linef(b, "**%d. Apply `Mesh` CRs last:**", n)
-	line(b, "   ```bash")
-	linef(b, "   kubectl apply -f %s/", meshDir)
-	line(b, "   ```")
-	line(b, "   > These CRs set `spec.meshServices.mode: Exclusive`, which disables legacy `kuma.io/service`")
-	line(b, "   > routing. **Do not apply until all policies and workload env vars are migrated.**")
-	line(b, "   > If any `Mesh` CRs were not in the input directory, patch them manually:")
-	line(b, "   > ```bash")
-	line(b, "   > kubectl patch mesh <name> --type merge -p '{\"spec\":{\"meshServices\":{\"mode\":\"Exclusive\"}}}'")
-	line(b, "   > ```")
-	line(b, "")
-	n++
+	if len(meshDirs) > 0 {
+		linef(b, "**%d. Apply `Mesh` CRs last:**", n)
+		line(b, "")
+		line(b, "   > These CRs set `spec.meshServices.mode: Exclusive`, which disables legacy `kuma.io/service`")
+		line(b, "   > routing. **Do not apply until all policies and workload env vars are migrated.**")
+		line(b, "")
+		n++
+		var prevCPDir string
+		for _, d := range meshDirs {
+			if d.CPModeDir != prevCPDir {
+				prevCPDir = d.CPModeDir
+				writeContextHeader(b, d)
+			}
+			writeApplyDirCommands(b, d, r.OutputDir)
+		}
+		line(b, "   > If any `Mesh` CRs were not in the input directory, patch them manually:")
+		line(b, "   > ```bash")
+		line(b, "   > kubectl patch mesh <name> --type merge -p '{\"spec\":{\"meshServices\":{\"mode\":\"Exclusive\"}}}'")
+		line(b, "   > ```")
+		line(b, "")
+	}
 
 	linef(b, "**%d. Verify traffic health.** Check service-to-service connectivity across all meshes.", n)
 	line(b, "   Monitor your observability stack for errors before proceeding.")
@@ -564,23 +568,175 @@ func writeApplyChecklist(b *strings.Builder, r *MigrationReport, isPlan bool) {
 	line(b, "")
 }
 
+// writeContextHeader writes the context label line before a group of apply commands.
+// For kumactl contexts it adds a use-context reminder; for kubectl contexts it's plain.
+func writeContextHeader(b *strings.Builder, d applyDirInfo) {
+	if d.Tool == "kumactl" {
+		label := "kumactl"
+		if d.IsKonnect {
+			label = "kumactl — Konnect-hosted CP"
+		}
+		linef(b, "   **Context `%s`** (%s):", d.CPModeDir, label)
+		ctxName := d.Context
+		if ctxName == "" {
+			ctxName = d.CPModeDir // fallback
+		}
+		linef(b, "   > Set the active context first: `kumactl config use-context %s`", ctxName)
+	} else {
+		linef(b, "   **Context `%s`**:", d.CPModeDir)
+	}
+	line(b, "")
+}
+
+// writeApplyDirCommands writes the apply commands for a single output directory.
+// For kumactl contexts each file is listed individually since kumactl does not
+// accept a directory as the -f argument. For kubectl a single directory apply is used.
+// When the extraction tool is unknown (legacy/flat layout) kubectl is assumed.
+func writeApplyDirCommands(b *strings.Builder, d applyDirInfo, outputDir string) {
+	if d.Tool == "kumactl" {
+		line(b, "   ```bash")
+		for _, f := range d.Files {
+			linef(b, "   kumactl apply -f %s", filepath.Join(outputDir, f))
+		}
+		line(b, "   ```")
+	} else {
+		line(b, "   ```bash")
+		linef(b, "   kubectl apply -f %s/", d.FullDir)
+		line(b, "   ```")
+	}
+	line(b, "")
+}
+
+// ── Apply dir helpers ─────────────────────────────────────────────────────────
+
+// applyDirInfo represents a single output directory to be applied.
+type applyDirInfo struct {
+	FullDir   string   // absolute path to the directory
+	RelDir    string   // relative to outputDir
+	CPModeDir string   // first path component (context label)
+	Subfolder string   // last path component ("resiliency", "mesh", etc.)
+	Tool      string   // "kubectl", "kumactl", or "" (unknown/legacy — defaults to kubectl)
+	IsKonnect bool     // true when the CP is Konnect-hosted (from extraction metadata)
+	Context   string   // original kumactl/kubectl context name (from extraction metadata)
+	Files     []string // output file paths relative to outputDir, in this dir (for kumactl)
+}
+
+// collectApplyDirs returns all distinct output directories derived from the
+// report's output file paths, sorted for correct application order:
+// global/standalone CPs before zone CPs; mesh/ subfolder last within each CP.
+// Tool metadata is read from .kuma-migrator.json files written by kuma-migrator extract.
+func collectApplyDirs(r *MigrationReport) []applyDirInfo {
+	subOrder := map[string]int{
+		"resiliency": 0, "routing": 1, "zero-trust": 2, "observability": 3,
+		"gateway": 4, "workload": 4, "other": 4, "mesh": 99,
+	}
+	subRank := func(s string) int {
+		if rank, ok := subOrder[s]; ok {
+			return rank
+		}
+		return 50
+	}
+
+	// Cache metadata per cpModeDir to avoid repeated file reads.
+	metaCache := map[string]*extractor.ContextMeta{}
+	getMeta := func(cpModeDir string) *extractor.ContextMeta {
+		if m, ok := metaCache[cpModeDir]; ok {
+			return m
+		}
+		m := extractor.ReadContextMeta(r.InputDir, cpModeDir)
+		metaCache[cpModeDir] = m
+		return m
+	}
+
+	// Collect distinct dirs and their files.
+	dirMap := map[string]*applyDirInfo{} // relDir → info
+	var dirOrder []string
+
+	for _, fr := range r.Files {
+		for _, relPath := range fr.OutputRelPaths {
+			relDir := filepath.ToSlash(filepath.Dir(relPath))
+			if relDir == "." {
+				continue
+			}
+			if _, seen := dirMap[relDir]; !seen {
+				parts := strings.SplitN(relDir, "/", 5)
+				cpModeDir := ""
+				if len(parts) > 0 {
+					cpModeDir = parts[0]
+				}
+				subfolder := path.Base(relDir)
+
+				tool := ""
+				isKonnect := false
+				contextName := ""
+				if meta := getMeta(cpModeDir); meta != nil {
+					tool = meta.Tool
+					isKonnect = meta.IsKonnect
+					contextName = meta.Context
+				}
+
+				info := &applyDirInfo{
+					FullDir:   filepath.Join(r.OutputDir, relDir),
+					RelDir:    relDir,
+					CPModeDir: cpModeDir,
+					Subfolder: subfolder,
+					Tool:      tool,
+					IsKonnect: isKonnect,
+					Context:   contextName,
+				}
+				dirMap[relDir] = info
+				dirOrder = append(dirOrder, relDir)
+			}
+			dirMap[relDir].Files = append(dirMap[relDir].Files, relPath)
+		}
+	}
+
+	result := make([]applyDirInfo, 0, len(dirOrder))
+	for _, d := range dirOrder {
+		result = append(result, *dirMap[d])
+	}
+
+	sort.SliceStable(result, func(i, j int) bool {
+		a, b := result[i], result[j]
+		ra, rb := applyDirCPRank(a.CPModeDir), applyDirCPRank(b.CPModeDir)
+		if ra != rb {
+			return ra < rb
+		}
+		if a.CPModeDir != b.CPModeDir {
+			return a.CPModeDir < b.CPModeDir
+		}
+		sa, sb := subRank(a.Subfolder), subRank(b.Subfolder)
+		if sa != sb {
+			return sa < sb
+		}
+		return a.RelDir < b.RelDir
+	})
+
+	return result
+}
+
+// applyDirCPRank orders CP mode directory labels: global/standalone first,
+// then zone CPs, then unknown/flat layouts.
+func applyDirCPRank(d string) int {
+	lower := strings.ToLower(d)
+	switch {
+	case strings.Contains(lower, "global") || strings.Contains(lower, "standalone"):
+		return 0
+	case strings.Contains(lower, "zone"):
+		return 1
+	case d == "":
+		return 3
+	default:
+		return 2
+	}
+}
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 // hasLabel reports whether any file in the report carries the given label.
 func hasLabel(r *MigrationReport, label string) bool {
 	for _, fr := range r.Files {
 		if fr.Label == label {
-			return true
-		}
-	}
-	return false
-}
-
-// hasAllZonesOutput reports whether any file had its output redirected to all-zones/
-// (i.e. Gateway API resources sourced from the Global CP input folder).
-func hasAllZonesOutput(r *MigrationReport) bool {
-	for _, fr := range r.Files {
-		if fr.OutputCPModeDir == "all-zones" {
 			return true
 		}
 	}
@@ -628,37 +784,6 @@ func sortCPModeDirs(dirs []string) {
 		}
 		return dirs[i] < dirs[j]
 	})
-}
-
-// globalOutputDir returns the output directory for Global CP policies.
-// If the report contains files with a "global" or "standalone" CP mode prefix,
-// it returns <OutputDir>/global (or /standalone). Otherwise it falls back to
-// OutputDir itself (flat structure — no CP mode parent folder).
-func globalOutputDir(r *MigrationReport) string {
-	for _, mode := range []string{"global", "standalone"} {
-		for _, fr := range r.Files {
-			if fr.CPModeDir == mode {
-				return r.OutputDir + "/" + mode
-			}
-		}
-	}
-	return r.OutputDir
-}
-
-// zoneOutputDir returns the output directory for Zone-origin policies.
-// Uses the actual zone-* directory name found in the report (e.g. "zone-eu-west").
-func zoneOutputDir(r *MigrationReport) string {
-	for _, fr := range r.Files {
-		if fr.CPModeDir == "zone" || strings.HasPrefix(fr.CPModeDir, "zone-") {
-			return r.OutputDir + "/" + fr.CPModeDir
-		}
-	}
-	return r.OutputDir + "/zone-<name>"
-}
-
-// meshOutputDir returns the output directory containing the migrated Mesh CRs.
-func meshOutputDir(r *MigrationReport) string {
-	return globalOutputDir(r) + "/mesh"
 }
 
 func line(b *strings.Builder, s string) {

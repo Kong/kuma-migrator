@@ -249,6 +249,8 @@ spec:
 func TestTransformFromToRules_UniversalFormat(t *testing.T) {
 	// Universal format: type/name/mesh at top level (no kind/apiVersion/metadata).
 	// Extra fields (creationTime, kri, labels) must be preserved after transformation.
+	// When from[] AND to[] are both present, the policy must be split into two docs
+	// because Kuma 2.10+ forbids rules[] and to[] coexisting in the same spec.
 	input := `creationTime: "2026-03-27T18:26:50Z"
 kri: kri_mal_default___default_
 labels:
@@ -280,43 +282,166 @@ type: MeshAccessLog
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(docs) != 1 {
-		t.Fatalf("expected 1 output doc, got %d", len(docs))
+	// Must produce 2 docs: one with rules[] (inbound), one with to[] (outbound).
+	if len(docs) != 2 {
+		t.Fatalf("expected 2 output docs (split), got %d", len(docs))
 	}
 	if len(warnings) == 0 {
 		t.Error("expected at least one warning about from[]→rules[] migration")
 	}
-
-	var out map[string]interface{}
-	if err := yaml.Unmarshal(docs[0], &out); err != nil {
-		t.Fatalf("unmarshal output: %v", err)
+	hasSplitWarn := false
+	for _, w := range warnings {
+		if strings.Contains(w, "Split into two policies") {
+			hasSplitWarn = true
+		}
+	}
+	if !hasSplitWarn {
+		t.Errorf("expected split warning, got: %v", warnings)
 	}
 
-	// Universal-format identity fields must be preserved.
-	if got, _ := out["type"].(string); got != "MeshAccessLog" {
-		t.Errorf("expected type=MeshAccessLog, got %q", got)
+	// Doc 0: rules[] policy (inbound), original name.
+	var inbound map[string]interface{}
+	if err := yaml.Unmarshal(docs[0], &inbound); err != nil {
+		t.Fatalf("unmarshal inbound doc: %v", err)
 	}
-	if got, _ := out["name"].(string); got != "default" {
-		t.Errorf("expected name=default, got %q", got)
+	if got, _ := inbound["type"].(string); got != "MeshAccessLog" {
+		t.Errorf("inbound: expected type=MeshAccessLog, got %q", got)
 	}
-	if got, _ := out["mesh"].(string); got != "default" {
-		t.Errorf("expected mesh=default, got %q", got)
+	if got, _ := inbound["name"].(string); got != "default" {
+		t.Errorf("inbound: expected name=default, got %q", got)
 	}
-	if _, ok := out["kri"]; !ok {
-		t.Error("expected kri field to be preserved")
+	if got, _ := inbound["mesh"].(string); got != "default" {
+		t.Errorf("inbound: expected mesh=default, got %q", got)
 	}
-
-	spec := out["spec"].(map[string]interface{})
-	if _, hasFrom := spec["from"]; hasFrom {
-		t.Error("expected from[] to be removed")
+	if _, ok := inbound["kri"]; !ok {
+		t.Error("inbound: expected kri field to be preserved")
 	}
-	rules, ok := spec["rules"].([]interface{})
+	inboundSpec := inbound["spec"].(map[string]interface{})
+	if _, hasFrom := inboundSpec["from"]; hasFrom {
+		t.Error("inbound: expected from[] to be removed")
+	}
+	if _, hasTo := inboundSpec["to"]; hasTo {
+		t.Error("inbound: expected to[] to be absent (moved to outbound doc)")
+	}
+	rules, ok := inboundSpec["rules"].([]interface{})
 	if !ok || len(rules) != 1 {
-		t.Errorf("expected rules[] with 1 entry, got %v", spec["rules"])
+		t.Errorf("inbound: expected rules[] with 1 entry, got %v", inboundSpec["rules"])
 	}
-	to, ok := spec["to"].([]interface{})
+
+	// Doc 1: to[] policy (outbound), name suffixed with "-outbound".
+	var outbound map[string]interface{}
+	if err := yaml.Unmarshal(docs[1], &outbound); err != nil {
+		t.Fatalf("unmarshal outbound doc: %v", err)
+	}
+	if got, _ := outbound["name"].(string); got != "default-outbound" {
+		t.Errorf("outbound: expected name=default-outbound, got %q", got)
+	}
+	outboundSpec := outbound["spec"].(map[string]interface{})
+	if _, hasRules := outboundSpec["rules"]; hasRules {
+		t.Error("outbound: expected rules[] to be absent")
+	}
+	to, ok := outboundSpec["to"].([]interface{})
 	if !ok || len(to) != 1 {
-		t.Errorf("expected to[] with 1 entry, got %v", spec["to"])
+		t.Errorf("outbound: expected to[] with 1 entry, got %v", outboundSpec["to"])
+	}
+}
+
+func TestTransformFromToRules_SplitFromAndTo_MeshTimeout(t *testing.T) {
+	// Mirrors the real-world failing resource: Universal MeshTimeout with proxyTypes
+	// on targetRef, distinct timeout values in from[] (inbound) and to[] (outbound).
+	// Kuma 2.10+ rejects rules[] and to[] in the same spec — must split.
+	input := `creationTime: "2026-04-20T13:28:43.205767Z"
+kri: kri_mt_default___mesh-gateways-timeout-all-default_
+mesh: default
+modificationTime: "2026-04-20T13:28:43.205767Z"
+name: mesh-gateways-timeout-all-default
+spec:
+  from:
+  - default:
+      http:
+        requestHeadersTimeout: 500ms
+        streamIdleTimeout: 5s
+      idleTimeout: 5m0s
+    targetRef:
+      kind: Mesh
+  targetRef:
+    kind: Mesh
+    proxyTypes:
+    - Gateway
+  to:
+  - default:
+      http:
+        streamIdleTimeout: 5s
+      idleTimeout: 1h0m0s
+    targetRef:
+      kind: Mesh
+type: MeshTimeout
+`
+	docs, warnings, err := TransformFromToRules([]byte(input))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(docs) != 2 {
+		t.Fatalf("expected 2 output docs (split), got %d", len(docs))
+	}
+
+	hasSplitWarn := false
+	for _, w := range warnings {
+		if strings.Contains(w, "Split into two policies") {
+			hasSplitWarn = true
+		}
+	}
+	if !hasSplitWarn {
+		t.Errorf("expected split warning, got: %v", warnings)
+	}
+
+	// Doc 0: inbound — rules[], original name, no to[].
+	var inbound map[string]interface{}
+	if err := yaml.Unmarshal(docs[0], &inbound); err != nil {
+		t.Fatalf("unmarshal inbound: %v", err)
+	}
+	if got, _ := inbound["name"].(string); got != "mesh-gateways-timeout-all-default" {
+		t.Errorf("inbound: expected original name, got %q", got)
+	}
+	inboundSpec := inbound["spec"].(map[string]interface{})
+	if _, hasFrom := inboundSpec["from"]; hasFrom {
+		t.Error("inbound: from[] must be removed")
+	}
+	if _, hasTo := inboundSpec["to"]; hasTo {
+		t.Error("inbound: to[] must be absent")
+	}
+	rules, ok := inboundSpec["rules"].([]interface{})
+	if !ok || len(rules) != 1 {
+		t.Errorf("inbound: expected 1 rules[] entry, got %v", inboundSpec["rules"])
+	}
+	// Inbound rule carries the from[] default (idleTimeout: 5m).
+	rule := rules[0].(map[string]interface{})
+	def := rule["default"].(map[string]interface{})
+	if got, _ := def["idleTimeout"].(string); got != "5m0s" {
+		t.Errorf("inbound rule: expected idleTimeout=5m0s, got %q", got)
+	}
+
+	// Doc 1: outbound — to[], name suffixed -outbound, no rules[].
+	var outbound map[string]interface{}
+	if err := yaml.Unmarshal(docs[1], &outbound); err != nil {
+		t.Fatalf("unmarshal outbound: %v", err)
+	}
+	if got, _ := outbound["name"].(string); got != "mesh-gateways-timeout-all-default-outbound" {
+		t.Errorf("outbound: expected -outbound suffix, got %q", got)
+	}
+	outboundSpec := outbound["spec"].(map[string]interface{})
+	if _, hasRules := outboundSpec["rules"]; hasRules {
+		t.Error("outbound: rules[] must be absent")
+	}
+	toEntries, ok := outboundSpec["to"].([]interface{})
+	if !ok || len(toEntries) != 1 {
+		t.Errorf("outbound: expected 1 to[] entry, got %v", outboundSpec["to"])
+	}
+	// Outbound entry carries the to[] default (idleTimeout: 1h).
+	toEntry := toEntries[0].(map[string]interface{})
+	toDef := toEntry["default"].(map[string]interface{})
+	if got, _ := toDef["idleTimeout"].(string); got != "1h0m0s" {
+		t.Errorf("outbound to[]: expected idleTimeout=1h0m0s, got %q", got)
 	}
 }
 

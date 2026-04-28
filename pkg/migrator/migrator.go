@@ -35,7 +35,8 @@ type FileReport struct {
 	OutputCPModeDir string // effective output CP mode dir (may differ from CPModeDir for GW resources from global)
 	MeshDir         string // mesh directory from input path (e.g. "default", "prod"); empty for flat/legacy layout
 	InputRelPath    string // input file path relative to inputDir
-	OutputRelPath   string // primary output file path relative to outputDir
+	OutputRelPath   string   // primary output file path relative to outputDir (first doc, for stdout)
+	OutputRelPaths  []string // all output file paths relative to outputDir (all docs, for report)
 	HasError        bool
 	Changes         []DocChange
 	EnvVarHits      []EnvVarHit
@@ -372,11 +373,13 @@ func processFile(inputPath, outputDir, cpModeDir, meshDir string, writeFile bool
 		}
 		fname := outputDocFilename(doc)
 
-		// Record the first output doc's path for display purposes.
-		if fr.OutputRelPath == "" {
-			if rel, relErr := filepath.Rel(outputDir, filepath.Join(dir, fname)); relErr == nil {
-				fr.OutputRelPath = filepath.ToSlash(rel)
+		// Record output paths for display and apply checklist.
+		if rel, relErr := filepath.Rel(outputDir, filepath.Join(dir, fname)); relErr == nil {
+			relSlash := filepath.ToSlash(rel)
+			if fr.OutputRelPath == "" {
+				fr.OutputRelPath = relSlash
 			}
+			fr.OutputRelPaths = append(fr.OutputRelPaths, relSlash)
 		}
 
 		if writeFile {

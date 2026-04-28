@@ -1,5 +1,59 @@
 package extractor
 
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+)
+
+// ContextMeta is written by kuma-migrator extract into each context directory
+// as <outputDir>/<cpModeDir>/.kuma-migrator.json. It records how the extraction
+// was performed so that migrate/plan can generate correct apply instructions.
+type ContextMeta struct {
+	Tool      string `json:"tool"`                // "kubectl" or "kumactl"
+	Context   string `json:"context"`             // original context name
+	CPMode    string `json:"cpMode"`              // "global", "zone", "standalone", ""
+	IsKonnect bool   `json:"isKonnect,omitempty"` // true when the CP is Kong Konnect hosted
+}
+
+// WriteContextMeta creates the context directory and writes a .kuma-migrator.json
+// metadata file recording the extraction parameters.
+func WriteContextMeta(outputDir, dirLabel, tool, contextName, cpMode string, isKonnect bool) error {
+	dir := filepath.Join(outputDir, dirLabel)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("create context directory: %w", err)
+	}
+	meta := ContextMeta{
+		Tool:      tool,
+		Context:   contextName,
+		CPMode:    cpMode,
+		IsKonnect: isKonnect,
+	}
+	data, err := json.Marshal(meta)
+	if err != nil {
+		return fmt.Errorf("marshal context meta: %w", err)
+	}
+	return os.WriteFile(filepath.Join(dir, ".kuma-migrator.json"), data, 0644)
+}
+
+// ReadContextMeta reads the .kuma-migrator.json metadata file from a context
+// directory. Returns nil if the file is absent (older extract output).
+func ReadContextMeta(inputDir, cpModeDir string) *ContextMeta {
+	if cpModeDir == "" {
+		return nil
+	}
+	data, err := os.ReadFile(filepath.Join(inputDir, cpModeDir, ".kuma-migrator.json"))
+	if err != nil {
+		return nil
+	}
+	var meta ContextMeta
+	if err := json.Unmarshal(data, &meta); err != nil {
+		return nil
+	}
+	return &meta
+}
+
 const (
 	CPModeGlobal     = "global"
 	CPModeZone       = "zone"

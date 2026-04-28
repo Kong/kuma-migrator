@@ -57,6 +57,9 @@ func ExtractViaKumactl(contextName, outputDir, meshFilter, outputFormat string) 
 
 	skipSet := loadSkipSet(cpEnv)
 	dirLabel := cpModeDirectoryLabel(resolvedCtx, cpMode)
+	if err := WriteContextMeta(outputDir, dirLabel, "kumactl", resolvedCtx, cpMode, isKonnectURL(cpURL)); err != nil {
+		ui.Warn(fmt.Sprintf("could not write context metadata: %v", err))
+	}
 	var zones []string
 	if cpMode == CPModeGlobal {
 		zones = listZoneNamesKumactl(resolvedCtx, cpURL, bearerToken)

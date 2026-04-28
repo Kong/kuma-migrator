@@ -23,6 +23,11 @@ var rulesAPIMigrationKinds = map[string]bool{
 // each from[] entry is discarded because rules[] has no source discrimination;
 // a warning is emitted when multiple entries with distinct source kinds are found.
 //
+// When the policy also has to[] alongside from[], Kuma 2.10+ forbids having both
+// rules[] and to[] in the same spec. In this case the policy is split into two
+// documents: the first carries rules[] (inbound) with the original name, the second
+// carries to[] (outbound) with "-outbound" appended to the resource name.
+//
 // Uses a map-based round-trip to preserve ALL top-level fields (including
 // Universal-format fields like "type", "name", "mesh", "creationTime", etc.).
 func TransformFromToRules(raw []byte) ([][]byte, []string, error) {
@@ -43,11 +48,72 @@ func TransformFromToRules(raw []byte) ([][]byte, []string, error) {
 		return [][]byte{raw}, warnings, nil
 	}
 
+	// After from[]→rules[] conversion: check if to[] is still present.
+	// Kuma 2.10+ forbids rules[] and to[] coexisting in the same spec — split.
+	spec, _ := obj["spec"].(map[string]interface{})
+	if spec == nil {
+		spec = obj
+	}
+	if _, hasTo := spec["to"]; hasTo {
+		outboundObj, err := deepCopyObjViaYAML(obj)
+		if err != nil {
+			return nil, warnings, fmt.Errorf("deep copy for split: %w", err)
+		}
+		outboundSpec, _ := outboundObj["spec"].(map[string]interface{})
+		if outboundSpec == nil {
+			outboundSpec = outboundObj
+		}
+		delete(outboundSpec, "rules")
+		outboundName := name + "-outbound"
+		setObjName(outboundObj, outboundName)
+
+		delete(spec, "to")
+
+		warnings = append(warnings, fmt.Sprintf(
+			"%s %q: policy has both from[] and to[] — Kuma 2.10+ forbids rules[] and to[] "+
+				"in the same spec. Split into two policies: %q (rules[], inbound) and %q (to[], outbound). "+
+				"Apply both.",
+			kind, name, name, outboundName))
+
+		b1, err := yaml.Marshal(obj)
+		if err != nil {
+			return nil, warnings, fmt.Errorf("marshal rules policy: %w", err)
+		}
+		b2, err := yaml.Marshal(outboundObj)
+		if err != nil {
+			return nil, warnings, fmt.Errorf("marshal outbound policy: %w", err)
+		}
+		return [][]byte{b1, b2}, warnings, nil
+	}
+
 	b, err := yaml.Marshal(obj)
 	if err != nil {
 		return nil, warnings, fmt.Errorf("marshal policy: %w", err)
 	}
 	return [][]byte{b}, warnings, nil
+}
+
+// deepCopyObjViaYAML performs a deep copy of a map via YAML marshal/unmarshal.
+func deepCopyObjViaYAML(obj map[string]interface{}) (map[string]interface{}, error) {
+	b, err := yaml.Marshal(obj)
+	if err != nil {
+		return nil, err
+	}
+	var cp map[string]interface{}
+	if err := yaml.Unmarshal(b, &cp); err != nil {
+		return nil, err
+	}
+	return cp, nil
+}
+
+// setObjName sets the resource name on a Kubernetes (metadata.name) or
+// Universal (top-level name) format object.
+func setObjName(obj map[string]interface{}, name string) {
+	if md, ok := obj["metadata"].(map[string]interface{}); ok {
+		md["name"] = name
+	} else if _, ok := obj["name"]; ok {
+		obj["name"] = name
+	}
 }
 
 // applyFromToRulesMap performs the from[] → rules[] migration on a
