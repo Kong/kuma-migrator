@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -582,15 +583,40 @@ func kumactlConfigPath() string {
 // when bearerToken is non-empty. Returns the response body, HTTP status code, and
 // any transport-level error. When TLSSkipVerify is true, certificate verification
 // is disabled (useful for self-signed CP admin server certs).
-func authenticatedGet(url, bearerToken string, timeout time.Duration) (body []byte, status int, err error) {
+//
+// SSRF threat model: kuma-migrator is a local CLI. The target URL is sourced from
+// the operator's own ~/.kumactl/config (or a Konnect URL their config points at) —
+// there is no untrusted caller supplying URLs. Private/loopback addresses are
+// legitimate targets (self-hosted CPs on RFC1918 subnets, port-forwarded
+// 127.0.0.1, etc.) so they are intentionally not blocked. Defense-in-depth: the
+// scheme is restricted to http(s) and redirects are disallowed so a compromised
+// CP cannot bounce the bearer token to a third party (e.g. cloud metadata
+// endpoints).
+func authenticatedGet(rawURL, bearerToken string, timeout time.Duration) (body []byte, status int, err error) {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return nil, 0, fmt.Errorf("invalid URL %q: %w", rawURL, err)
+	}
+	switch parsed.Scheme {
+	case "http", "https":
+	default:
+		return nil, 0, fmt.Errorf("unsupported URL scheme %q (want http or https)", parsed.Scheme)
+	}
+
 	transport := http.DefaultTransport
 	if TLSSkipVerify {
 		transport = &http.Transport{
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec
 		}
 	}
-	client := &http.Client{Timeout: timeout, Transport: transport}
-	req, err := http.NewRequest("GET", url, nil)
+	client := &http.Client{
+		Timeout:   timeout,
+		Transport: transport,
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+	req, err := http.NewRequest("GET", rawURL, nil)
 	if err != nil {
 		return nil, 0, err
 	}
