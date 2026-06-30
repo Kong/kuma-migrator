@@ -27,5 +27,8 @@ jobs:
           version: latest
           args: release --clean
         env:
-          GITHUB_TOKEN: ${{ secrets.BCOLLARD_RELEASE_TOKEN }}
+          # Release is published to this repo (Kong/kuma-migrator); the workflow's
+          # built-in token with `contents: write` is sufficient. The Homebrew cask is
+          # pushed to bcollard/homebrew-kuma-migrator, which still needs a cross-repo PAT.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
