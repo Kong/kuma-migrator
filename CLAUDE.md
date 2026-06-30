@@ -294,14 +294,14 @@ instead of `metadata`. All migrate-side parsing must normalise these:
 - `Dataplane transparentProxying.redirectPortInboundV6` → warn, field removed (v2.9)
 - `Dataplane transparentProxying.reachableServices` → warn, names must be updated to MeshService display names in Exclusive mode (v2.10)
 - `kuma.io/*` annotation `yes`/`no` → scanner, use `true`/`false` (v2.9)
-- `MeshSubset` in `spec.targetRef` without service-identity tags → warn, use `Dataplane` with labels (v2.10)
 - `MeshTrafficPermission spec.*.spiffeId` → auto-fixed to `spiffeID` casing (v2.12)
 - `MeshLoadBalancingStrategy to[].default.loadBalancer.{ringHash,maglev}.hashPolicies` → auto-fixed to `to[].default.hashPolicies` (v2.12; distinct from the `SourceIP→Connection` type change above)
 - `MeshService spec.ports[].protocol` → auto-fixed to `appProtocol` (v2.8)
 - `MeshMetric`/`MeshTrace`/`MeshAccessLog` inline `openTelemetry.endpoint` → warn, define a `MeshOpenTelemetryBackend` and reference it via `backendRef` (deprecated v2.14, removed 3.0)
 - `MeshAccessLog` `openTelemetry.attributes[].key` reserved `otel.` prefix / non-lowercase / placeholder keys → warn, stricter validation rejects on reapply (v2.14)
 - `Mesh spec.routing.defaultForbidMeshExternalServiceAccess` → warn, removed in 3.0 (use `MeshTrafficPermission`)
-- `MeshTrafficPermission`/`MeshFaultInjection` `from[]` → warn, deprecated in favour of `rules[]` API (MFI v2.13, MTP v2.14, removed 3.0); not auto-converted because source/action semantics need manual review
+- `MeshTrafficPermission`/`MeshFaultInjection` `from[]` → warn, deprecated in favour of `rules[]` API (MFI v2.13, MTP v2.14, removed 3.0). **Intentionally not auto-converted**: the `rules[]` API matches clients by SPIFFE identity (MTP, via `default.{allow,deny,allowWithShadowDeny}`, requires `MeshIdentity`, default-deny) / `matches[]` SpiffeID·SNI (MFI), while `from[].targetRef` uses tag/label selectors. The SPIFFE trust-domain + identity strings are not present in the manifest, so a mechanical rewrite would either fail or silently widen access (a security regression for MTP). The warning lists the manual steps. `warnFromDeprecatedForRulesAPI` in `deprecation.go`.
+- deprecated **top-level `spec.targetRef.kind`** (any policy) → warn: `MeshSubset` (only when no service-identity tags) / `MeshService` / `MeshServiceSubset` → use `Dataplane` with labels; `MeshHTTPRoute` → reference in `spec.to[].targetRef` (v2.10/2.11). Mirrors upstream `validators.TopLevelTargetRefDeprecations`. Warn-only (not auto-converted) because a `MeshService`/`MeshServiceSubset` selector can't be expanded to the equivalent `Dataplane` label set from the manifest alone — only the legacy Kuma-internal `_svc_` names carry enough info, and those are already rewritten to `Dataplane` by `ScenarioSubset` before this post-pass. `warnDeprecatedTopLevelTargetRef` in `deprecation.go`.
 - `Mesh`/`MeshService`/`MeshExternalService`/`MeshMultiZoneService` names violating RFC 1035 or exceeding 63 chars → warn, becomes a hard error in 3.0 (via `ValidateResourceName`)
 
 `ScanForDeprecations` normalises `kind` from `obj["type"]` when `obj["kind"]` is empty, so

@@ -34,7 +34,9 @@ import (
 //   - Mesh spec.routing.defaultForbidMeshExternalServiceAccess removed (3.0)
 //   - Dataplane transparentProxying.redirectPortInboundV6 removed (v2.9)
 //   - Dataplane transparentProxying.reachableServices uses legacy kuma.io/service names (v2.10)
-//   - Any Mesh* policy with spec.targetRef.kind: MeshSubset without service-identity tags (v2.10)
+//   - Any Mesh* policy with a deprecated top-level spec.targetRef.kind: MeshSubset (without
+//     service-identity tags) / MeshService / MeshServiceSubset → Dataplane, or MeshHTTPRoute
+//     → spec.to[].targetRef (v2.10/2.11)
 //   - Mesh/MeshService/MeshExternalService/MeshMultiZoneService names that violate RFC 1035 /
 //     exceed 63 chars (warning in 2.14, hard error in 3.0)
 //
@@ -91,12 +93,13 @@ func ScanForDeprecations(raw []byte) (out []byte, warnings []string) {
 	case "Dataplane":
 		warnings = append(warnings, warnDataplaneRedirectPortInboundV6(obj, name)...)
 		warnings = append(warnings, warnDataplaneReachableServices(obj, name)...)
-	default:
-		// Generic check: any Mesh* policy with MeshSubset targetRef that has no
-		// service-identity tags is already-migrated style but uses a deprecated kind.
-		if len(kind) > 4 && kind[:4] == "Mesh" {
-			warnings = warnMeshSubsetWithoutServiceTag(obj, name, kind)
-		}
+	}
+
+	// Generic checks applied to every Mesh* policy regardless of kind.
+	if len(kind) > 4 && kind[:4] == "Mesh" {
+		// Deprecated top-level spec.targetRef kinds (MeshSubset/MeshService/MeshServiceSubset
+		// → Dataplane; MeshHTTPRoute → spec.to[].targetRef).
+		warnings = append(warnings, warnDeprecatedTopLevelTargetRef(obj, name, kind)...)
 	}
 
 	// Name-format validation for kinds with strict RFC 1035 requirements. These
@@ -219,9 +222,11 @@ func warnMeshServiceInFrom(obj map[string]interface{}, name, kind string) []stri
 
 // warnFromDeprecatedForRulesAPI warns when an MTP/MFI uses the from[] field, which was
 // deprecated in favour of the rules[] API (MeshFaultInjection in 2.13, MeshTrafficPermission
-// in 2.14 — kumahq/kuma#16182). The conversion is not automated because from[] carries
-// per-source matching (and, for MTP, per-source action) that the source-less rules[] API
-// expresses differently, so it needs manual review.
+// in 2.14 — kumahq/kuma#16182). The conversion is intentionally NOT automated: the rules[]
+// API matches clients by SPIFFE identity / SNI, while from[] uses tag/label selectors. The
+// SPIFFE trust-domain and identity strings are not present in the source manifest (they depend
+// on MeshIdentity / cluster identity config), so a mechanical rewrite would either fail or —
+// worse, for MeshTrafficPermission — silently widen access. The warning gives the manual steps.
 func warnFromDeprecatedForRulesAPI(obj map[string]interface{}, name, kind string) []string {
 	spec, ok := obj["spec"].(map[string]interface{})
 	if !ok {
@@ -230,10 +235,25 @@ func warnFromDeprecatedForRulesAPI(obj map[string]interface{}, name, kind string
 	if from, ok := spec["from"].([]interface{}); !ok || len(from) == 0 {
 		return nil
 	}
-	return []string{fmt.Sprintf(
-		"%s %q: the from[] field is deprecated in favour of the rules[] API (Kuma 2.13/2.14) and is removed in 3.0 — "+
-			"migrate source-based matching to rules[] manually (rules[] applies to all inbound traffic and has no per-source discrimination).",
-		kind, name)}
+	switch kind {
+	case "MeshTrafficPermission":
+		return []string{fmt.Sprintf(
+			"MeshTrafficPermission %q: the from[] field is deprecated in favour of the rules[] API "+
+				"(Kuma 2.14, removed in 3.0) and is NOT auto-converted. rules[] requires MeshIdentity, "+
+				"matches clients by SPIFFE identity under default.{allow,deny,allowWithShadowDeny}, and is "+
+				"default-deny. Manually translate each from[] source selector to a spiffeID matcher and place "+
+				"it under allow / deny / allowWithShadowDeny per its Allow/Deny/AllowWithShadowDeny value. The "+
+				"SPIFFE trust-domain and identity values cannot be derived from this manifest.",
+			name)}
+	case "MeshFaultInjection":
+		return []string{fmt.Sprintf(
+			"MeshFaultInjection %q: the from[] field is deprecated in favour of the rules[] API "+
+				"(Kuma 2.13, removed in 3.0) and is NOT auto-converted. In rules[], each entry has matches[] "+
+				"(spiffeID/sni) plus a default fault config; re-express each from[] source as a matches[] clause. "+
+				"Omitting matches[] applies the fault to all inbound traffic, which widens the original scope.",
+			name)}
+	}
+	return nil
 }
 
 // ---- MeshTrafficPermission action casing (Kong Mesh 2.1) ----------------------
@@ -601,9 +621,21 @@ func warnDataplaneReachableServices(obj map[string]interface{}, name string) []s
 		name, services)}
 }
 
-// ---- MeshSubset in targetRef without service-identity tags (v2.10) -----------
+// ---- Deprecated top-level spec.targetRef kinds (v2.10/2.11) -------------------
 
-func warnMeshSubsetWithoutServiceTag(obj map[string]interface{}, name, kind string) []string {
+// warnDeprecatedTopLevelTargetRef warns when a policy's top-level spec.targetRef uses a
+// kind that Kuma deprecated for that position. Mirrors the upstream
+// validators.TopLevelTargetRefDeprecations rule (kind-agnostic, applies to every policy):
+//   - MeshSubset / MeshService / MeshServiceSubset → use Dataplane with labels
+//   - MeshHTTPRoute → reference it in spec.to[].targetRef instead
+//
+// These are warn-only, not auto-converted: a MeshService/MeshServiceSubset selector cannot
+// be mechanically expanded to the equivalent Dataplane label set from the manifest alone
+// (only the legacy Kuma-internal `_svc_` names carry enough info, and those are already
+// rewritten to Dataplane by ScenarioSubset before this post-pass runs). For MeshSubset the
+// tagged case is likewise handled by ScenarioSubset, so it is only flagged when it carries
+// no service-identity tags.
+func warnDeprecatedTopLevelTargetRef(obj map[string]interface{}, name, kind string) []string {
 	spec, ok := obj["spec"].(map[string]interface{})
 	if !ok {
 		return nil
@@ -612,20 +644,33 @@ func warnMeshSubsetWithoutServiceTag(obj map[string]interface{}, name, kind stri
 	if !ok {
 		return nil
 	}
-	if targetRef["kind"] != "MeshSubset" {
-		return nil
-	}
-	// Check tags for service-identity keys; if present, ScenarioSubset already handles it.
-	tags, _ := targetRef["tags"].(map[string]interface{})
-	for k := range tags {
-		if k == "kuma.io/service" || k == "k8s.kuma.io/service-name" {
-			return nil // ScenarioSubset will rewrite this
+	trKind, _ := targetRef["kind"].(string)
+	switch trKind {
+	case "MeshSubset":
+		// Tagged MeshSubset is rewritten to Dataplane by ScenarioSubset; only warn when no
+		// service-identity tags are present.
+		tags, _ := targetRef["tags"].(map[string]interface{})
+		for k := range tags {
+			if k == "kuma.io/service" || k == "k8s.kuma.io/service-name" {
+				return nil
+			}
 		}
+		return []string{fmt.Sprintf(
+			"%s %q: spec.targetRef.kind MeshSubset is deprecated in Kuma 2.10+ — "+
+				"use kind: Dataplane with labels instead.",
+			kind, name)}
+	case "MeshService", "MeshServiceSubset":
+		return []string{fmt.Sprintf(
+			"%s %q: spec.targetRef.kind %s is deprecated as a top-level target in Kuma 2.10+ — "+
+				"use kind: Dataplane with labels instead.",
+			kind, name, trKind)}
+	case "MeshHTTPRoute":
+		return []string{fmt.Sprintf(
+			"%s %q: spec.targetRef.kind MeshHTTPRoute is deprecated as a top-level target — "+
+				"reference the MeshHTTPRoute in spec.to[].targetRef instead.",
+			kind, name)}
 	}
-	return []string{fmt.Sprintf(
-		"%s %q: spec.targetRef.kind MeshSubset is deprecated in Kuma 2.10+ — "+
-			"use kind: Dataplane with labels instead.",
-		kind, name)}
+	return nil
 }
 
 // ---- Helpers -----------------------------------------------------------------

@@ -853,3 +853,142 @@ spec:
 		t.Errorf("expected reserved otel. attribute-key warning, got: %v", warnings)
 	}
 }
+
+// ---- Topic A: MTP/MFI from[] → rules[] guidance (warn-only, not converted) ----
+
+func TestScanForDeprecations_MTPFromNotAutoConverted(t *testing.T) {
+	input := `apiVersion: kuma.io/v1alpha1
+kind: MeshTrafficPermission
+metadata:
+  name: mtp-1
+spec:
+  targetRef:
+    kind: Mesh
+  from:
+    - targetRef:
+        kind: MeshSubset
+        tags:
+          kuma.io/service: backend
+      default:
+        action: Allow
+`
+	out, warnings := ScanForDeprecations([]byte(input))
+	// from[] must NOT be auto-rewritten to rules[] for MTP.
+	if !strings.Contains(string(out), "from:") || strings.Contains(string(out), "rules:") {
+		t.Errorf("MTP from[] should be left intact (not converted to rules[]), got: %s", out)
+	}
+	found := false
+	for _, w := range warnings {
+		if strings.Contains(w, "from[]") && strings.Contains(w, "SPIFFE") && strings.Contains(w, "NOT auto-converted") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected MTP from→rules SPIFFE guidance warning, got: %v", warnings)
+	}
+}
+
+func TestScanForDeprecations_MFIFromGuidance(t *testing.T) {
+	input := `apiVersion: kuma.io/v1alpha1
+kind: MeshFaultInjection
+metadata:
+  name: mfi-1
+spec:
+  targetRef:
+    kind: Mesh
+  from:
+    - targetRef:
+        kind: Mesh
+      default:
+        http:
+          - abort:
+              httpStatus: 500
+              percentage: 10
+`
+	_, warnings := ScanForDeprecations([]byte(input))
+	found := false
+	for _, w := range warnings {
+		if strings.Contains(w, "matches[]") && strings.Contains(w, "rules[] API") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected MFI from→rules guidance warning, got: %v", warnings)
+	}
+}
+
+// ---- Topic B: deprecated top-level targetRef kinds → Dataplane ----------------
+
+func TestScanForDeprecations_TopLevelMeshServiceTargetRef(t *testing.T) {
+	input := `apiVersion: kuma.io/v1alpha1
+kind: MeshTimeout
+metadata:
+  name: t1
+spec:
+  targetRef:
+    kind: MeshService
+    name: backend
+  to:
+    - targetRef:
+        kind: Mesh
+      default:
+        idleTimeout: 5s
+`
+	_, warnings := ScanForDeprecations([]byte(input))
+	found := false
+	for _, w := range warnings {
+		if strings.Contains(w, "spec.targetRef.kind MeshService") && strings.Contains(w, "Dataplane") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected top-level MeshService→Dataplane warning, got: %v", warnings)
+	}
+}
+
+func TestScanForDeprecations_TopLevelMeshHTTPRouteTargetRef(t *testing.T) {
+	input := `apiVersion: kuma.io/v1alpha1
+kind: MeshRetry
+metadata:
+  name: r1
+spec:
+  targetRef:
+    kind: MeshHTTPRoute
+    name: route-1
+`
+	_, warnings := ScanForDeprecations([]byte(input))
+	found := false
+	for _, w := range warnings {
+		if strings.Contains(w, "MeshHTTPRoute") && strings.Contains(w, "spec.to[].targetRef") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected top-level MeshHTTPRoute→to[] warning, got: %v", warnings)
+	}
+}
+
+func TestScanForDeprecations_TopLevelDataplaneTargetRef_NoWarn(t *testing.T) {
+	// The correct new style — top-level Dataplane targetRef must not warn.
+	input := `apiVersion: kuma.io/v1alpha1
+kind: MeshTimeout
+metadata:
+  name: t1
+spec:
+  targetRef:
+    kind: Dataplane
+    labels:
+      app: backend
+  to:
+    - targetRef:
+        kind: Mesh
+      default:
+        idleTimeout: 5s
+`
+	_, warnings := ScanForDeprecations([]byte(input))
+	for _, w := range warnings {
+		if strings.Contains(w, "targetRef") && strings.Contains(w, "deprecated") {
+			t.Errorf("unexpected top-level targetRef warning for Dataplane: %s", w)
+		}
+	}
+}
