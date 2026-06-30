@@ -6,7 +6,8 @@ migration paths — from legacy `sources`/`destinations` policies through to the
 
 ## Background
 
-Kuma and Kong Mesh have evolved their policy API substantially across versions 2.0–2.13.
+Kuma and Kong Mesh have evolved their policy API substantially across versions 2.0–2.14
+(with several removals slated for 3.0).
 `kuma-migrator` automates the mechanical parts of the migration, flags the parts that
 require manual intervention, and produces a human-readable Markdown report of every
 change made (or that will be made).
@@ -29,15 +30,24 @@ change made (or that will be made).
 The tool also emits warnings for deprecated fields that require manual action:
 
 - `MeshMetric` `spec.default.sidecar.regex` → `sidecar.profiles.exclude` *(auto-fixed, Kuma 2.7)*
+- `MeshService` `spec.ports[].protocol` → `appProtocol` *(auto-fixed, Kuma 2.8)*
 - `MeshHealthCheck` `healthyPanicThreshold` moved to `MeshCircuitBreaker` *(warn, Kuma 2.10)*
+- `MeshTrafficPermission` `spec.*.spiffeId` → `spiffeID` casing *(auto-fixed, Kuma 2.12)*
+- `MeshLoadBalancingStrategy` `loadBalancer.{ringHash,maglev}.hashPolicies` → `to[].default.hashPolicies` *(auto-fixed, Kuma 2.12)*
 - `MeshTrust` `spec.origin` deprecated → `status.origin` *(warn, Kuma 2.13)*
 - `MeshTrafficPermission`/`MeshFaultInjection` `from[].targetRef.kind: MeshService` deprecated *(warn, Kuma 2.7)*
 - `MeshTrafficPermission` `action: ALLOW/DENY` uppercase casing → `Allow`/`Deny` *(warn, Kong Mesh 2.1)*
 - `MeshLoadBalancingStrategy` `hashPolicies[].type: SourceIP` → `Connection` *(warn, Kuma 2.10)*
 - `Dataplane` `transparentProxying.redirectPortInboundV6` removed *(warn, Kuma 2.9)*
+- `Dataplane` `transparentProxying.reachableServices` → MeshService display names / `reachableBackends` *(warn, Kuma 2.10)*
+- `MeshMetric`/`MeshTrace`/`MeshAccessLog` inline `openTelemetry.endpoint` → `MeshOpenTelemetryBackend` + `backendRef` *(warn, deprecated 2.14, removed 3.0)*
+- `MeshAccessLog` `openTelemetry.attributes[].key` stricter validation (reserved `otel.` prefix, casing, placeholders) *(warn, Kuma 2.14)*
+- `Mesh` `spec.routing.defaultForbidMeshExternalServiceAccess` removed *(warn, Kuma 3.0)*
+- `MeshTrafficPermission`/`MeshFaultInjection` `from[]` deprecated → `rules[]` API *(warn — manual, MFI 2.13 / MTP 2.14)*
+- Deprecated top-level `spec.targetRef.kind`: `MeshSubset`/`MeshService`/`MeshServiceSubset` → `Dataplane`; `MeshHTTPRoute` → `spec.to[].targetRef` *(warn, Kuma 2.10/2.11)*
 - `kuma.io/*` annotation values `"yes"`/`"no"` → `"true"`/`"false"` *(scanner, Kuma 2.9)*
 - Legacy `kuma.io/service`-encoded addresses in Deployment/StatefulSet env vars *(scanner)*
-- RFC 1035/1123 name validation for all resources *(warn)*
+- RFC 1035/1123 name validation for `Mesh*Service` resources — hard error in 3.0 *(warn)*
 
 ## Installation
 
@@ -66,7 +76,7 @@ brew upgrade --cask kuma-migrator
 ### Pre-built binaries
 
 Download the binary for your platform from the
-[GitHub Releases](https://github.com/bcollard/kuma-migrator/releases) page.
+[GitHub Releases](https://github.com/Kong/kuma-migrator/releases) page.
 Archives are provided for:
 
 | Platform | Architecture |
@@ -78,16 +88,16 @@ Archives are provided for:
 **Linux (amd64):**
 
 ```bash
-VERSION=$(gh release view --repo bcollard/kuma-migrator --json tagName --jq '.tagName' | tr -d 'v')
-curl -L "https://github.com/bcollard/kuma-migrator/releases/latest/download/kuma-migrator_${VERSION}_linux_amd64.tar.gz" | tar xz
+VERSION=$(gh release view --repo Kong/kuma-migrator --json tagName --jq '.tagName' | tr -d 'v')
+curl -L "https://github.com/Kong/kuma-migrator/releases/latest/download/kuma-migrator_${VERSION}_linux_amd64.tar.gz" | tar xz
 sudo mv kuma-migrator /usr/local/bin/
 ```
 
 **Linux (arm64):**
 
 ```bash
-VERSION=$(gh release view --repo bcollard/kuma-migrator --json tagName --jq '.tagName' | tr -d 'v')
-curl -L "https://github.com/bcollard/kuma-migrator/releases/latest/download/kuma-migrator_${VERSION}_linux_arm64.tar.gz" | tar xz
+VERSION=$(gh release view --repo Kong/kuma-migrator --json tagName --jq '.tagName' | tr -d 'v')
+curl -L "https://github.com/Kong/kuma-migrator/releases/latest/download/kuma-migrator_${VERSION}_linux_arm64.tar.gz" | tar xz
 sudo mv kuma-migrator /usr/local/bin/
 ```
 
@@ -672,7 +682,8 @@ spec:
   (e.g. `backend_demo_svc_3001`) are parsed to extract `name`, `namespace`, and `port` for
   the Gateway API `backendRef`. Missing ports trigger a warning.
 - **Kong Mesh upgrade constraint** — Kong Mesh supports upgrading at most **two minor
-  versions** at a time. Plan your upgrade path accordingly (e.g. 2.7 → 2.9 → 2.11 → 2.13).
+  versions** at a time. Plan your upgrade path accordingly (e.g. 2.8 → 2.10 → 2.12 → 2.14).
+  Latest as of mid-2026: Kuma 2.14 / Kong Mesh 2.14 (2.13.x is the Kong Mesh LTS line).
 - **Universal vs Kubernetes format** — Kuma resources exist in two YAML shapes. Kubernetes
   format uses `apiVersion`, `kind`, and `metadata.name`; Universal format uses `type` and a
   top-level `name`/`mesh` field. Both are fully supported in extract and migrate. When
