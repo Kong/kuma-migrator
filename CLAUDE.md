@@ -15,18 +15,25 @@ across all supported migration paths in the Kuma/Kong Mesh 2.x lifecycle.
 
 ## Workspace Rules (CRITICAL)
 
-1.  **The Reference Folder:** The `./reference/` directory contains massive codebases (`kuma`, `madrs`, `snippets`). **DO NOT read these entire directories into your main context.**
-2.  **Use Sub-agents:** When you need to look up how Kuma implements a struct or what an ADR (or "MADR") says, spawn a sub-agent to search the `./reference/` folder, extract the specific Go structs or rules, and report back.
+1.  **The Reference KB:** The authoritative upstream sources (Kuma, Kong Mesh, kuma-website, developer.konghq.com docs, Kong ADRs) live in the **kong-ama knowledge base** at `/Users/baptiste.collard@konghq.com/projects/kong/kong-ama/repos/`. These are kept fresh by `kong-ama/fetch-github-repos.sh` (re-run it to refresh). **DO NOT read these entire directories into your main context.** The local `./reference/` folder now only holds project-unique material not in the KB (`snippets/`, `konnect/`); the stale duplicate clones were removed in favour of the KB.
+2.  **Use Sub-agents:** When you need to look up how Kuma implements a struct or what an ADR (or "MADR") says, spawn a sub-agent to search the **kong-ama KB** (`/Users/baptiste.collard@konghq.com/projects/kong/kong-ama/repos/`), extract the specific Go structs or rules, and report back.
 3.  **Skills:** The exact mapping rules for translating YAMLs will be stored in `./.claude/skills/migration-rules.md`. Always consult this file before writing translation logic.
 4.  **Preserve YAML:** When rewriting YAML files, ensure you do not drop unrelated fields. Use strict unmarshaling based on Kuma's native Go structs where possible.
 
 ## References
 
-* under `reference/docs/app/mesh` you will find the Kuma and Kong Mesh documentation.
-* under `reference/kuma/docs/madr/decisions` you will find the Kuma ADRs related to the migration.
-* under `reference/kong-mesh` you will find the codebase of Kong Mesh (enterprise fork of Kuma). Use it to understand enterprise-specific policies like `MeshOPA`, `MeshOPAPolicy`, etc.
-* under `reference/snippets` you will find code snippets for traversing YAML files and defining Cobra commands.
-* under `reference/kuma-website/app` you will find the Kuma documentation (user-facing).
+Upstream sources live in the **kong-ama KB** (`/Users/baptiste.collard@konghq.com/projects/kong/kong-ama/repos/`), refreshed via `kong-ama/fetch-github-repos.sh`:
+
+* `repos/kuma/` — Kuma codebase. Kuma MADRs (ADRs) are under `repos/kuma/docs/madr/decisions`.
+* `repos/kong-mesh/` — Kong Mesh codebase (enterprise fork of Kuma). Use it for enterprise-specific policies like `MeshOPA`, `MeshOPAPolicy`, etc. Kong Mesh MADRs are under `repos/kong-mesh/docs/madr/decisions`.
+* `repos/kuma-website/app/` — Kuma user-facing documentation.
+* `repos/developer.konghq.com/app/` — Kong developer docs (Kong Mesh docs + per-version CHANGELOG under `app/assets/mesh/raw/CHANGELOG.md`).
+* `repos/architecture-decision-records/` — Kong (KongHQ-CX) ADRs.
+
+Project-unique material that is **not** in the KB stays under `./reference/`:
+
+* `reference/snippets/` — demo/setup shell snippets and example manifests (mesh bootstrap, MeshService, kuma.io-service).
+* `reference/konnect/` — Konnect CP manager manifest.
 
 ## CLI Commands
 
@@ -288,6 +295,14 @@ instead of `metadata`. All migrate-side parsing must normalise these:
 - `Dataplane transparentProxying.reachableServices` → warn, names must be updated to MeshService display names in Exclusive mode (v2.10)
 - `kuma.io/*` annotation `yes`/`no` → scanner, use `true`/`false` (v2.9)
 - `MeshSubset` in `spec.targetRef` without service-identity tags → warn, use `Dataplane` with labels (v2.10)
+- `MeshTrafficPermission spec.*.spiffeId` → auto-fixed to `spiffeID` casing (v2.12)
+- `MeshLoadBalancingStrategy to[].default.loadBalancer.{ringHash,maglev}.hashPolicies` → auto-fixed to `to[].default.hashPolicies` (v2.12; distinct from the `SourceIP→Connection` type change above)
+- `MeshService spec.ports[].protocol` → auto-fixed to `appProtocol` (v2.8)
+- `MeshMetric`/`MeshTrace`/`MeshAccessLog` inline `openTelemetry.endpoint` → warn, define a `MeshOpenTelemetryBackend` and reference it via `backendRef` (deprecated v2.14, removed 3.0)
+- `MeshAccessLog` `openTelemetry.attributes[].key` reserved `otel.` prefix / non-lowercase / placeholder keys → warn, stricter validation rejects on reapply (v2.14)
+- `Mesh spec.routing.defaultForbidMeshExternalServiceAccess` → warn, removed in 3.0 (use `MeshTrafficPermission`)
+- `MeshTrafficPermission`/`MeshFaultInjection` `from[]` → warn, deprecated in favour of `rules[]` API (MFI v2.13, MTP v2.14, removed 3.0); not auto-converted because source/action semantics need manual review
+- `Mesh`/`MeshService`/`MeshExternalService`/`MeshMultiZoneService` names violating RFC 1035 or exceeding 63 chars → warn, becomes a hard error in 3.0 (via `ValidateResourceName`)
 
 `ScanForDeprecations` normalises `kind` from `obj["type"]` when `obj["kind"]` is empty, so
 Universal-format resources (including `Dataplane`) are handled correctly.
@@ -298,11 +313,12 @@ Universal-format resources (including `Dataplane`) are handled correctly.
 
 ### Two-minor-version upgrade constraint
 Kong Mesh supports upgrading **at most two minor versions** at a time.
-Example valid path: 2.7 → 2.9 → 2.11 → 2.13.
+Example valid path: 2.8 → 2.10 → 2.12 → 2.14.
 Skipping more than one minor version is unsupported.
+Latest released as of 2026-06: **Kuma 2.14.0** and **Kong Mesh 2.14.0** (2.13.x is the Kong Mesh LTS line). 3.0 is the next major and carries several removals the deprecation scanner now warns about.
 
 ### OPAPolicy → MeshOPA
-- `kind: OPAPolicy` was the legacy Kong Mesh OPA integration (removed in Kong Mesh 2.13.x when dynamic config is used).
+- `kind: OPAPolicy` was the legacy Kong Mesh OPA integration. It is **not removed as a CRD**; it became **non-functional under the default dynamic-config OPA runtime in Kong Mesh 2.13.x** (the legacy runtime can still be selected with `KMESH_OPA_EXPERIMENTAL_USE_DYNAMIC_CONFIG=false`). Migrating to `MeshOPA` is the supported forward path.
 - `kind: MeshOPA` is the new policy. Structural change:
   - `spec.conf.policies[].inlineString` → `spec.default.appendPolicies[].rego.inlineString`
   - `spec.conf.agentConfig.inlineString` → `spec.default.agentConfig.inlineString` (if present)

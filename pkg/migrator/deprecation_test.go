@@ -641,3 +641,215 @@ networking:
 		t.Errorf("expected no warnings for clean Dataplane, got: %v", warnings)
 	}
 }
+
+// ---- New deprecation scans (Kuma 2.11–2.14 / 3.0) ----------------------------
+
+func TestScanForDeprecations_SpiffeIDCasingAutoFix(t *testing.T) {
+	input := `apiVersion: kuma.io/v1alpha1
+kind: MeshTrafficPermission
+metadata:
+  name: mtp-1
+spec:
+  rules:
+    - matches:
+        - spiffeId:
+            type: Exact
+            value: spiffe://default/web
+`
+	out, warnings := ScanForDeprecations([]byte(input))
+	if strings.Contains(string(out), "spiffeId:") {
+		t.Errorf("expected spiffeId to be renamed to spiffeID, got: %s", out)
+	}
+	if !strings.Contains(string(out), "spiffeID:") {
+		t.Errorf("expected spiffeID in output, got: %s", out)
+	}
+	found := false
+	for _, w := range warnings {
+		if strings.Contains(w, "spiffeId") && strings.Contains(w, "spiffeID") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected spiffeId→spiffeID warning, got: %v", warnings)
+	}
+}
+
+func TestScanForDeprecations_HashPoliciesPathMove(t *testing.T) {
+	input := `apiVersion: kuma.io/v1alpha1
+kind: MeshLoadBalancingStrategy
+metadata:
+  name: mlbs-1
+spec:
+  to:
+    - targetRef:
+        kind: Mesh
+      default:
+        loadBalancer:
+          type: RingHash
+          ringHash:
+            hashPolicies:
+              - type: Header
+                header:
+                  name: x-foo
+`
+	out, warnings := ScanForDeprecations([]byte(input))
+	var parsed map[string]interface{}
+	if err := yaml.Unmarshal(out, &parsed); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	to := parsed["spec"].(map[string]interface{})["to"].([]interface{})
+	def := to[0].(map[string]interface{})["default"].(map[string]interface{})
+	if _, ok := def["hashPolicies"]; !ok {
+		t.Errorf("expected hashPolicies moved to to[].default.hashPolicies, got: %s", out)
+	}
+	lb := def["loadBalancer"].(map[string]interface{})
+	if rh, ok := lb["ringHash"].(map[string]interface{}); ok {
+		if _, still := rh["hashPolicies"]; still {
+			t.Errorf("expected hashPolicies removed from ringHash, got: %s", out)
+		}
+	}
+	found := false
+	for _, w := range warnings {
+		if strings.Contains(w, "hashPolicies") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected hashPolicies move warning, got: %v", warnings)
+	}
+}
+
+func TestScanForDeprecations_MeshServiceProtocolRename(t *testing.T) {
+	input := `apiVersion: kuma.io/v1alpha1
+kind: MeshService
+metadata:
+  name: web
+spec:
+  ports:
+    - port: 80
+      protocol: http
+`
+	out, _ := ScanForDeprecations([]byte(input))
+	if strings.Contains(string(out), "protocol:") {
+		t.Errorf("expected protocol renamed to appProtocol, got: %s", out)
+	}
+	if !strings.Contains(string(out), "appProtocol: http") {
+		t.Errorf("expected appProtocol: http in output, got: %s", out)
+	}
+}
+
+func TestScanForDeprecations_InlineOtelEndpoint(t *testing.T) {
+	input := `apiVersion: kuma.io/v1alpha1
+kind: MeshMetric
+metadata:
+  name: m1
+spec:
+  default:
+    backends:
+      - type: OpenTelemetry
+        openTelemetry:
+          endpoint: otel-collector:4317
+`
+	_, warnings := ScanForDeprecations([]byte(input))
+	found := false
+	for _, w := range warnings {
+		if strings.Contains(w, "openTelemetry.endpoint") && strings.Contains(w, "MeshOpenTelemetryBackend") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected inline OTel endpoint warning, got: %v", warnings)
+	}
+}
+
+func TestScanForDeprecations_MeshForbidExternalServiceAccess(t *testing.T) {
+	input := `apiVersion: kuma.io/v1alpha1
+kind: Mesh
+metadata:
+  name: default
+spec:
+  routing:
+    defaultForbidMeshExternalServiceAccess: true
+`
+	_, warnings := ScanForDeprecations([]byte(input))
+	found := false
+	for _, w := range warnings {
+		if strings.Contains(w, "defaultForbidMeshExternalServiceAccess") && strings.Contains(w, "3.0") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected defaultForbidMeshExternalServiceAccess removal warning, got: %v", warnings)
+	}
+}
+
+func TestScanForDeprecations_FromDeprecatedForRulesAPI(t *testing.T) {
+	input := `apiVersion: kuma.io/v1alpha1
+kind: MeshTrafficPermission
+metadata:
+  name: mtp-1
+spec:
+  targetRef:
+    kind: Mesh
+  from:
+    - targetRef:
+        kind: Mesh
+      default:
+        action: Allow
+`
+	_, warnings := ScanForDeprecations([]byte(input))
+	found := false
+	for _, w := range warnings {
+		if strings.Contains(w, "from[]") && strings.Contains(w, "rules[]") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected from[]→rules[] deprecation warning, got: %v", warnings)
+	}
+}
+
+func TestScanForDeprecations_NameTooLong(t *testing.T) {
+	longName := strings.Repeat("a", 70)
+	input := "apiVersion: kuma.io/v1alpha1\nkind: MeshService\nmetadata:\n  name: " + longName + "\nspec: {}\n"
+	_, warnings := ScanForDeprecations([]byte(input))
+	found := false
+	for _, w := range warnings {
+		if strings.Contains(w, "63") && strings.Contains(w, "3.0") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected name-too-long warning, got: %v", warnings)
+	}
+}
+
+func TestScanForDeprecations_MeshAccessLogOtelAttributeKey(t *testing.T) {
+	input := `apiVersion: kuma.io/v1alpha1
+kind: MeshAccessLog
+metadata:
+  name: mal-1
+spec:
+  to:
+    - targetRef:
+        kind: Mesh
+      default:
+        backends:
+          - type: OpenTelemetry
+            openTelemetry:
+              endpoint: collector:4317
+              attributes:
+                - key: otel.reserved
+                  value: x
+`
+	_, warnings := ScanForDeprecations([]byte(input))
+	found := false
+	for _, w := range warnings {
+		if strings.Contains(w, "otel.reserved") && strings.Contains(w, "reserved") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected reserved otel. attribute-key warning, got: %v", warnings)
+	}
+}

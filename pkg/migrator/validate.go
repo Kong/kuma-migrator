@@ -8,10 +8,10 @@ import (
 // rfc1035Kinds are resource kinds that require RFC 1035 names (Kuma 2.10+):
 // alphanumeric + hyphen, max 63 chars, must start with a letter, end alphanumeric.
 var rfc1035Kinds = map[string]bool{
-	"Mesh":                   true,
-	"MeshService":            true,
-	"MeshExternalService":    true,
-	"MeshMultizoneService":   true,
+	"Mesh":                 true,
+	"MeshService":          true,
+	"MeshExternalService":  true,
+	"MeshMultiZoneService": true,
 }
 
 // rfc1035Re matches a valid RFC 1035 label.
