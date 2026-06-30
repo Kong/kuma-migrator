@@ -32,6 +32,7 @@ import (
 //   - MeshMetric/MeshTrace/MeshAccessLog inline openTelemetry.endpoint → MeshOpenTelemetryBackend + backendRef (v2.14, removed 3.0)
 //   - MeshAccessLog openTelemetry.attributes[].key validation tightened (v2.14)
 //   - Mesh spec.routing.defaultForbidMeshExternalServiceAccess removed (3.0)
+//   - Mesh spec.mtls.backends → advisory: MeshIdentity + MeshTrust successor model (2.12+, guided)
 //   - Dataplane transparentProxying.redirectPortInboundV6 removed (v2.9)
 //   - Dataplane transparentProxying.reachableServices uses legacy kuma.io/service names (v2.10)
 //   - Any Mesh* policy with a deprecated top-level spec.targetRef.kind: MeshSubset (without
@@ -90,6 +91,7 @@ func ScanForDeprecations(raw []byte) (out []byte, warnings []string) {
 		fix(fixMeshServicePortProtocol(obj, name))
 	case "Mesh":
 		warnings = append(warnings, warnMeshForbidExternalServiceAccess(obj, name)...)
+		warnings = append(warnings, warnMeshMtlsBackends(obj, name)...)
 	case "Dataplane":
 		warnings = append(warnings, warnDataplaneRedirectPortInboundV6(obj, name)...)
 		warnings = append(warnings, warnDataplaneReachableServices(obj, name)...)
@@ -570,6 +572,42 @@ func warnMeshForbidExternalServiceAccess(obj map[string]interface{}, name string
 	return []string{fmt.Sprintf(
 		"Mesh %q: spec.routing.defaultForbidMeshExternalServiceAccess is removed in Kuma 3.0 — "+
 			"control MeshExternalService access with MeshTrafficPermission instead.",
+		name)}
+}
+
+// ---- Mesh spec.mtls backends → MeshIdentity + MeshTrust (advisory) ------------
+
+// warnMeshMtlsBackends emits a forward-looking advisory when a Mesh defines legacy mTLS
+// backends (spec.mtls.backends, builtin/provided/vault). Kuma 2.12+ introduces MeshIdentity
+// (workload identity) + MeshTrust (trust domains) as the successor model, and the experimental
+// SPIFFE rules[] API for MeshTrafficPermission requires MeshIdentity. This is intentionally
+// NOT auto-converted: the cutover is a guided multi-step CA migration (Kuma MADR-074) whose
+// inputs — trust domain (runtime/zone-derived), per-workload SPIFFE paths, and CA key material
+// (CP-generated Secret / DataSource / Vault) — are not present in the Mesh manifest, and the
+// builtin path mints a brand-new CA (a trust-root change). spec.mtls is not deprecated, so
+// doing nothing is currently safe.
+func warnMeshMtlsBackends(obj map[string]interface{}, name string) []string {
+	// Kubernetes format: spec.mtls; Universal format: top-level mtls.
+	mtls, _ := obj["mtls"].(map[string]interface{})
+	if mtls == nil {
+		if spec, ok := obj["spec"].(map[string]interface{}); ok {
+			mtls, _ = spec["mtls"].(map[string]interface{})
+		}
+	}
+	if mtls == nil {
+		return nil
+	}
+	if backends, ok := mtls["backends"].([]interface{}); !ok || len(backends) == 0 {
+		return nil
+	}
+	return []string{fmt.Sprintf(
+		"Mesh %q: spec.mtls.backends is the legacy mTLS/identity model. Kuma 2.12+ introduces "+
+			"MeshIdentity (workload identity) + MeshTrust (trust domains) as the successor, and the "+
+			"experimental SPIFFE rules[] MeshTrafficPermission API requires MeshIdentity. This is a "+
+			"guided CA cutover (see Kuma MADR-074), not a manifest rewrite — the trust domain, "+
+			"per-workload SPIFFE paths, and CA key material are not in this manifest, and the builtin "+
+			"backend mints a new CA. spec.mtls is NOT deprecated, so no action is required today; plan "+
+			"the migration when adopting MeshIdentity / the rules[] MeshTrafficPermission API.",
 		name)}
 }
 

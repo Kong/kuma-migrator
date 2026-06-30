@@ -43,6 +43,7 @@ The tool also emits warnings for deprecated fields that require manual action:
 - `MeshMetric`/`MeshTrace`/`MeshAccessLog` inline `openTelemetry.endpoint` → `MeshOpenTelemetryBackend` + `backendRef` *(warn, deprecated 2.14, removed 3.0)*
 - `MeshAccessLog` `openTelemetry.attributes[].key` stricter validation (reserved `otel.` prefix, casing, placeholders) *(warn, Kuma 2.14)*
 - `Mesh` `spec.routing.defaultForbidMeshExternalServiceAccess` removed *(warn, Kuma 3.0)*
+- `Mesh` `spec.mtls.backends` → `MeshIdentity` + `MeshTrust` successor model *(advisory only — guided CA cutover, not a transform; `spec.mtls` is not deprecated)*
 - `MeshTrafficPermission`/`MeshFaultInjection` `from[]` deprecated → `rules[]` API *(warn — manual, MFI 2.13 / MTP 2.14)*
 - Deprecated top-level `spec.targetRef.kind`: `MeshSubset`/`MeshService`/`MeshServiceSubset` → `Dataplane`; `MeshHTTPRoute` → `spec.to[].targetRef` *(warn, Kuma 2.10/2.11)*
 - `kuma.io/*` annotation values `"yes"`/`"no"` → `"true"`/`"false"` *(scanner, Kuma 2.9)*

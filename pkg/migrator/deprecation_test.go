@@ -992,3 +992,66 @@ spec:
 		}
 	}
 }
+
+func TestScanForDeprecations_MeshMtlsBackendsAdvisory(t *testing.T) {
+	input := `apiVersion: kuma.io/v1alpha1
+kind: Mesh
+metadata:
+  name: default
+spec:
+  mtls:
+    enabledBackend: ca-1
+    backends:
+      - name: ca-1
+        type: builtin
+`
+	out, warnings := ScanForDeprecations([]byte(input))
+	if string(out) != input {
+		t.Error("Mesh mtls advisory must be warn-only (output unchanged)")
+	}
+	found := false
+	for _, w := range warnings {
+		if strings.Contains(w, "MeshIdentity") && strings.Contains(w, "MeshTrust") && strings.Contains(w, "NOT deprecated") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected Mesh mtls → MeshIdentity/MeshTrust advisory, got: %v", warnings)
+	}
+}
+
+func TestScanForDeprecations_MeshNoMtls_NoAdvisory(t *testing.T) {
+	input := `apiVersion: kuma.io/v1alpha1
+kind: Mesh
+metadata:
+  name: default
+spec: {}
+`
+	_, warnings := ScanForDeprecations([]byte(input))
+	for _, w := range warnings {
+		if strings.Contains(w, "MeshIdentity") {
+			t.Errorf("unexpected mtls advisory for Mesh without mtls backends: %s", w)
+		}
+	}
+}
+
+func TestScanForDeprecations_MeshMtlsBackends_Universal(t *testing.T) {
+	input := `type: Mesh
+name: default
+mtls:
+  enabledBackend: ca-1
+  backends:
+    - name: ca-1
+      type: provided
+`
+	_, warnings := ScanForDeprecations([]byte(input))
+	found := false
+	for _, w := range warnings {
+		if strings.Contains(w, "MeshIdentity") && strings.Contains(w, "MADR-074") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected mtls advisory for Universal Mesh, got: %v", warnings)
+	}
+}
