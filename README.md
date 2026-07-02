@@ -50,6 +50,33 @@ The tool also emits warnings for deprecated fields that require manual action:
 - Legacy `kuma.io/service`-encoded addresses in Deployment/StatefulSet env vars *(scanner)*
 - RFC 1035/1123 name validation for `Mesh*Service` resources — hard error in 3.0 *(warn)*
 
+### MeshTrafficPermission: `from[]` (stable) vs `rules[]` (experimental)
+
+`MeshTrafficPermission` has **two modes**. The migrator flags the deprecated `from[]` field
+but does **not** auto-convert it, because the two modes use fundamentally different identity
+models and a mechanical rewrite could silently widen access. The difference is only lightly
+documented upstream (the stable policy page links to the experimental page; there is no
+side-by-side comparison or migration guide), so it is summarised here.
+
+| | Stable (`from[]`) | Experimental (`rules[]`) |
+|---|---|---|
+| Spec shape | `spec.targetRef` + `from[]`, each `{targetRef, default.action}` | `spec.targetRef` + `rules[]`, each `{default.{allow,deny,allowWithShadowDeny}}` |
+| Client selector | tag/label `targetRef` (`Mesh`/`MeshSubset`/`MeshServiceSubset`) | **SPIFFE identity** matchers (`spiffeID`, optional `sni`) |
+| Identity source | legacy `Mesh.spec.mtls` (builtin/provided CA); SPIFFE derived from `kuma.io/service` | **`MeshIdentity` + `MeshTrust`** (required) |
+| Verbs | `action: Allow` / `Deny` / `AllowWithShadowDeny` per source | `allow[]` / `deny[]` / `allowWithShadowDeny[]` lists of matchers |
+| Evaluation | ordered — later `from[]` entries override earlier (last match wins) | `deny` > `allow`/`allowWithShadowDeny` > default |
+| Default posture (no policy) | permissive (Kuma ships a default allow-all policy) | **default-deny** |
+| Prerequisite | Mutual TLS enabled | `MeshIdentity` enabled |
+| Status / version | stable/GA | experimental; matchers since 2.12, `from[]` deprecated in 2.14 |
+
+**Why it's not auto-convertible:** the `rules[]` API matches on SPIFFE identity strings
+(`spiffe://<trust-domain>/ns/<ns>/sa/<sa>`), whereas `from[]` uses tag selectors like
+`kuma.io/service: orders`. The trust domain (zone/runtime-derived) and the per-workload
+identity path are **not present in the policy manifest**, and the posture flips from
+permissive to default-deny — so translating `from[]` → `rules[]` is a guided operator task,
+not a field mapping. See the [`meshtrafficpermission_experimental`](https://kuma.io/docs/latest/policies/meshtrafficpermission_experimental/)
+docs and [`MeshIdentity`](https://kuma.io/docs/latest/policies/meshidentity/) / [`MeshTrust`](https://kuma.io/docs/latest/policies/meshtrust/).
+
 ## Installation
 
 ### Homebrew (macOS and Linux)
