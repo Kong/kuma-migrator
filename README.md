@@ -77,6 +77,16 @@ permissive to default-deny — so translating `from[]` → `rules[]` is a guided
 not a field mapping. See the [`meshtrafficpermission_experimental`](https://kuma.io/docs/latest/policies/meshtrafficpermission_experimental/)
 docs and [`MeshIdentity`](https://kuma.io/docs/latest/policies/meshidentity/) / [`MeshTrust`](https://kuma.io/docs/latest/policies/meshtrust/).
 
+> **Note — MTP's `rules[]` is not the generic Rules API.** For most policies
+> (`MeshTimeout`, `MeshCircuitBreaker`, `MeshAccessLog`, …) `rules[]` has the shape
+> `rules: [{ matches: [...], default: {...} }]`, where `matches[]` carries `targetRef`/tag-style
+> selectors. **MeshTrafficPermission's `rules[]` is a different, special shape** —
+> `rules: [{ default: { allow, deny, allowWithShadowDeny } } ]` with **SPIFFE/SNI** matchers,
+> no `matches[]` and no `targetRef`. So "`rules[]` with targetRefs" is true for those other
+> policies but **not** for MTP; MTP's `rules[]` has been SPIFFE-only in every released CRD
+> (2.12 → 2.14; `sni` added in 2.14). The stable, targetRef-based form of MTP is the `from[]`
+> field, not a `rules[]` variant.
+
 ## Installation
 
 ### Homebrew (macOS and Linux)

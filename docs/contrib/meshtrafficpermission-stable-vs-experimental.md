@@ -46,6 +46,16 @@ allowed unless a `Deny` rule matches; with this API, traffic is denied unless an
 matcher matches. Review your rules against this before switching.
 {% endwarning %}
 
+{% tip %}
+`MeshTrafficPermission`'s `rules[]` is **not** the same shape as the generic Rules API used
+by other policies (such as [`MeshTimeout`](/docs/{{ page.release }}/policies/meshtimeout) or
+[`MeshCircuitBreaker`](/docs/{{ page.release }}/policies/meshcircuitbreaker)), where
+`rules[]` is `[{ matches: [...], default: {...} }]` and `matches[]` uses `targetRef`/tag
+selectors. `MeshTrafficPermission` uses `rules: [{ default: { allow, deny, allowWithShadowDeny } }]`
+with **SPIFFE/SNI** matchers — there is no `matches[]` and no `targetRef` inside a rule. If you
+want `targetRef`-based client selection, that is the stable `from[]` field, not `rules[]`.
+{% endtip %}
+
 ## Migrating from the stable `from[]` API
 
 There is no automatic conversion, because the `from[]` model selects clients by tags
