@@ -1055,3 +1055,66 @@ mtls:
 		t.Errorf("expected mtls advisory for Universal Mesh, got: %v", warnings)
 	}
 }
+
+func TestScanForDeprecations_MeshServicesDefaultFlipAdvisory(t *testing.T) {
+	// Mesh with no meshServices block → 3.0 Exclusive-default advisory.
+	input := `apiVersion: kuma.io/v1alpha1
+kind: Mesh
+metadata:
+  name: default
+spec:
+  mtls:
+    enabledBackend: ca-1
+    backends:
+      - name: ca-1
+        type: builtin
+`
+	out, warnings := ScanForDeprecations([]byte(input))
+	if string(out) != input {
+		t.Error("meshServices advisory must be warn-only (output unchanged)")
+	}
+	found := false
+	for _, w := range warnings {
+		if strings.Contains(w, "meshServices") && strings.Contains(w, "Exclusive") && strings.Contains(w, "3.0") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected meshServices 3.0 default-flip advisory, got: %v", warnings)
+	}
+}
+
+func TestScanForDeprecations_MeshServicesSet_NoFlipAdvisory(t *testing.T) {
+	// Mesh that explicitly sets meshServices → no flip advisory.
+	input := `apiVersion: kuma.io/v1alpha1
+kind: Mesh
+metadata:
+  name: default
+spec:
+  meshServices:
+    mode: Everywhere
+`
+	_, warnings := ScanForDeprecations([]byte(input))
+	for _, w := range warnings {
+		if strings.Contains(w, "meshServices") && strings.Contains(w, "Exclusive") {
+			t.Errorf("unexpected meshServices flip advisory when block is set: %s", w)
+		}
+	}
+}
+
+func TestScanForDeprecations_MeshServicesDefaultFlip_Universal(t *testing.T) {
+	// Universal Mesh (top-level fields, no meshServices) → advisory fires.
+	input := `type: Mesh
+name: default
+`
+	_, warnings := ScanForDeprecations([]byte(input))
+	found := false
+	for _, w := range warnings {
+		if strings.Contains(w, "meshServices") && strings.Contains(w, "17102") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected meshServices advisory for Universal Mesh, got: %v", warnings)
+	}
+}

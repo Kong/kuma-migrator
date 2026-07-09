@@ -33,6 +33,7 @@ import (
 //   - MeshAccessLog openTelemetry.attributes[].key validation tightened (v2.14)
 //   - Mesh spec.routing.defaultForbidMeshExternalServiceAccess removed (3.0)
 //   - Mesh spec.mtls.backends → advisory: MeshIdentity + MeshTrust successor model (2.12+, guided)
+//   - Mesh without spec.meshServices → advisory: 3.0 defaults the mode to Exclusive (kuma#17102)
 //   - Dataplane transparentProxying.redirectPortInboundV6 removed (v2.9)
 //   - Dataplane transparentProxying.reachableServices uses legacy kuma.io/service names (v2.10)
 //   - Any Mesh* policy with a deprecated top-level spec.targetRef.kind: MeshSubset (without
@@ -92,6 +93,7 @@ func ScanForDeprecations(raw []byte) (out []byte, warnings []string) {
 	case "Mesh":
 		warnings = append(warnings, warnMeshForbidExternalServiceAccess(obj, name)...)
 		warnings = append(warnings, warnMeshMtlsBackends(obj, name)...)
+		warnings = append(warnings, warnMeshServicesDefaultFlip(obj, name)...)
 	case "Dataplane":
 		warnings = append(warnings, warnDataplaneRedirectPortInboundV6(obj, name)...)
 		warnings = append(warnings, warnDataplaneReachableServices(obj, name)...)
@@ -611,6 +613,33 @@ func warnMeshMtlsBackends(obj map[string]interface{}, name string) []string {
 		name)}
 }
 
+// ---- Mesh meshServices default flip to Exclusive (advisory, 3.0) --------------
+
+// warnMeshServicesDefaultFlip advises when a Mesh has no spec.meshServices block. Kuma 3.0
+// changes the default for such meshes from permissive to meshServices.mode: Exclusive
+// (kumahq/kuma#17102), which restricts outbound connectivity to explicitly-reachable services
+// and requires reachableServices/reachableBackends to name MeshService display names. A mesh
+// that already sets meshServices (any mode) is left alone — the flip only affects the nil block.
+func warnMeshServicesDefaultFlip(obj map[string]interface{}, name string) []string {
+	// Kubernetes format: spec.meshServices; Universal format: top-level meshServices.
+	if v, ok := obj["meshServices"]; ok && v != nil {
+		return nil
+	}
+	if spec, ok := obj["spec"].(map[string]interface{}); ok {
+		if v, ok := spec["meshServices"]; ok && v != nil {
+			return nil
+		}
+	}
+	return []string{fmt.Sprintf(
+		"Mesh %q: no spec.meshServices block is set. Kuma 3.0 flips the default for meshes without "+
+			"this block from permissive to meshServices.mode: Exclusive (kumahq/kuma#17102), which "+
+			"restricts outbound connectivity to explicitly-reachable services and requires "+
+			"reachableServices/reachableBackends to use MeshService display names. Before upgrading "+
+			"to 3.0, set spec.meshServices.mode explicitly (e.g. Everywhere to preserve current "+
+			"behaviour) or declare reachable services/backends, to avoid breaking connectivity.",
+		name)}
+}
+
 // ---- Dataplane transparentProxying.redirectPortInboundV6 (v2.9) --------------
 
 // warnDataplaneRedirectPortInboundV6 checks both Universal (networking at top level)
@@ -653,8 +682,9 @@ func warnDataplaneReachableServices(obj map[string]interface{}, name string) []s
 	}
 	return []string{fmt.Sprintf(
 		"Dataplane %q: transparentProxying.reachableServices uses legacy kuma.io/service names (%v). "+
-			"When spec.meshServices.mode is Exclusive (Kuma 2.10+), update these to the corresponding "+
-			"MeshService display names (kuma.io/display-name label value), or migrate to the structured "+
+			"When spec.meshServices.mode is Exclusive (opt-in since Kuma 2.10; the default for meshes "+
+			"without a meshServices block in Kuma 3.0), update these to the corresponding MeshService "+
+			"display names (kuma.io/display-name label value), or migrate to the structured "+
 			"reachableBackends.refs[] form.",
 		name, services)}
 }
