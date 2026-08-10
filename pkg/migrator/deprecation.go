@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 
 	"sigs.k8s.io/yaml"
@@ -1039,10 +1040,40 @@ func forEachPassthroughMatch(obj map[string]interface{}, fn func(map[string]inte
 
 // ---- Deprecated Kubernetes annotations (v2.13 / v2.14) -----------------------
 
-// warnDeprecatedAnnotations warns about metadata annotations that were deprecated
-// in the 2.13/2.14 line. Unlike ScanKumaAnnotations (which repairs the yes/no
-// boolean spelling), these annotations are deprecated wholesale in favour of a
-// policy resource or a changed default.
+// deprecatedPodAnnotations mirrors PodAnnotationDeprecations in
+// kuma/pkg/plugins/runtime/k8s/metadata/annotations.go on release-2.14.
+//
+// The list is deliberately exact-match rather than prefix-match. Only
+// prometheus.metrics.kuma.io/port and /path are deprecated; the
+// aggregate-<name>-(port|path|enabled|address) family is NOT, so a prefix match
+// would produce false positives on a supported configuration.
+var deprecatedPodAnnotations = map[string]string{
+	"kuma.io/builtindns": "is no longer supported and is IGNORED — use \"kuma.io/builtin-dns\" instead. " +
+		"Because it is ignored rather than rejected, a Pod still carrying it is silently running " +
+		"with the default rather than the value set here",
+	"kuma.io/builtindnsport": "is no longer supported and is IGNORED — use \"kuma.io/builtin-dns-port\" " +
+		"instead. Because it is ignored rather than rejected, a Pod still carrying it is silently " +
+		"running with the default rather than the value set here",
+	"kuma.io/virtual-probes": "is deprecated and will be removed in a future release. The default " +
+		"flipped to disabled in Kuma 2.13; the replacement is the Application Probe Proxy. Confirm " +
+		"probes still work after upgrading",
+	"kuma.io/virtual-probes-port": "is being replaced by \"kuma.io/application-probe-proxy-port\"",
+	"kuma.io/sidecar-injection": "is not supported as an annotation — it must be set as a LABEL. " +
+		"As an annotation it has no effect, so injection is following whatever the namespace default is",
+	"prometheus.metrics.kuma.io/port": "is deprecated in favour of the MeshMetric policy — move the " +
+		"scrape configuration into a MeshMetric resource targeting this workload",
+	"prometheus.metrics.kuma.io/path": "is deprecated in favour of the MeshMetric policy — move the " +
+		"scrape configuration into a MeshMetric resource targeting this workload",
+}
+
+// warnDeprecatedAnnotations warns about metadata annotations deprecated in the
+// 2.13/2.14 line. Unlike ScanKumaAnnotations (which repairs the yes/no boolean
+// spelling), these are deprecated wholesale in favour of a policy resource, a
+// renamed annotation, or a label.
+//
+// Several of these are ignored rather than rejected by the control plane, so the
+// only signal an operator gets is a CP log line at Pod admission — which is
+// easily missed. That is why they are surfaced here.
 func warnDeprecatedAnnotations(obj map[string]interface{}, name, kind string) []string {
 	meta, _ := obj["metadata"].(map[string]interface{})
 	if meta == nil {
@@ -1053,28 +1084,20 @@ func warnDeprecatedAnnotations(obj map[string]interface{}, name, kind string) []
 		return nil
 	}
 
-	var warnings []string
-	sawPrometheus := false
+	// Sort for deterministic warning order across runs.
+	keys := make([]string, 0, len(anns))
 	for k := range anns {
-		switch {
-		case strings.HasPrefix(k, "prometheus.metrics.kuma.io/"):
-			if sawPrometheus {
-				continue // one warning per document is enough
-			}
-			sawPrometheus = true
-			warnings = append(warnings, fmt.Sprintf(
-				"%s %q: annotation-based Prometheus metrics configuration (%s…) was deprecated in "+
-					"Kuma 2.14 in favour of the MeshMetric policy. Move the scrape configuration "+
-					"into a MeshMetric resource targeting this workload.",
-				kind, name, k))
-		case k == "kuma.io/virtual-probes" || k == "kuma.io/virtual-probes-port":
-			warnings = append(warnings, fmt.Sprintf(
-				"%s %q: annotation %q configures virtual probes, which are deprecated and default "+
-					"to disabled from Kuma 2.13 onward (replaced by the Application Probe Proxy on "+
-					"port 9001). Confirm probes still work after upgrading; the feature is slated "+
-					"for removal.",
-				kind, name, k))
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	var warnings []string
+	for _, k := range keys {
+		reason, ok := deprecatedPodAnnotations[k]
+		if !ok {
+			continue
 		}
+		warnings = append(warnings, fmt.Sprintf("%s %q: annotation %q %s.", kind, name, k, reason))
 	}
 	return warnings
 }

@@ -116,6 +116,12 @@ spec:
 	}
 }
 
+// TestScanForDeprecations_DeprecatedAnnotations mirrors PodAnnotationDeprecations
+// in kuma/pkg/plugins/runtime/k8s/metadata/annotations.go on release-2.14.
+//
+// The negative case matters most: only prometheus.metrics.kuma.io/port and /path
+// are deprecated. The aggregate-<name>-(port|path|enabled|address) family is a
+// supported configuration, so a prefix match would flag working manifests.
 func TestScanForDeprecations_DeprecatedAnnotations(t *testing.T) {
 	input := `
 apiVersion: kuma.io/v1alpha1
@@ -125,21 +131,53 @@ metadata:
   annotations:
     prometheus.metrics.kuma.io/port: "1234"
     prometheus.metrics.kuma.io/path: /metrics
+    prometheus.metrics.kuma.io/aggregate-app-port: "80"
+    prometheus.metrics.kuma.io/aggregate-app-enabled: "true"
     kuma.io/virtual-probes: enabled
+    kuma.io/virtual-probes-port: "19001"
+    kuma.io/builtindns: "true"
+    kuma.io/builtindnsport: "15053"
+    kuma.io/sidecar-injection: enabled
+    kuma.io/mesh: default
 spec: {}
 `
 	_, warnings := ScanForDeprecations([]byte(input), TargetV2)
 	joined := strings.Join(warnings, "\n")
-	if !strings.Contains(joined, "MeshMetric") {
-		t.Errorf("expected Prometheus annotation warning pointing at MeshMetric, got: %v", warnings)
+
+	mustMention := map[string]string{
+		"prometheus.metrics.kuma.io/port": "MeshMetric",
+		"prometheus.metrics.kuma.io/path": "MeshMetric",
+		"kuma.io/virtual-probes":          "Application Probe Proxy",
+		"kuma.io/virtual-probes-port":     "kuma.io/application-probe-proxy-port",
+		"kuma.io/builtindns":              "kuma.io/builtin-dns",
+		"kuma.io/builtindnsport":          "kuma.io/builtin-dns-port",
+		"kuma.io/sidecar-injection":       "LABEL",
 	}
-	if !strings.Contains(joined, "virtual probes") {
-		t.Errorf("expected virtual-probes warning, got: %v", warnings)
+	for key, want := range mustMention {
+		if !strings.Contains(joined, key) {
+			t.Errorf("expected a warning for %q, got: %v", key, warnings)
+			continue
+		}
+		if !strings.Contains(joined, want) {
+			t.Errorf("warning for %q should mention %q, got: %v", key, want, warnings)
+		}
 	}
-	// The Prometheus family should collapse to a single warning, not one per key.
-	promCount := strings.Count(joined, "annotation-based Prometheus metrics")
-	if promCount != 1 {
-		t.Errorf("expected exactly 1 Prometheus warning, got %d: %v", promCount, warnings)
+
+	// Supported annotations must not be flagged.
+	for _, notFlagged := range []string{"aggregate-app-port", "aggregate-app-enabled", "kuma.io/mesh"} {
+		if strings.Contains(joined, notFlagged) {
+			t.Errorf("%q is supported and must not be flagged, got: %v", notFlagged, warnings)
+		}
+	}
+
+	// builtindns/builtindnsport are ignored rather than rejected — the warning has
+	// to say so, because otherwise there is no signal at all.
+	if !strings.Contains(joined, "IGNORED") {
+		t.Errorf("expected the ignored-not-rejected caveat on builtindns, got: %v", warnings)
+	}
+
+	if len(warnings) != len(mustMention) {
+		t.Errorf("expected exactly %d warnings, got %d: %v", len(mustMention), len(warnings), warnings)
 	}
 }
 
