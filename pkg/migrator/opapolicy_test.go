@@ -258,3 +258,121 @@ spec:
 		t.Errorf("expected a conflict warning, got: %v", warnings)
 	}
 }
+
+// TestTransformOPAPolicy_RealLegacyShape covers the OPAPolicy shape the Kong Mesh
+// CRD actually accepts, which differs from the targetRef-style fixtures the other
+// tests use: the mesh is a TOP-LEVEL field and workloads are chosen with
+// spec.selectors[].match, not spec.targetRef.
+//
+// Emitting that unchanged produces a MeshOPA the control plane rejects with
+// `unknown field "mesh", unknown field "spec.selectors"`, which is what happened
+// against a live 2.14.3 CP before this was handled.
+func TestTransformOPAPolicy_RealLegacyShape(t *testing.T) {
+	input := `
+apiVersion: kuma.io/v1alpha1
+kind: OPAPolicy
+metadata:
+  name: legacy-opa
+mesh: default
+spec:
+  selectors:
+    - match:
+        kuma.io/service: '*'
+  conf:
+    policies:
+      - inlineString: "package envoy.authz"
+`
+	docs, _, err := TransformOPAPolicy([]byte(input), TargetV2)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(docs) != 1 {
+		t.Fatalf("expected 1 document, got %d", len(docs))
+	}
+	out := string(docs[0])
+
+	if strings.Contains(out, "\nmesh: default") {
+		t.Errorf("top-level mesh must be removed (MeshOPA rejects it), got:\n%s", out)
+	}
+	if !strings.Contains(out, "kuma.io/mesh: default") {
+		t.Errorf("mesh must move to the kuma.io/mesh label, got:\n%s", out)
+	}
+	if strings.Contains(out, "selectors:") {
+		t.Errorf("spec.selectors must be removed (MeshOPA rejects it), got:\n%s", out)
+	}
+	// kuma.io/service: '*' is mesh-wide.
+	if !strings.Contains(out, "targetRef:") || !strings.Contains(out, "kind: Mesh") {
+		t.Errorf("expected a mesh-wide targetRef, got:\n%s", out)
+	}
+	if !strings.Contains(out, "appendPolicies:") {
+		t.Errorf("rego should still be migrated, got:\n%s", out)
+	}
+}
+
+// TestTransformOPAPolicy_SelectorWithService checks a selector naming a specific
+// service, and TestTransformOPAPolicy_MultipleSelectors the split, since MeshOPA
+// holds only one targetRef.
+func TestTransformOPAPolicy_SelectorWithService(t *testing.T) {
+	input := `
+apiVersion: kuma.io/v1alpha1
+kind: OPAPolicy
+metadata:
+  name: svc-opa
+mesh: default
+spec:
+  selectors:
+    - match:
+        kuma.io/service: backend_demo_svc_8080
+  conf:
+    policies:
+      - inlineString: "package envoy.authz"
+`
+	docs, _, err := TransformOPAPolicy([]byte(input), TargetV2)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := string(docs[0])
+	if strings.Contains(out, "selectors:") {
+		t.Errorf("selectors must be converted, got:\n%s", out)
+	}
+	if !strings.Contains(out, "targetRef:") {
+		t.Errorf("expected a targetRef, got:\n%s", out)
+	}
+	// A service-identity selector must not collapse to a mesh-wide targetRef,
+	// which would silently widen the policy.
+	if strings.Contains(out, "kind: Mesh\n") && !strings.Contains(out, "backend") {
+		t.Errorf("service selector must not widen to mesh-wide, got:\n%s", out)
+	}
+}
+
+func TestTransformOPAPolicy_MultipleSelectors(t *testing.T) {
+	input := `
+apiVersion: kuma.io/v1alpha1
+kind: OPAPolicy
+metadata:
+  name: multi-opa
+mesh: default
+spec:
+  selectors:
+    - match:
+        kuma.io/service: a_demo_svc_8080
+    - match:
+        kuma.io/service: b_demo_svc_8080
+  conf:
+    policies:
+      - inlineString: "package envoy.authz"
+`
+	docs, warnings, err := TransformOPAPolicy([]byte(input), TargetV2)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(docs) != 2 {
+		t.Fatalf("expected one MeshOPA per selector (2), got %d", len(docs))
+	}
+	if !strings.Contains(string(docs[0]), "multi-opa-0") || !strings.Contains(string(docs[1]), "multi-opa-1") {
+		t.Errorf("split documents should get distinct names, got:\n%s\n%s", docs[0], docs[1])
+	}
+	if !strings.Contains(strings.Join(warnings, "\n"), "Apply all 2 documents") {
+		t.Errorf("expected a warning telling the operator to apply both, got: %v", warnings)
+	}
+}

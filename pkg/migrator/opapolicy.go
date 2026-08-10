@@ -114,16 +114,176 @@ func TransformOPAPolicy(raw []byte, target TargetVersion) ([][]byte, []string, e
 
 	obj["spec"] = spec
 
-	if target.IsV3() {
-		_, ws := fixMeshOPATargetRefForV3(obj, name)
-		warnings = append(warnings, ws...)
+	// The legacy OPAPolicy CRD carries the mesh as a TOP-LEVEL field, not as the
+	// standard kuma.io/mesh label. MeshOPA is an ordinary policy CRD and rejects
+	// an unknown top-level "mesh" with a strict decoding error, so it has to move.
+	if meshName, ok := obj["mesh"].(string); ok && meshName != "" {
+		meta, _ := obj["metadata"].(map[string]interface{})
+		if meta == nil {
+			meta = map[string]interface{}{}
+			obj["metadata"] = meta
+		}
+		labels, _ := meta["labels"].(map[string]interface{})
+		if labels == nil {
+			labels = map[string]interface{}{}
+			meta["labels"] = labels
+		}
+		if _, exists := labels["kuma.io/mesh"]; !exists {
+			labels["kuma.io/mesh"] = meshName
+		}
+		delete(obj, "mesh")
 	}
 
-	out, err := yaml.Marshal(obj)
+	// Legacy OPAPolicy selects workloads with spec.selectors[].match tag sets.
+	// MeshOPA uses a single spec.targetRef, and leaving selectors in place makes
+	// the document invalid (unknown field spec.selectors).
+	docs, selWarnings, err := applyOPASelectors(obj, spec, name, target)
+	warnings = append(warnings, selWarnings...)
 	if err != nil {
-		return nil, nil, fmt.Errorf("marshal MeshOPA %q: %w", name, err)
+		return nil, nil, err
 	}
-	return [][]byte{out}, warnings, nil
+	return docs, warnings, nil
+}
+
+// applyOPASelectors converts legacy spec.selectors[] into spec.targetRef and
+// marshals the resulting document(s).
+//
+// MeshOPA holds exactly one targetRef, so a policy with several selectors is
+// split into one MeshOPA per selector — the same shape transformGenericLegacy
+// uses for multiple legacy sources. A selector matching kuma.io/service: '*'
+// collapses to kind: Mesh.
+func applyOPASelectors(obj, spec map[string]interface{}, name string, target TargetVersion) ([][]byte, []string, error) {
+	var warnings []string
+
+	rawSelectors, hasSelectors := spec["selectors"].([]interface{})
+	if !hasSelectors {
+		// No legacy selectors. An existing targetRef is preserved as-is.
+		if _, ok := spec["targetRef"]; !ok {
+			warnings = append(warnings, fmt.Sprintf(
+				"OPAPolicy %q: no spec.selectors and no spec.targetRef — MeshOPA requires a targetRef; "+
+					"add one by hand before applying.", name))
+		}
+		if target.IsV3() {
+			_, ws := fixMeshOPATargetRefForV3(obj, name)
+			warnings = append(warnings, ws...)
+		}
+		out, err := yaml.Marshal(obj)
+		if err != nil {
+			return nil, nil, fmt.Errorf("marshal MeshOPA %q: %w", name, err)
+		}
+		return [][]byte{out}, warnings, nil
+	}
+	delete(spec, "selectors")
+
+	selectors := make([]OldSelector, 0, len(rawSelectors))
+	for _, rs := range rawSelectors {
+		sm, ok := rs.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		match := map[string]string{}
+		if mm, ok := sm["match"].(map[string]interface{}); ok {
+			for k, v := range mm {
+				if vs, ok := v.(string); ok {
+					match[k] = vs
+				}
+			}
+		}
+		selectors = append(selectors, OldSelector{Match: match})
+	}
+	if len(selectors) == 0 {
+		selectors = []OldSelector{{}} // degenerate: treat as mesh-wide
+	}
+
+	// OPAPolicy is cluster-scoped, so there is no policy namespace to scope against.
+	const policyNamespace = ""
+
+	var out [][]byte
+	for i, sel := range selectors {
+		ref, warn := ConvertSelectorToTargetRef(sel, policyNamespace, true)
+		if warn != "" {
+			warnings = append(warnings, warn)
+		}
+
+		doc := deepCopyMap(obj)
+		docSpec, _ := doc["spec"].(map[string]interface{})
+		docSpec["targetRef"] = targetRefToMap(ref)
+
+		docName := name
+		if len(selectors) > 1 {
+			docName = fmt.Sprintf("%s-%d", name, i)
+			if meta, ok := doc["metadata"].(map[string]interface{}); ok {
+				meta["name"] = docName
+			}
+			warnings = append(warnings, fmt.Sprintf(
+				"OPAPolicy %q: selector %d of %d became a separate MeshOPA %q — MeshOPA holds a single "+
+					"targetRef. Apply all %d documents.", name, i+1, len(selectors), docName, len(selectors)))
+		}
+
+		if target.IsV3() {
+			_, ws := fixMeshOPATargetRefForV3(doc, docName)
+			warnings = append(warnings, ws...)
+		}
+
+		b, err := yaml.Marshal(doc)
+		if err != nil {
+			return nil, nil, fmt.Errorf("marshal MeshOPA %q: %w", docName, err)
+		}
+		out = append(out, b)
+	}
+	return out, warnings, nil
+}
+
+// targetRefToMap renders a TargetRef as a plain map for embedding in a
+// map-based document.
+func targetRefToMap(ref TargetRef) map[string]interface{} {
+	m := map[string]interface{}{"kind": ref.Kind}
+	if ref.Name != nil && *ref.Name != "" {
+		m["name"] = *ref.Name
+	}
+	if ref.Namespace != nil && *ref.Namespace != "" {
+		m["namespace"] = *ref.Namespace
+	}
+	if len(ref.Tags) > 0 {
+		tags := map[string]interface{}{}
+		for k, v := range ref.Tags {
+			tags[k] = v
+		}
+		m["tags"] = tags
+	}
+	if len(ref.Labels) > 0 {
+		labels := map[string]interface{}{}
+		for k, v := range ref.Labels {
+			labels[k] = v
+		}
+		m["labels"] = labels
+	}
+	return m
+}
+
+// deepCopyMap returns a deep copy of a decoded YAML document so per-selector
+// documents can diverge without aliasing each other.
+func deepCopyMap(in map[string]interface{}) map[string]interface{} {
+	out := make(map[string]interface{}, len(in))
+	for k, v := range in {
+		out[k] = deepCopyValue(v)
+	}
+	return out
+}
+
+func deepCopyValue(v interface{}) interface{} {
+	switch t := v.(type) {
+	case map[string]interface{}:
+		return deepCopyMap(t)
+	case []interface{}:
+		s := make([]interface{}, len(t))
+		for i, e := range t {
+			s[i] = deepCopyValue(e)
+		}
+		return s
+	default:
+		return v
+	}
 }
 
 // fixMeshOPATargetRefForV3 rewrites a MeshOPA targetRef for the 3.0 API, which
