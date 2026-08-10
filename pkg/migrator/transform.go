@@ -18,7 +18,7 @@ const kumaAPIVersion = "kuma.io/v1alpha1"
 // every output document so that deprecated fields (MeshMetric sidecar.regex,
 // MeshHealthCheck healthyPanicThreshold, MeshTrust spec.origin) are caught even
 // when the document was already fully migrated (ScenarioPassthrough pass-through).
-func TransformDocument(raw []byte) ([][]byte, []string, Scenario, error) {
+func TransformDocument(raw []byte, target TargetVersion) ([][]byte, []string, Scenario, error) {
 	scenario, err := DetectScenario(raw)
 	if err != nil {
 		return nil, nil, ScenarioUnknown, err
@@ -92,7 +92,7 @@ func TransformDocument(raw []byte) ([][]byte, []string, Scenario, error) {
 
 	case ScenarioOPAPolicy:
 		var err error
-		docs, warnings, err = TransformOPAPolicy(raw)
+		docs, warnings, err = TransformOPAPolicy(raw, target)
 		if err != nil {
 			return nil, nil, scenario, err
 		}
@@ -131,7 +131,7 @@ func TransformDocument(raw []byte) ([][]byte, []string, Scenario, error) {
 
 	// Post-pass: scan every output document for deprecated fields.
 	for i, doc := range docs {
-		fixed, depWarns := ScanForDeprecations(doc)
+		fixed, depWarns := ScanForDeprecations(doc, target)
 		docs[i] = fixed
 		warnings = append(warnings, depWarns...)
 	}

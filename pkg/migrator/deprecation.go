@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"strings"
 
 	"sigs.k8s.io/yaml"
 )
@@ -43,7 +44,7 @@ import (
 //     exceed 63 chars (warning in 2.14, hard error in 3.0)
 //
 // Both Kubernetes format (kind/metadata) and Universal format (type/name) are supported.
-func ScanForDeprecations(raw []byte) (out []byte, warnings []string) {
+func ScanForDeprecations(raw []byte, target TargetVersion) (out []byte, warnings []string) {
 	var obj map[string]interface{}
 	if err := yaml.Unmarshal(raw, &obj); err != nil {
 		return raw, nil
@@ -67,11 +68,11 @@ func ScanForDeprecations(raw []byte) (out []byte, warnings []string) {
 	switch kind {
 	case "MeshMetric":
 		fix(fixMeshMetricSidecarRegex(obj, name))
-		warnings = append(warnings, warnInlineOtelEndpoint(obj, name, kind)...)
+		warnings = append(warnings, warnInlineOtelEndpoint(obj, name, kind, target)...)
 	case "MeshTrace":
-		warnings = append(warnings, warnInlineOtelEndpoint(obj, name, kind)...)
+		warnings = append(warnings, warnInlineOtelEndpoint(obj, name, kind, target)...)
 	case "MeshAccessLog":
-		warnings = append(warnings, warnInlineOtelEndpoint(obj, name, kind)...)
+		warnings = append(warnings, warnInlineOtelEndpoint(obj, name, kind, target)...)
 		warnings = append(warnings, warnMeshAccessLogOtelAttributeKeys(obj, name)...)
 	case "MeshHealthCheck":
 		warnings = warnHealthCheckPanicThreshold(obj, name)
@@ -97,6 +98,17 @@ func ScanForDeprecations(raw []byte) (out []byte, warnings []string) {
 	case "Dataplane":
 		warnings = append(warnings, warnDataplaneRedirectPortInboundV6(obj, name)...)
 		warnings = append(warnings, warnDataplaneReachableServices(obj, name)...)
+		warnings = append(warnings, warnDataplaneInboundTags(obj, name, target)...)
+	case "MeshPassthrough":
+		warnings = append(warnings, warnMeshPassthroughDomains(obj, name)...)
+	case "HostnameGenerator":
+		warnings = append(warnings, warnHostnameGeneratorTemplate(obj, name)...)
+	case "MeshExternalService":
+		warnings = append(warnings, warnMeshExternalServiceDataSource(obj, name, target)...)
+	case "MeshOPA":
+		warnings = append(warnings, warnMeshOPATargetRefFields(obj, name, target)...)
+	case "MeshGlobalRateLimit":
+		warnings = append(warnings, warnMeshGlobalRateLimitRemoved(obj, name, target)...)
 	}
 
 	// Generic checks applied to every Mesh* policy regardless of kind.
@@ -104,6 +116,11 @@ func ScanForDeprecations(raw []byte) (out []byte, warnings []string) {
 		// Deprecated top-level spec.targetRef kinds (MeshSubset/MeshService/MeshServiceSubset
 		// → Dataplane; MeshHTTPRoute → spec.to[].targetRef).
 		warnings = append(warnings, warnDeprecatedTopLevelTargetRef(obj, name, kind)...)
+	}
+
+	// Annotation deprecations apply to any resource carrying metadata.annotations.
+	if kind != "" {
+		warnings = append(warnings, warnDeprecatedAnnotations(obj, name, kind)...)
 	}
 
 	// Name-format validation for kinds with strict RFC 1035 requirements. These
@@ -181,8 +198,12 @@ func warnMeshTrustOrigin(obj map[string]interface{}, name string) []string {
 		return nil
 	}
 	return []string{fmt.Sprintf(
-		"MeshTrust %q: spec.origin is deprecated in Kuma 2.13 — it has moved to status.origin (read-only, managed by Kuma). "+
-			"Remove spec.origin from this resource.",
+		"MeshTrust %q: spec.origin was REMOVED in Kuma 2.13 — from the API and from the "+
+			"Kubernetes CRD schema, so a manifest still setting it can be rejected as "+
+			"unknown-field input (strict validation / server-side apply). The value is now "+
+			"published read-only at status.origin.kri and managed by Kuma. Remove spec.origin "+
+			"from this resource. Note the Kuma website still documents spec.origin with no "+
+			"deprecation marker; UPGRADE.md is authoritative here.",
 		name)}
 }
 
@@ -474,14 +495,36 @@ func fixMeshServicePortProtocol(obj map[string]interface{}, name string) (bool, 
 // MeshAccessLog) configures an OpenTelemetry backend with an inline endpoint string.
 // As of Kuma 2.14 the inline endpoint is deprecated in favour of a standalone
 // MeshOpenTelemetryBackend resource referenced via backendRef; it is removed in 3.0.
-func warnInlineOtelEndpoint(obj map[string]interface{}, name, kind string) []string {
+func warnInlineOtelEndpoint(obj map[string]interface{}, name, kind string, target TargetVersion) []string {
 	if !hasOtelInlineEndpoint(obj) {
 		return nil
 	}
+
+	// Constraints on the replacement that are easy to get wrong when hand-writing
+	// the backendRef, and that all reject on apply.
+	const constraints = " When you write the backendRef: it selects the backend by " +
+		"`labels` only (`name` is not supported), it is mutually exclusive with the inline " +
+		"`endpoint`, and the MeshOpenTelemetryBackend itself must live in the system namespace " +
+		"(kuma-system). With protocol grpc, endpoint.path must be empty."
+
+	if target.IsV3() {
+		return []string{fmt.Sprintf(
+			"%s %q: an inline openTelemetry.endpoint is REMOVED in 3.0 — a policy that still sets it "+
+				"fails validation. Define a MeshOpenTelemetryBackend resource and reference it via "+
+				"backendRef.%s",
+			kind, name, constraints)}
+	}
+
+	// Under a 2.x target the rewrite is optional and carries a real hazard if the
+	// fleet is not fully on 2.14 yet, so say so rather than pushing the change.
 	return []string{fmt.Sprintf(
 		"%s %q: an inline openTelemetry.endpoint is deprecated in Kuma 2.14 and removed in 3.0 — "+
-			"define a MeshOpenTelemetryBackend resource and reference it via backendRef instead.",
-		kind, name)}
+			"define a MeshOpenTelemetryBackend resource and reference it via backendRef.%s "+
+			"Do NOT make this change while any control plane or data plane is still below 2.14: "+
+			"MeshOpenTelemetryBackend does not exist before 2.14, and against an older data plane "+
+			"the CP silently skips the OTel route with nothing logged. The inline endpoint keeps "+
+			"working through the upgrade, so migrate it after the fleet is on 2.14.",
+		kind, name, constraints)}
 }
 
 // hasOtelInlineEndpoint reports whether the document contains an openTelemetry map
@@ -512,9 +555,16 @@ func hasOtelInlineEndpoint(v interface{}) bool {
 // ---- MeshAccessLog OpenTelemetry attribute key validation (v2.14) -------------
 
 // otelAttributeKeyRe matches a valid OpenTelemetry attribute key under Kuma 2.14's
-// tightened validation: lowercase alphanumerics with single '.', '_' or '-' delimiters,
-// no leading/trailing/consecutive delimiters.
-var otelAttributeKeyRe = regexp.MustCompile(`^[a-z0-9]+([._-][a-z0-9]+)*$`)
+// tightened validation. Mirrors upstream otelAttributeNameRegex verbatim
+// (kuma/pkg/core/validators/common_validators.go): must start with a lowercase
+// letter, may contain [a-z0-9] and single '.' or '_' delimiters, and must end
+// alphanumeric.
+//
+// Note two things upstream rejects that look innocuous: a '-' delimiter
+// (`service-name`) and a leading digit (`5xx.count`). An earlier version of this
+// pattern allowed both, so those keys passed the scan and were then rejected on
+// apply — the exact failure this check exists to prevent.
+var otelAttributeKeyRe = regexp.MustCompile(`^[a-z](?:[a-z0-9]|[._][a-z0-9])*$`)
 
 // warnMeshAccessLogOtelAttributeKeys warns when an openTelemetry backend's
 // attributes[].key would be rejected by Kuma 2.14's stricter validation (reserved
@@ -527,7 +577,9 @@ func warnMeshAccessLogOtelAttributeKeys(obj map[string]interface{}, name string)
 		case len(key) >= 5 && key[:5] == "otel.":
 			reason = `the "otel." prefix is reserved`
 		case !otelAttributeKeyRe.MatchString(key):
-			reason = "it is not lowercase / has placeholder or invalid delimiter characters"
+			reason = "it must start with a lowercase letter, use only [a-z0-9] with single " +
+				`'.' or '_' delimiters (no '-'), and end alphanumeric; %placeholders% are ` +
+				"rejected in keys (move the placeholder into the attribute value)"
 		}
 		if reason != "" {
 			warnings = append(warnings, fmt.Sprintf(
@@ -599,10 +651,12 @@ func warnMeshMtlsBackends(obj map[string]interface{}, name string) []string {
 	if mtls == nil {
 		return nil
 	}
-	if backends, ok := mtls["backends"].([]interface{}); !ok || len(backends) == 0 {
+	backends, ok := mtls["backends"].([]interface{})
+	if !ok || len(backends) == 0 {
 		return nil
 	}
-	return []string{fmt.Sprintf(
+
+	msg := fmt.Sprintf(
 		"Mesh %q: spec.mtls.backends is the legacy mTLS/identity model. Kuma 2.12+ introduces "+
 			"MeshIdentity (workload identity) + MeshTrust (trust domains) as the successor, and the "+
 			"experimental SPIFFE rules[] MeshTrafficPermission API requires MeshIdentity. This is a "+
@@ -610,7 +664,59 @@ func warnMeshMtlsBackends(obj map[string]interface{}, name string) []string {
 			"per-workload SPIFFE paths, and CA key material are not in this manifest, and the builtin "+
 			"backend mints a new CA. spec.mtls is NOT deprecated, so no action is required today; plan "+
 			"the migration when adopting MeshIdentity / the rules[] MeshTrafficPermission API.",
-		name)}
+		name)
+
+	// Kong Mesh 2.14 added the MeshIdentity `Extension` provider, which is the
+	// native successor for the enterprise CA backends. Name the mapping when the
+	// Mesh actually uses one of them — it is not on the docs site, so it is easy
+	// to conclude that only Bundled and Spire exist.
+	if ext := kongMeshCABackendExtensions(backends); len(ext.types) > 0 {
+		msg += fmt.Sprintf(
+			" This Mesh uses the Kong Mesh CA backend type(s) %s. Kong Mesh 2.14 added a matching "+
+				"MeshIdentity provider: spec.provider.type: Extension with spec.provider.extension.name "+
+				"set to %s. Note the Kuma docs still list only Bundled and Spire as providers — the "+
+				"Extension provider and its acmpca/vault/certmanager configs are undocumented. "+
+				"certmanager is Kubernetes-only; on Universal the CP does not register it.",
+			strings.Join(ext.types, ", "), strings.Join(ext.names, "/"))
+	}
+
+	return []string{msg}
+}
+
+// caBackendExtensionMap maps a legacy Mesh mTLS backend type to the Kong Mesh
+// MeshIdentity extension provider name that replaces it in 2.14.
+var caBackendExtensionMap = map[string]string{
+	"vault":        "vault",
+	"acm":          "acmpca",
+	"cert-manager": "certmanager",
+	"certmanager":  "certmanager",
+}
+
+type caBackendExtensions struct {
+	types []string
+	names []string
+}
+
+// kongMeshCABackendExtensions returns the enterprise CA backend types present in
+// the Mesh together with their MeshIdentity extension provider names.
+func kongMeshCABackendExtensions(backends []interface{}) caBackendExtensions {
+	var out caBackendExtensions
+	seen := map[string]bool{}
+	for _, b := range backends {
+		bm, ok := b.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		typ, _ := bm["type"].(string)
+		ext, ok := caBackendExtensionMap[typ]
+		if !ok || seen[typ] {
+			continue
+		}
+		seen[typ] = true
+		out.types = append(out.types, typ)
+		out.names = append(out.names, ext)
+	}
+	return out
 }
 
 // ---- Mesh meshServices default flip to Exclusive (advisory, 3.0) --------------
@@ -807,4 +913,351 @@ func hasNestedField(obj map[string]interface{}, keys ...string) bool {
 		cur = m
 	}
 	return false
+}
+
+// ---- HostnameGenerator spec.template rendered-value validation (v2.14) --------
+
+// hostnameTemplateExprRe matches a Go-template expression inside a
+// HostnameGenerator template, e.g. `{{ .DisplayName }}`.
+var hostnameTemplateExprRe = regexp.MustCompile(`\{\{[^}]*\}\}`)
+
+// rfc1123SubdomainRe matches a valid DNS subdomain, which is what a rendered
+// HostnameGenerator template must produce.
+var rfc1123SubdomainRe = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`)
+
+// warnHostnameGeneratorTemplate warns when spec.template would not render to a
+// valid RFC 1123 DNS subdomain. Kuma 2.14 validates the rendered template at
+// creation time; before that, a bad template silently produced a broken hostname.
+//
+// The check substitutes each {{ ... }} expression with a single valid label
+// character before validating, so it flags only defects in the literal skeleton
+// of the template (leading dot, consecutive dots, uppercase, trailing dot) and
+// never guesses at what an expression will expand to.
+func warnHostnameGeneratorTemplate(obj map[string]interface{}, name string) []string {
+	tmpl, _ := obj["template"].(string)
+	if tmpl == "" {
+		if spec, ok := obj["spec"].(map[string]interface{}); ok {
+			tmpl, _ = spec["template"].(string)
+		}
+	}
+	if tmpl == "" {
+		return nil
+	}
+
+	skeleton := hostnameTemplateExprRe.ReplaceAllString(tmpl, "x")
+	if rfc1123SubdomainRe.MatchString(skeleton) {
+		return nil
+	}
+
+	reason := "it does not render to a valid RFC 1123 DNS subdomain"
+	switch {
+	case strings.HasPrefix(skeleton, "."):
+		reason = "it renders with a leading dot"
+	case strings.HasSuffix(skeleton, "."):
+		reason = "it renders with a trailing dot"
+	case strings.Contains(skeleton, ".."):
+		reason = "it renders with consecutive dots"
+	case strings.ToLower(skeleton) != skeleton:
+		reason = "it renders with uppercase characters"
+	}
+
+	return []string{fmt.Sprintf(
+		"HostnameGenerator %q: spec.template %q is rejected by Kuma 2.14 — %s. Earlier versions "+
+			"accepted it and silently produced a broken hostname, so this may already be "+
+			"misbehaving. Fix the template before upgrading.",
+		name, tmpl, reason)}
+}
+
+// ---- MeshPassthrough domain match validation (v2.14) -------------------------
+
+// partialWildcardRe matches an unsupported partial wildcard such as `*foo.com`
+// (a `*` not immediately followed by a dot). Mirrors upstream
+// wildcardPartialPrefixPattern in the MeshPassthrough validator.
+var partialWildcardRe = regexp.MustCompile(`^\*[^.]+`)
+
+// l7ProtocolsNeedingPort are the protocols for which a wildcard domain match
+// requires an explicit port upstream.
+var l7ProtocolsNeedingPort = map[string]bool{"grpc": true, "http": true, "http2": true}
+
+// warnMeshPassthroughDomains warns about appendMatch entries that Kuma 2.14's
+// tightened MeshPassthrough validation rejects: partial wildcards, wildcard
+// domains on an L7 protocol with no port, and Domain matches on tcp/mysql.
+func warnMeshPassthroughDomains(obj map[string]interface{}, name string) []string {
+	var warnings []string
+	forEachPassthroughMatch(obj, func(m map[string]interface{}) {
+		typ, _ := m["type"].(string)
+		if typ != "Domain" {
+			return
+		}
+		value, _ := m["value"].(string)
+		protocol, _ := m["protocol"].(string)
+		_, hasPort := m["port"]
+
+		if partialWildcardRe.MatchString(value) {
+			warnings = append(warnings, fmt.Sprintf(
+				"MeshPassthrough %q: appendMatch value %q uses a partial wildcard, which Kuma 2.14 "+
+					"rejects (only a full `*.` prefix is supported) — rewrite it as %q.",
+				name, value, "*."+strings.TrimLeft(value, "*")))
+		}
+		if protocol == "tcp" || protocol == "mysql" {
+			warnings = append(warnings, fmt.Sprintf(
+				"MeshPassthrough %q: appendMatch value %q has type Domain with protocol %q, which is "+
+					"not supported for a domain — use type IP/CIDR, or an L7 protocol.",
+				name, value, protocol))
+		}
+		if !hasPort && strings.HasPrefix(value, "*") && l7ProtocolsNeedingPort[protocol] {
+			warnings = append(warnings, fmt.Sprintf(
+				"MeshPassthrough %q: appendMatch value %q is a wildcard domain on protocol %q with no "+
+					"port — Kuma 2.14 rejects this because wildcard domains do not work across all "+
+					"ports for layer 7 protocols. Set an explicit port.",
+				name, value, protocol))
+		}
+	})
+	return warnings
+}
+
+// forEachPassthroughMatch invokes fn for every appendMatch entry in the document,
+// handling both the Kubernetes (spec.default) and Universal (top-level) layouts.
+func forEachPassthroughMatch(obj map[string]interface{}, fn func(map[string]interface{})) {
+	visit := func(container map[string]interface{}) {
+		def, _ := container["default"].(map[string]interface{})
+		if def == nil {
+			return
+		}
+		matches, _ := def["appendMatch"].([]interface{})
+		for _, m := range matches {
+			if mm, ok := m.(map[string]interface{}); ok {
+				fn(mm)
+			}
+		}
+	}
+	if spec, ok := obj["spec"].(map[string]interface{}); ok {
+		visit(spec)
+	}
+	visit(obj)
+}
+
+// ---- Deprecated Kubernetes annotations (v2.13 / v2.14) -----------------------
+
+// warnDeprecatedAnnotations warns about metadata annotations that were deprecated
+// in the 2.13/2.14 line. Unlike ScanKumaAnnotations (which repairs the yes/no
+// boolean spelling), these annotations are deprecated wholesale in favour of a
+// policy resource or a changed default.
+func warnDeprecatedAnnotations(obj map[string]interface{}, name, kind string) []string {
+	meta, _ := obj["metadata"].(map[string]interface{})
+	if meta == nil {
+		return nil
+	}
+	anns, _ := meta["annotations"].(map[string]interface{})
+	if len(anns) == 0 {
+		return nil
+	}
+
+	var warnings []string
+	sawPrometheus := false
+	for k := range anns {
+		switch {
+		case strings.HasPrefix(k, "prometheus.metrics.kuma.io/"):
+			if sawPrometheus {
+				continue // one warning per document is enough
+			}
+			sawPrometheus = true
+			warnings = append(warnings, fmt.Sprintf(
+				"%s %q: annotation-based Prometheus metrics configuration (%s…) was deprecated in "+
+					"Kuma 2.14 in favour of the MeshMetric policy. Move the scrape configuration "+
+					"into a MeshMetric resource targeting this workload.",
+				kind, name, k))
+		case k == "kuma.io/virtual-probes" || k == "kuma.io/virtual-probes-port":
+			warnings = append(warnings, fmt.Sprintf(
+				"%s %q: annotation %q configures virtual probes, which are deprecated and default "+
+					"to disabled from Kuma 2.13 onward (replaced by the Application Probe Proxy on "+
+					"port 9001). Confirm probes still work after upgrading; the feature is slated "+
+					"for removal.",
+				kind, name, k))
+		}
+	}
+	return warnings
+}
+
+// ---- Dataplane networking.inbound[].tags (removed 3.0) ----------------------
+
+// warnDataplaneInboundTags warns when a Dataplane declares inbound tags.
+//
+// In 3.0 these are dropped SILENTLY rather than rejected: the proto field is
+// `reserved` and the CP loads with AllowUnknownFields, so a manifest that still
+// carries them applies cleanly and simply loses the tags. Anything that selected
+// on those tags (policy targetRefs, MeshService generation) then stops matching
+// with no error anywhere. That silence is why this is worth flagging.
+//
+// Fires only under TargetV3. Inbound tags are mandatory in the 2.x line —
+// kuma.io/service is present on every Universal Dataplane — so a forward-looking
+// advisory under TargetV2 would fire on every Dataplane in the input and say
+// nothing the operator can act on yet.
+func warnDataplaneInboundTags(obj map[string]interface{}, name string, target TargetVersion) []string {
+	if !target.IsV3() {
+		return nil
+	}
+	networking, _ := obj["networking"].(map[string]interface{})
+	if networking == nil {
+		if spec, ok := obj["spec"].(map[string]interface{}); ok {
+			networking, _ = spec["networking"].(map[string]interface{})
+		}
+	}
+	if networking == nil {
+		return nil
+	}
+	inbounds, _ := networking["inbound"].([]interface{})
+	tagged := 0
+	for _, in := range inbounds {
+		im, ok := in.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if tags, ok := im["tags"].(map[string]interface{}); ok && len(tags) > 0 {
+			tagged++
+		}
+	}
+	if tagged == 0 {
+		return nil
+	}
+
+	return []string{fmt.Sprintf(
+		"Dataplane %q: %d inbound(s) declare networking.inbound[].tags, which 3.0 REMOVES — and "+
+			"removes silently: the field is reserved in the proto and unknown fields are allowed, "+
+			"so this manifest will apply without error and simply lose the tags. Any policy "+
+			"targetRef or MeshService generation that selects on them stops matching, with nothing "+
+			"logged. Move the tags to Dataplane labels before applying to 3.0.",
+		name, tagged)}
+}
+
+// ---- MeshExternalService TLS DataSource → SecureDataSource (3.0) -------------
+
+// legacyDataSourceKeys are the pre-3.0 DataSource variants on a
+// MeshExternalService TLS verification field.
+var legacyDataSourceKeys = []string{"inline", "inlineString", "secret"}
+
+// warnMeshExternalServiceDataSource warns when spec.tls.verification.{caCert,
+// clientCert,clientKey} uses the legacy DataSource shape that 3.0 replaces with
+// SecureDataSource.
+//
+// This is warn-only rather than auto-converted even under v3 because the
+// conversion is not a pure rename: `inline` carried base64 and its successor
+// `insecureInline.value` carries plain text, so rewriting means decoding
+// credential material and re-emitting it in the clear. That is a decision for
+// the operator, not a silent transform.
+func warnMeshExternalServiceDataSource(obj map[string]interface{}, name string, target TargetVersion) []string {
+	tls, _ := obj["tls"].(map[string]interface{})
+	if tls == nil {
+		if spec, ok := obj["spec"].(map[string]interface{}); ok {
+			tls, _ = spec["tls"].(map[string]interface{})
+		}
+	}
+	if tls == nil {
+		return nil
+	}
+	verification, _ := tls["verification"].(map[string]interface{})
+	if verification == nil {
+		return nil
+	}
+
+	var warnings []string
+	for _, field := range []string{"caCert", "clientCert", "clientKey"} {
+		ds, _ := verification[field].(map[string]interface{})
+		if ds == nil {
+			continue
+		}
+		for _, legacy := range legacyDataSourceKeys {
+			if _, ok := ds[legacy]; !ok {
+				continue
+			}
+			replacement := "secretRef"
+			extra := ""
+			if legacy == "inline" {
+				replacement = "type: InsecureInline + insecureInline.value"
+				extra = " Note inline was base64-encoded while insecureInline.value is plain text, " +
+					"so this is a decode, not a rename."
+			} else if legacy == "inlineString" {
+				replacement = "type: InsecureInline + insecureInline.value"
+			} else {
+				replacement = "type: Secret + secretRef"
+			}
+			warnings = append(warnings, fmt.Sprintf(
+				"MeshExternalService %q: spec.tls.verification.%s.%s uses the legacy DataSource shape, %s. "+
+					"Replace it with %s.%s",
+				name, field, legacy,
+				target.removalNote("3.0 replaces DataSource with SecureDataSource"),
+				replacement, extra))
+		}
+	}
+	return warnings
+}
+
+// ---- Kong Mesh MeshOPA targetRef name/namespace/mesh (removed 3.0) ----------
+
+// warnMeshOPATargetRefFields warns when a Kong Mesh MeshOPA policy scopes its
+// targetRef with name/namespace/mesh, all of which 3.0 removes.
+//
+// The failure mode is scope-widening rather than an error: a MeshOPA that used
+// `name` to bind its rego to a single service silently starts applying to every
+// service matching `kind`, changing which requests are evaluated.
+func warnMeshOPATargetRefFields(obj map[string]interface{}, name string, target TargetVersion) []string {
+	spec, _ := obj["spec"].(map[string]interface{})
+	if spec == nil {
+		return nil
+	}
+	targetRef, _ := spec["targetRef"].(map[string]interface{})
+	if targetRef == nil {
+		return nil
+	}
+
+	var present []string
+	for _, f := range []string{"name", "namespace", "mesh"} {
+		if v, ok := targetRef[f]; ok && v != nil && v != "" {
+			present = append(present, f)
+		}
+	}
+	if len(present) == 0 {
+		return nil
+	}
+
+	msg := fmt.Sprintf(
+		"MeshOPA %q: spec.targetRef.{%s} %s use spec.targetRef.labels[\"kuma.io/display-name\"] instead.",
+		name, strings.Join(present, ","),
+		target.removalNote("3.0 removes these targetRef fields —"))
+
+	// Only `name` carries the scope-widening hazard; namespace/mesh are pruned.
+	for _, f := range present {
+		if f == "name" {
+			msg += " This one is not a clean failure: without `name` the policy widens to every " +
+				"service matching `kind`, so the rego starts evaluating requests it never saw before. " +
+				"Verify the label selector reproduces the original scope exactly."
+			break
+		}
+	}
+	return []string{msg}
+}
+
+// ---- Kong Mesh MeshGlobalRateLimit (removed 3.0) ----------------------------
+
+// warnMeshGlobalRateLimitRemoved warns that the enterprise MeshGlobalRateLimit
+// policy is removed in 3.0. Leftover objects go inert rather than being rejected,
+// and Helm does not delete the CRD, so the resource can linger and look healthy
+// while enforcing nothing.
+func warnMeshGlobalRateLimitRemoved(_ map[string]interface{}, name string, target TargetVersion) []string {
+	if target.IsV3() {
+		return []string{fmt.Sprintf(
+			"MeshGlobalRateLimit %q: this Kong Mesh policy is REMOVED in 3.0, along with its CP "+
+				"support, the rate-limit service in the Helm chart (ratelimit.*, global.ratelimit.*), "+
+				"the KMESH_GLOBAL_RATE_LIMIT_* env vars and the kmesh.globalRateLimit CP config. "+
+				"Leftover objects become inert rather than rejected, and Helm does not delete the "+
+				"CRD — the policy will still be listed while enforcing nothing. Remove it and drop "+
+				"the CRD manually (kubectl delete crd meshglobalratelimits.kuma.io). There is no "+
+				"in-mesh replacement; plan rate limiting at the gateway or with MeshRateLimit.",
+			name)}
+	}
+	return []string{fmt.Sprintf(
+		"MeshGlobalRateLimit %q: this Kong Mesh policy works in 2.14 but is removed in 3.0, with no "+
+			"in-mesh replacement. Leftover objects go inert rather than being rejected, so plan the "+
+			"replacement before upgrading.",
+		name)}
 }

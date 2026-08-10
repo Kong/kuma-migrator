@@ -9,11 +9,14 @@ import (
 // rulesAPIMigrationKinds is the set of Mesh* policy kinds where the from[] section
 // was deprecated in Kuma 2.10 in favour of the rules[] API.
 var rulesAPIMigrationKinds = map[string]bool{
-	"MeshAccessLog":     true,
+	"MeshAccessLog":      true,
 	"MeshCircuitBreaker": true,
-	"MeshRateLimit":     true,
-	"MeshTimeout":       true,
-	"MeshTls":           true,
+	"MeshRateLimit":      true,
+	"MeshTimeout":        true,
+	// Upstream spells this kind MeshTLS (all caps). It was "MeshTls" here, which
+	// never matched, so MeshTLS policies carrying the 2.9-era from[] were passed
+	// through unconverted.
+	"MeshTLS": true,
 }
 
 // TransformFromToRules migrates a policy that uses the deprecated from[] structure

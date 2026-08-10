@@ -203,7 +203,7 @@ spec:
       default:
         connectTimeout: 5s
 `
-	docs, warnings, scenario, err := TransformDocument([]byte(input))
+	docs, warnings, scenario, err := TransformDocument([]byte(input), TargetV2)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -526,5 +526,51 @@ spec:
 	}
 	if got != ScenarioPassthrough {
 		t.Errorf("expected ScenarioPassthrough for Universal MeshTrafficPermission, got %v", got)
+	}
+}
+
+// TestTransformFromToRules_MeshTLS guards against the kind-string regression that
+// spelled this kind "MeshTls": upstream spells it MeshTLS, and the map lookup is
+// exact-match, so the misspelling silently passed 2.9-era MeshTLS policies through
+// unconverted. MeshTLS carried from[] in 2.9.x and moved to rules[] in 2.10+.
+func TestTransformFromToRules_MeshTLS(t *testing.T) {
+	input := `
+apiVersion: kuma.io/v1alpha1
+kind: MeshTLS
+metadata:
+  name: set-version-and-ciphers
+  namespace: kuma-system
+spec:
+  targetRef:
+    kind: Mesh
+  from:
+    - targetRef:
+        kind: Mesh
+      default:
+        mode: Strict
+        tlsVersion:
+          min: TLS12
+`
+	got, _ := DetectScenario([]byte(input))
+	if got != ScenarioRules {
+		t.Fatalf("expected ScenarioRules for MeshTLS with from[], got %v", got)
+	}
+
+	docs, _, err := TransformFromToRules([]byte(input))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(docs) != 1 {
+		t.Fatalf("expected 1 output document, got %d", len(docs))
+	}
+	out := string(docs[0])
+	if !strings.Contains(out, "rules:") {
+		t.Errorf("expected rules[] in output, got:\n%s", out)
+	}
+	if strings.Contains(out, "from:") {
+		t.Errorf("expected from[] to be removed, got:\n%s", out)
+	}
+	if !strings.Contains(out, "mode: Strict") {
+		t.Errorf("expected default config to be carried over, got:\n%s", out)
 	}
 }

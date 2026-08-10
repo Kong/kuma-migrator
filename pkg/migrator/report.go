@@ -37,7 +37,13 @@ func writeMarkdown(b *strings.Builder, r *MigrationReport) {
 	linef(b, "Generated: %s", time.Now().Format("2006-01-02 15:04:05"))
 	linef(b, "Input:     `%s`", r.InputDir)
 	linef(b, "Output:    `%s`", r.OutputDir)
+	linef(b, "Target:    %s", r.Target.Describe())
 	line(b, "")
+	if r.Target.IsV3() {
+		line(b, "> Output targets **3.0**. It is not safe to apply to a 2.x control plane:")
+		line(b, "> fields this run rewrote or removed are still required there.")
+		line(b, "")
+	}
 	if isPlan {
 		line(b, "> **Dry run** — no files have been written.")
 		line(b, "> Run `kuma-migrator migrate` with the same flags to apply these changes.")

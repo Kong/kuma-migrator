@@ -132,13 +132,18 @@ func TestSkipSetForEnv_Universal(t *testing.T) {
 	cfg := &Config{} // no explicit skip list → use defaults
 	set := cfg.SkipSetForEnv("universal")
 	// Universal list must NOT contain workload-registration kinds.
-	for _, kind := range []string{"Dataplane", "ZoneIngress", "ZoneEgress", "Workload"} {
+	// Hand-authored on Universal, so they must be scanned rather than skipped.
+	// HostnameGenerator is user-authored in both environments and is scanned so
+	// the 2.14 rendered-template validation can be checked.
+	for _, kind := range []string{"Dataplane", "ZoneIngress", "ZoneEgress", "HostnameGenerator"} {
 		if set[kind] {
 			t.Errorf("universal skip set must not contain %q", kind)
 		}
 	}
-	// But shared infrastructure kinds should still be skipped.
-	for _, kind := range []string{"AccessRole", "Zone", "HostnameGenerator"} {
+	// But shared infrastructure kinds should still be skipped. Workload is
+	// CP-generated on Universal too, so it belongs here despite Universal
+	// carrying the kuma.io/workload label on the Dataplane.
+	for _, kind := range []string{"AccessRole", "Zone", "Workload"} {
 		if !set[kind] {
 			t.Errorf("universal skip set should contain %q", kind)
 		}
@@ -152,6 +157,11 @@ func TestSkipSetForEnv_Kubernetes(t *testing.T) {
 		if !set[kind] {
 			t.Errorf("kubernetes skip set should contain %q", kind)
 		}
+	}
+	// HostnameGenerator is user-authored and must be scanned in both
+	// environments so the 2.14 rendered-template validation applies.
+	if set["HostnameGenerator"] {
+		t.Error("kubernetes skip set must not contain HostnameGenerator")
 	}
 }
 
@@ -213,7 +223,7 @@ func TestLoad_AdminServerTLSSkipVerify_DefaultFalse(t *testing.T) {
 func TestDefaultSkipKinds_ContainsExpected(t *testing.T) {
 	expected := []string{
 		"Dataplane", "AccessRole", "AccessRoleBinding",
-		"ZoneEgress", "ZoneIngress", "Zone", "HostnameGenerator",
+		"ZoneEgress", "ZoneIngress", "Zone", "Workload",
 	}
 	set := make(map[string]bool)
 	for _, k := range DefaultSkipKinds {

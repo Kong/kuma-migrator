@@ -25,7 +25,7 @@ spec:
         prometheus:
           port: 5670
 `
-	out, warnings := ScanForDeprecations([]byte(input))
+	out, warnings := ScanForDeprecations([]byte(input), TargetV2)
 
 	// Should have a warning
 	if len(warnings) == 0 {
@@ -83,7 +83,7 @@ spec:
     backends:
       - type: Prometheus
 `
-	out, warnings := ScanForDeprecations([]byte(input))
+	out, warnings := ScanForDeprecations([]byte(input), TargetV2)
 	if len(warnings) != 0 {
 		t.Errorf("expected no warnings, got: %v", warnings)
 	}
@@ -106,7 +106,7 @@ spec:
     healthyPanicThreshold: "50.0"
     interval: 10s
 `
-	_, warnings := ScanForDeprecations([]byte(input))
+	_, warnings := ScanForDeprecations([]byte(input), TargetV2)
 	if len(warnings) == 0 {
 		t.Fatal("expected at least one warning about healthyPanicThreshold")
 	}
@@ -133,7 +133,7 @@ spec:
   targetRef:
     kind: Mesh
 `
-	_, warnings := ScanForDeprecations([]byte(input))
+	_, warnings := ScanForDeprecations([]byte(input), TargetV2)
 	if len(warnings) == 0 {
 		t.Fatal("expected at least one warning about spec.origin")
 	}
@@ -158,7 +158,7 @@ spec:
   targetRef:
     kind: Mesh
 `
-	out, warnings := ScanForDeprecations([]byte(input))
+	out, warnings := ScanForDeprecations([]byte(input), TargetV2)
 	if len(warnings) != 0 {
 		t.Errorf("expected no warnings for MeshRetry, got: %v", warnings)
 	}
@@ -183,7 +183,7 @@ spec:
     sidecar:
       regex: "envoy_.*"
 `
-	docs, warnings, scenario, err := TransformDocument([]byte(input))
+	docs, warnings, scenario, err := TransformDocument([]byte(input), TargetV2)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -238,7 +238,7 @@ spec:
       default:
         action: Allow
 `
-	_, warnings := ScanForDeprecations([]byte(input))
+	_, warnings := ScanForDeprecations([]byte(input), TargetV2)
 	found := false
 	for _, w := range warnings {
 		if strings.Contains(w, "MeshService") && strings.Contains(w, "from") && strings.Contains(w, "deprecated") {
@@ -269,7 +269,7 @@ spec:
             httpStatus: 500
             percentage: 10
 `
-	_, warnings := ScanForDeprecations([]byte(input))
+	_, warnings := ScanForDeprecations([]byte(input), TargetV2)
 	found := false
 	for _, w := range warnings {
 		if strings.Contains(w, "MeshService") && strings.Contains(w, "from") {
@@ -299,7 +299,7 @@ spec:
       default:
         action: Allow
 `
-	_, warnings := ScanForDeprecations([]byte(input))
+	_, warnings := ScanForDeprecations([]byte(input), TargetV2)
 	for _, w := range warnings {
 		if strings.Contains(w, "from") && strings.Contains(w, "MeshService") && strings.Contains(w, "deprecated") {
 			t.Errorf("unexpected MeshService-in-from warning for Dataplane targetRef: %s", w)
@@ -321,7 +321,7 @@ spec:
       default:
         action: ALLOW
 `
-	_, warnings := ScanForDeprecations([]byte(input))
+	_, warnings := ScanForDeprecations([]byte(input), TargetV2)
 	found := false
 	for _, w := range warnings {
 		if strings.Contains(w, "ALLOW") && strings.Contains(w, "Allow") {
@@ -355,7 +355,7 @@ spec:
         kind: Mesh
       default:
         action: ` + tc.action + "\n"
-		_, warnings := ScanForDeprecations([]byte(input))
+		_, warnings := ScanForDeprecations([]byte(input), TargetV2)
 		found := false
 		for _, w := range warnings {
 			if strings.Contains(w, tc.action) && strings.Contains(w, tc.wantNew) {
@@ -383,7 +383,7 @@ spec:
       default:
         action: Allow
 `
-	_, warnings := ScanForDeprecations([]byte(input))
+	_, warnings := ScanForDeprecations([]byte(input), TargetV2)
 	for _, w := range warnings {
 		if strings.Contains(w, "deprecated") && strings.Contains(w, "action") {
 			t.Errorf("unexpected action casing warning for correct value: %s", w)
@@ -409,7 +409,7 @@ spec:
           hashPolicies:
             - type: SourceIP
 `
-	_, warnings := ScanForDeprecations([]byte(input))
+	_, warnings := ScanForDeprecations([]byte(input), TargetV2)
 	found := false
 	for _, w := range warnings {
 		if strings.Contains(w, "SourceIP") && strings.Contains(w, "Connection") {
@@ -439,7 +439,7 @@ spec:
           hashPolicies:
             - type: Connection
 `
-	_, warnings := ScanForDeprecations([]byte(input))
+	_, warnings := ScanForDeprecations([]byte(input), TargetV2)
 	for _, w := range warnings {
 		if strings.Contains(w, "SourceIP") {
 			t.Errorf("unexpected SourceIP warning for Connection type: %s", w)
@@ -460,7 +460,7 @@ spec:
       redirectPortInboundV6: 15010
       redirectPortOutbound: 15001
 `
-	_, warnings := ScanForDeprecations([]byte(input))
+	_, warnings := ScanForDeprecations([]byte(input), TargetV2)
 	found := false
 	for _, w := range warnings {
 		if strings.Contains(w, "redirectPortInboundV6") {
@@ -483,7 +483,7 @@ spec:
       redirectPortInbound: 15006
       redirectPortOutbound: 15001
 `
-	_, warnings := ScanForDeprecations([]byte(input))
+	_, warnings := ScanForDeprecations([]byte(input), TargetV2)
 	for _, w := range warnings {
 		if strings.Contains(w, "redirectPortInboundV6") {
 			t.Errorf("unexpected redirectPortInboundV6 warning when field is absent: %s", w)
@@ -508,7 +508,7 @@ spec:
       default:
         connectTimeout: 5s
 `
-	_, warnings := ScanForDeprecations([]byte(input))
+	_, warnings := ScanForDeprecations([]byte(input), TargetV2)
 	found := false
 	for _, w := range warnings {
 		if strings.Contains(w, "MeshSubset") && strings.Contains(w, "deprecated") {
@@ -537,7 +537,7 @@ spec:
       default:
         connectTimeout: 5s
 `
-	_, warnings := ScanForDeprecations([]byte(input))
+	_, warnings := ScanForDeprecations([]byte(input), TargetV2)
 	for _, w := range warnings {
 		if strings.Contains(w, "MeshSubset") && strings.Contains(w, "deprecated") {
 			t.Errorf("unexpected MeshSubset deprecation warning when service tag is present: %s", w)
@@ -560,7 +560,7 @@ networking:
     redirectPortOutbound: 15001
     redirectPortInboundV6: 15010
 `
-	_, warnings := ScanForDeprecations([]byte(input))
+	_, warnings := ScanForDeprecations([]byte(input), TargetV2)
 	found := false
 	for _, w := range warnings {
 		if strings.Contains(w, "redirectPortInboundV6") {
@@ -584,7 +584,7 @@ networking:
     redirectPortOutbound: 15001
     redirectPortInboundV6: 15010
 `
-	_, warnings := ScanForDeprecations([]byte(input))
+	_, warnings := ScanForDeprecations([]byte(input), TargetV2)
 	found := false
 	for _, w := range warnings {
 		if strings.Contains(w, "redirectPortInboundV6") {
@@ -610,7 +610,7 @@ networking:
       - backend
       - database
 `
-	_, warnings := ScanForDeprecations([]byte(input))
+	_, warnings := ScanForDeprecations([]byte(input), TargetV2)
 	found := false
 	for _, w := range warnings {
 		if strings.Contains(w, "reachableServices") {
@@ -636,7 +636,7 @@ networking:
         kuma.io/service: web
         kuma.io/protocol: http
 `
-	_, warnings := ScanForDeprecations([]byte(input))
+	_, warnings := ScanForDeprecations([]byte(input), TargetV2)
 	if len(warnings) != 0 {
 		t.Errorf("expected no warnings for clean Dataplane, got: %v", warnings)
 	}
@@ -656,7 +656,7 @@ spec:
             type: Exact
             value: spiffe://default/web
 `
-	out, warnings := ScanForDeprecations([]byte(input))
+	out, warnings := ScanForDeprecations([]byte(input), TargetV2)
 	if strings.Contains(string(out), "spiffeId:") {
 		t.Errorf("expected spiffeId to be renamed to spiffeID, got: %s", out)
 	}
@@ -692,7 +692,7 @@ spec:
                 header:
                   name: x-foo
 `
-	out, warnings := ScanForDeprecations([]byte(input))
+	out, warnings := ScanForDeprecations([]byte(input), TargetV2)
 	var parsed map[string]interface{}
 	if err := yaml.Unmarshal(out, &parsed); err != nil {
 		t.Fatalf("unmarshal: %v", err)
@@ -729,7 +729,7 @@ spec:
     - port: 80
       protocol: http
 `
-	out, _ := ScanForDeprecations([]byte(input))
+	out, _ := ScanForDeprecations([]byte(input), TargetV2)
 	if strings.Contains(string(out), "protocol:") {
 		t.Errorf("expected protocol renamed to appProtocol, got: %s", out)
 	}
@@ -750,7 +750,7 @@ spec:
         openTelemetry:
           endpoint: otel-collector:4317
 `
-	_, warnings := ScanForDeprecations([]byte(input))
+	_, warnings := ScanForDeprecations([]byte(input), TargetV2)
 	found := false
 	for _, w := range warnings {
 		if strings.Contains(w, "openTelemetry.endpoint") && strings.Contains(w, "MeshOpenTelemetryBackend") {
@@ -771,7 +771,7 @@ spec:
   routing:
     defaultForbidMeshExternalServiceAccess: true
 `
-	_, warnings := ScanForDeprecations([]byte(input))
+	_, warnings := ScanForDeprecations([]byte(input), TargetV2)
 	found := false
 	for _, w := range warnings {
 		if strings.Contains(w, "defaultForbidMeshExternalServiceAccess") && strings.Contains(w, "3.0") {
@@ -797,7 +797,7 @@ spec:
       default:
         action: Allow
 `
-	_, warnings := ScanForDeprecations([]byte(input))
+	_, warnings := ScanForDeprecations([]byte(input), TargetV2)
 	found := false
 	for _, w := range warnings {
 		if strings.Contains(w, "from[]") && strings.Contains(w, "rules[]") {
@@ -812,7 +812,7 @@ spec:
 func TestScanForDeprecations_NameTooLong(t *testing.T) {
 	longName := strings.Repeat("a", 70)
 	input := "apiVersion: kuma.io/v1alpha1\nkind: MeshService\nmetadata:\n  name: " + longName + "\nspec: {}\n"
-	_, warnings := ScanForDeprecations([]byte(input))
+	_, warnings := ScanForDeprecations([]byte(input), TargetV2)
 	found := false
 	for _, w := range warnings {
 		if strings.Contains(w, "63") && strings.Contains(w, "3.0") {
@@ -842,7 +842,7 @@ spec:
                 - key: otel.reserved
                   value: x
 `
-	_, warnings := ScanForDeprecations([]byte(input))
+	_, warnings := ScanForDeprecations([]byte(input), TargetV2)
 	found := false
 	for _, w := range warnings {
 		if strings.Contains(w, "otel.reserved") && strings.Contains(w, "reserved") {
@@ -872,7 +872,7 @@ spec:
       default:
         action: Allow
 `
-	out, warnings := ScanForDeprecations([]byte(input))
+	out, warnings := ScanForDeprecations([]byte(input), TargetV2)
 	// from[] must NOT be auto-rewritten to rules[] for MTP.
 	if !strings.Contains(string(out), "from:") || strings.Contains(string(out), "rules:") {
 		t.Errorf("MTP from[] should be left intact (not converted to rules[]), got: %s", out)
@@ -905,7 +905,7 @@ spec:
               httpStatus: 500
               percentage: 10
 `
-	_, warnings := ScanForDeprecations([]byte(input))
+	_, warnings := ScanForDeprecations([]byte(input), TargetV2)
 	found := false
 	for _, w := range warnings {
 		if strings.Contains(w, "matches[]") && strings.Contains(w, "rules[] API") {
@@ -934,7 +934,7 @@ spec:
       default:
         idleTimeout: 5s
 `
-	_, warnings := ScanForDeprecations([]byte(input))
+	_, warnings := ScanForDeprecations([]byte(input), TargetV2)
 	found := false
 	for _, w := range warnings {
 		if strings.Contains(w, "spec.targetRef.kind MeshService") && strings.Contains(w, "Dataplane") {
@@ -956,7 +956,7 @@ spec:
     kind: MeshHTTPRoute
     name: route-1
 `
-	_, warnings := ScanForDeprecations([]byte(input))
+	_, warnings := ScanForDeprecations([]byte(input), TargetV2)
 	found := false
 	for _, w := range warnings {
 		if strings.Contains(w, "MeshHTTPRoute") && strings.Contains(w, "spec.to[].targetRef") {
@@ -985,7 +985,7 @@ spec:
       default:
         idleTimeout: 5s
 `
-	_, warnings := ScanForDeprecations([]byte(input))
+	_, warnings := ScanForDeprecations([]byte(input), TargetV2)
 	for _, w := range warnings {
 		if strings.Contains(w, "targetRef") && strings.Contains(w, "deprecated") {
 			t.Errorf("unexpected top-level targetRef warning for Dataplane: %s", w)
@@ -1005,7 +1005,7 @@ spec:
       - name: ca-1
         type: builtin
 `
-	out, warnings := ScanForDeprecations([]byte(input))
+	out, warnings := ScanForDeprecations([]byte(input), TargetV2)
 	if string(out) != input {
 		t.Error("Mesh mtls advisory must be warn-only (output unchanged)")
 	}
@@ -1027,7 +1027,7 @@ metadata:
   name: default
 spec: {}
 `
-	_, warnings := ScanForDeprecations([]byte(input))
+	_, warnings := ScanForDeprecations([]byte(input), TargetV2)
 	for _, w := range warnings {
 		if strings.Contains(w, "MeshIdentity") {
 			t.Errorf("unexpected mtls advisory for Mesh without mtls backends: %s", w)
@@ -1044,7 +1044,7 @@ mtls:
     - name: ca-1
       type: provided
 `
-	_, warnings := ScanForDeprecations([]byte(input))
+	_, warnings := ScanForDeprecations([]byte(input), TargetV2)
 	found := false
 	for _, w := range warnings {
 		if strings.Contains(w, "MeshIdentity") && strings.Contains(w, "MADR-074") {
@@ -1069,7 +1069,7 @@ spec:
       - name: ca-1
         type: builtin
 `
-	out, warnings := ScanForDeprecations([]byte(input))
+	out, warnings := ScanForDeprecations([]byte(input), TargetV2)
 	if string(out) != input {
 		t.Error("meshServices advisory must be warn-only (output unchanged)")
 	}
@@ -1094,7 +1094,7 @@ spec:
   meshServices:
     mode: Everywhere
 `
-	_, warnings := ScanForDeprecations([]byte(input))
+	_, warnings := ScanForDeprecations([]byte(input), TargetV2)
 	for _, w := range warnings {
 		if strings.Contains(w, "meshServices") && strings.Contains(w, "Exclusive") {
 			t.Errorf("unexpected meshServices flip advisory when block is set: %s", w)
@@ -1107,7 +1107,7 @@ func TestScanForDeprecations_MeshServicesDefaultFlip_Universal(t *testing.T) {
 	input := `type: Mesh
 name: default
 `
-	_, warnings := ScanForDeprecations([]byte(input))
+	_, warnings := ScanForDeprecations([]byte(input), TargetV2)
 	found := false
 	for _, w := range warnings {
 		if strings.Contains(w, "meshServices") && strings.Contains(w, "17102") {
@@ -1116,5 +1116,61 @@ name: default
 	}
 	if !found {
 		t.Errorf("expected meshServices advisory for Universal Mesh, got: %v", warnings)
+	}
+}
+
+// TestScanForDeprecations_OtelAttributeKeyGrammar pins the attribute-key rule to
+// upstream's otelAttributeNameRegex. The two false-negative classes that an
+// earlier, looser pattern let through are the important cases: a '-' delimiter
+// and a leading digit both pass a lenient check and are then rejected on apply.
+func TestScanForDeprecations_OtelAttributeKeyGrammar(t *testing.T) {
+	tests := []struct {
+		key       string
+		wantWarn  bool
+		rationale string
+	}{
+		{"service.name", false, "canonical dotted key"},
+		{"service_name", false, "underscore delimiter is allowed"},
+		{"zone", false, "bare lowercase word"},
+		{"service-name", true, "'-' is not an allowed delimiter upstream"},
+		{"5xx.count", true, "key must start with a lowercase letter"},
+		{"otel.foo", true, "the otel. prefix is reserved"},
+		{"Service.Name", true, "uppercase is rejected"},
+		{"%KUMA_ZONE%", true, "placeholders are rejected in keys"},
+		{"service..name", true, "consecutive delimiters are rejected"},
+		{"service.", true, "must end alphanumeric"},
+	}
+	for _, tc := range tests {
+		input := `
+apiVersion: kuma.io/v1alpha1
+kind: MeshAccessLog
+metadata:
+  name: al
+spec:
+  targetRef:
+    kind: Mesh
+  to:
+    - targetRef:
+        kind: Mesh
+      default:
+        backends:
+          - type: OpenTelemetry
+            openTelemetry:
+              endpoint: otel:4317
+              attributes:
+                - key: "` + tc.key + `"
+                  value: "some-value"
+`
+		_, warnings := ScanForDeprecations([]byte(input), TargetV2)
+		found := false
+		for _, w := range warnings {
+			if strings.Contains(w, "attribute key") && strings.Contains(w, tc.key) {
+				found = true
+			}
+		}
+		if found != tc.wantWarn {
+			t.Errorf("key %q: got warn=%v, want %v (%s); warnings: %v",
+				tc.key, found, tc.wantWarn, tc.rationale, warnings)
+		}
 	}
 }

@@ -40,8 +40,8 @@ Project-unique material that is **not** in the KB stays under `./reference/`:
 ```
 kuma-migrator extract --kube-context <ctx>    --output-dir <dir> [--mesh <mesh>] [--output-format kubernetes|universal]
 kuma-migrator extract --kumactl-context <ctx> --output-dir <dir> [--mesh <mesh>] [--output-format kubernetes|universal]
-kuma-migrator plan    --input-dir <dir> --output-dir <dir>        [--mesh <mesh>]
-kuma-migrator migrate --input-dir <dir> --output-dir <dir>        [--mesh <mesh>]
+kuma-migrator plan    --input-dir <dir> --output-dir <dir>        [--mesh <mesh>] [--to-latest v2|v3]
+kuma-migrator migrate --input-dir <dir> --output-dir <dir>        [--mesh <mesh>] [--to-latest v2|v3]
 ```
 
 ### extract command
@@ -191,6 +191,38 @@ Falls back to `kubectl` when the metadata file is absent (older extract output).
   this and recurses into `items`. Konnect list endpoints also return this format (the
   `?format=kubernetes` parameter has no effect on list responses).
 
+### Target major version (`--to-latest`)
+
+`plan` and `migrate` accept `--to-latest v2|v3` (default `v2`). `TargetVersion` lives in
+`pkg/migrator/target.go` (`TargetV2`, `TargetV3`, `ParseTargetVersion`, `IsV3()`,
+`Describe()`, `removalNote()`), and is threaded through
+`Plan`/`Migrate` → `runMigration` → `processFile` → `TransformDocument` → `ScanForDeprecations`
+and the individual transforms.
+
+| Target | Meaning | Behaviour |
+|---|---|---|
+| `v2` (default) | latest 2.x (2.14.x) | Output stays applicable to a 2.x CP. 3.0 removals are reported as forward-looking advisories, never rewritten. |
+| `v3` | 3.0 | 3.0 removals are rewritten where the manifest carries enough information; otherwise reported as blocking work. |
+
+The split exists because the two lines need genuinely different output — 3.0 removes fields
+2.14 still requires, and some 3.0 replacements (`MeshOpenTelemetryBackend`, `SecureDataSource`)
+do not exist before 2.14.
+
+**Target-sensitive behaviour:**
+
+- `Dataplane networking.inbound[].tags` → warns **only under v3**. Inbound tags are mandatory in
+  2.x (`kuma.io/service` is on every Universal Dataplane), so a v2 advisory would fire on every
+  Dataplane in the input and be unactionable.
+- `MeshOPA spec.targetRef.{name,namespace,mesh}` → **auto-converted under v3** by
+  `fixMeshOPATargetRefForV3` in `opapolicy.go`; preserved under v2.
+- inline `openTelemetry.endpoint` → under v2 the warning explicitly says *do not* migrate while
+  any CP/DP is below 2.14 (MOTB does not exist there and the CP silently skips the OTel route);
+  under v3 it is a hard removal.
+- `MeshExternalService` TLS `DataSource` and `MeshGlobalRateLimit` warnings change wording by target.
+
+The selected target is recorded on `MigrationReport.Target` and printed in the report header;
+a v3 report also carries a banner warning that the output must not be applied to a 2.x CP.
+
 ### migrate / plan pipeline
 
 `Plan(inputDir, outputDir, meshFilter string)` and `Migrate(inputDir, outputDir, meshFilter string)` call
@@ -300,11 +332,21 @@ instead of `metadata`. All migrate-side parsing must normalise these:
 - `MeshMetric`/`MeshTrace`/`MeshAccessLog` inline `openTelemetry.endpoint` → warn, define a `MeshOpenTelemetryBackend` and reference it via `backendRef` (deprecated v2.14, removed 3.0)
 - `MeshAccessLog` `openTelemetry.attributes[].key` reserved `otel.` prefix / non-lowercase / placeholder keys → warn, stricter validation rejects on reapply (v2.14)
 - `Mesh spec.routing.defaultForbidMeshExternalServiceAccess` → warn, removed in 3.0 (use `MeshTrafficPermission`)
-- `Mesh spec.mtls.backends` → **advisory only** (warn): legacy mTLS/identity model; Kuma 2.12+ successor is `MeshIdentity` + `MeshTrust`, and the experimental SPIFFE `rules[]` MTP API requires `MeshIdentity`. **Not auto-converted** — it's a guided CA cutover (Kuma MADR-074); trust domain (zone/runtime-derived), per-workload SPIFFE paths, and CA key material (CP Secret / DataSource / Kong Mesh Vault backend) are not in the manifest, and the builtin backend mints a new CA. `spec.mtls` is **not deprecated** (safe to leave). The `MeshTLS` policy is orthogonal (tlsVersion/ciphers/mode) and is **not** the identity source. `warnMeshMtlsBackends` in `deprecation.go`. MeshFaultInjection never requires identity (its `rules[].matches[].spiffeID` is an optional client selector).
+- `Mesh spec.mtls.backends` → **advisory only** (warn): legacy mTLS/identity model; Kuma 2.12+ successor is `MeshIdentity` + `MeshTrust`, and the experimental SPIFFE `rules[]` MTP API requires `MeshIdentity`. **Not auto-converted** — it's a guided CA cutover (Kuma MADR-074); trust domain (zone/runtime-derived), per-workload SPIFFE paths, and CA key material (CP Secret / DataSource / Kong Mesh Vault backend) are not in the manifest, and the builtin backend mints a new CA. `spec.mtls` is **not deprecated** (safe to leave). The `MeshTLS` policy is orthogonal (tlsVersion/ciphers/mode) and is **not** the identity source. `warnMeshMtlsBackends` in `deprecation.go`. MeshFaultInjection never requires identity (its `rules[].matches[].spiffeID` is an optional client selector). When the Mesh uses a Kong Mesh enterprise CA backend (`vault`, `acm`, `cert-manager`), the advisory additionally names the **Kong Mesh 2.14 `MeshIdentity` `Extension` provider** that replaces it: `spec.provider.type: Extension` with `spec.provider.extension.name` = `vault` / `acmpca` / `certmanager` (constants in `kong-mesh/pkg/plugins/resources/meshidentity/*/api/*.go`). `certmanager` is Kubernetes-only. This mapping is **undocumented on the docs site** — `meshidentity/index.md` still lists only `Bundled` and `Spire`. Mapping table: `caBackendExtensionMap` in `deprecation.go`.
 - `Mesh` with **no `spec.meshServices` block** → **advisory only** (warn): Kuma 3.0 flips the default for such meshes from permissive to `meshServices.mode: Exclusive` (kumahq/kuma#17102, master/3.0-dev), restricting outbound connectivity to explicitly-reachable services and requiring `reachableServices`/`reachableBackends` to use MeshService display names. Advises setting `spec.meshServices.mode` explicitly before 3.0. `warnMeshServicesDefaultFlip` in `deprecation.go`. **Note:** `TransformMesh` (ScenarioMesh) already injects `meshServices.mode: Exclusive` on migrated Mesh output, so this advisory only fires on Meshes the migrator leaves untransformed (never double-warns).
-- `MeshTrafficPermission`/`MeshFaultInjection` `from[]` → warn, deprecated in favour of `rules[]` API (MFI v2.13, MTP v2.14, removed 3.0). **Intentionally not auto-converted**: the `rules[]` API matches clients by SPIFFE identity (MTP, via `default.{allow,deny,allowWithShadowDeny}`, requires `MeshIdentity`, default-deny) / `matches[]` SpiffeID·SNI (MFI), while `from[].targetRef` uses tag/label selectors. The SPIFFE trust-domain + identity strings are not present in the manifest, so a mechanical rewrite would either fail or silently widen access (a security regression for MTP). The warning lists the manual steps. `warnFromDeprecatedForRulesAPI` in `deprecation.go`.
+- `MeshTrafficPermission`/`MeshFaultInjection` `from[]` → warn, deprecated in favour of `rules[]` API (MFI: `rules[]` API landed v2.13.0, `from` deprecated **v2.14.0**; MTP v2.14; removed 3.0). **Intentionally not auto-converted**: the `rules[]` API matches clients by SPIFFE identity (MTP, via `default.{allow,deny,allowWithShadowDeny}`, requires `MeshIdentity`, default-deny) / `matches[]` SpiffeID·SNI (MFI), while `from[].targetRef` uses tag/label selectors. The SPIFFE trust-domain + identity strings are not present in the manifest, so a mechanical rewrite would either fail or silently widen access (a security regression for MTP). The warning lists the manual steps. `warnFromDeprecatedForRulesAPI` in `deprecation.go`.
 - deprecated **top-level `spec.targetRef.kind`** (any policy) → warn: `MeshSubset` (only when no service-identity tags) / `MeshService` / `MeshServiceSubset` → use `Dataplane` with labels; `MeshHTTPRoute` → reference in `spec.to[].targetRef` (v2.10/2.11). Mirrors upstream `validators.TopLevelTargetRefDeprecations`. Warn-only (not auto-converted) because a `MeshService`/`MeshServiceSubset` selector can't be expanded to the equivalent `Dataplane` label set from the manifest alone — only the legacy Kuma-internal `_svc_` names carry enough info, and those are already rewritten to `Dataplane` by `ScenarioSubset` before this post-pass. `warnDeprecatedTopLevelTargetRef` in `deprecation.go`.
 - `Mesh`/`MeshService`/`MeshExternalService`/`MeshMultiZoneService` names violating RFC 1035 or exceeding 63 chars → warn, becomes a hard error in 3.0 (via `ValidateResourceName`)
+- `MeshTrust spec.origin` → warn. **Removed** in 2.13 from both the API and the Kubernetes CRD schema, so a manifest still setting it can be rejected as unknown-field input (strict validation / server-side apply). Value now published read-only at `status.origin.kri`. This is the single hard YAML break in 2.13. Note the Kuma website still documents `spec.origin` as a live field with no deprecation marker — `UPGRADE.md` is authoritative. `warnMeshTrustOrigin`.
+- `HostnameGenerator spec.template` → warn when the rendered template would not be a valid RFC 1123 DNS subdomain (leading/trailing dot, consecutive dots, uppercase). Kuma 2.14 validates at creation; earlier versions accepted it and silently produced a broken hostname. Checked by substituting each `{{ ... }}` expression with one valid label char, so only defects in the literal skeleton are flagged. `warnHostnameGeneratorTemplate`. **HostnameGenerator was removed from both skip lists** so it is actually scanned.
+- `MeshPassthrough spec.default.appendMatch[]` → warn on partial wildcards (`*foo.com`), `type: Domain` with protocol `tcp`/`mysql`, and wildcard domains on an L7 protocol with no port. Mirrors upstream `wildcardPartialPrefixPattern` and the surrounding checks in the MeshPassthrough validator (v2.14, rejects on apply). `warnMeshPassthroughDomains`.
+- `prometheus.metrics.kuma.io/*` annotations → warn, deprecated v2.14 in favour of the `MeshMetric` policy. Collapsed to one warning per document. `warnDeprecatedAnnotations`.
+- `kuma.io/virtual-probes` / `kuma.io/virtual-probes-port` annotations → warn, deprecated and defaulted to disabled from 2.13 (replaced by the Application Probe Proxy on port 9001). `warnDeprecatedAnnotations`.
+- `Dataplane networking.inbound[].tags` → warn **under v3 only**, removed in 3.0 and dropped **silently** (proto `reserved` + `AllowUnknownFields`), so the manifest applies cleanly and simply loses the tags; anything selecting on them stops matching with nothing logged. `warnDataplaneInboundTags`.
+- `MeshExternalService spec.tls.verification.{caCert,clientCert,clientKey}.{inline,inlineString,secret}` → warn, 3.0 replaces `DataSource` with `SecureDataSource` (`type` + `insecureInline.value` / `secretRef`). **Not auto-converted even under v3**: `inline` was base64 and `insecureInline.value` is plain text, so rewriting means decoding credential material and re-emitting it in the clear — an operator decision. `warnMeshExternalServiceDataSource`.
+- `MeshOPA spec.targetRef.{name,namespace,mesh}` → removed in 3.0. **Auto-converted under v3**: `name` → `labels["kuma.io/display-name"]` (preserving scope), `namespace`/`mesh` dropped. Dropping `name` instead is what causes 3.0's silent scope-widening, where the rego starts evaluating requests it never saw. Refuses to overwrite a conflicting existing `display-name` label. `fixMeshOPATargetRefForV3` in `opapolicy.go`, `warnMeshOPATargetRefFields` in `deprecation.go`.
+- `MeshGlobalRateLimit` → warn, removed in 3.0 with no in-mesh replacement. Leftover objects go **inert** rather than being rejected and Helm does not delete the CRD, so the policy stays listed while enforcing nothing. `warnMeshGlobalRateLimitRemoved`.
+- inline `openTelemetry.endpoint` warning now also states the `backendRef` constraints (selects by `labels` only — `name` unsupported; mutually exclusive with inline `endpoint`; MOTB is `kuma-system`-only; `endpoint.path` must be empty with `protocol: grpc`).
 
 `ScanForDeprecations` normalises `kind` from `obj["type"]` when `obj["kind"]` is empty, so
 Universal-format resources (including `Dataplane`) are handled correctly.
@@ -325,6 +367,26 @@ Latest released as of 2026-06: **Kuma 2.14.0** and **Kong Mesh 2.14.0** (2.13.x 
   - `spec.conf.policies[].inlineString` → `spec.default.appendPolicies[].rego.inlineString`
   - `spec.conf.agentConfig.inlineString` → `spec.default.agentConfig.inlineString` (if present)
 - The `targetRef` is preserved as-is.
+
+### Kong Mesh 2.13 / 2.14 API surface
+
+**No enterprise CRD schema changed between 2.12.x → 2.13.x → 2.14.x.** Diffs on
+`opa-policy.yaml`, `kuma.io_meshopas.yaml`, `kuma.io_meshglobalratelimits.yaml`, `access-*.yaml`
+are `controller-gen` annotation bumps only. Verified against the frozen per-version assets under
+`developer.konghq.com/app/assets/mesh/2.1{3,4}.x/raw/crds/`.
+
+- `OPAPolicy` is still shipped, served and storage in **both** 2.13.x and 2.14.x, with no
+  `deprecated`/`deprecationWarning` marker on the CRD. It is de-facto legacy from 2.13 (the
+  dynconfig path only supports `MeshOPA`) and is **removed in 3.0**, where leftover objects are
+  *rejected*. Note `UPGRADE_km.md` describes the removed resource as
+  `config.kong-mesh.io/v1alpha1` — that apiVersion is wrong; the shipped CRD is
+  `opapolicies.kuma.io`, group `kuma.io`, `scope: Cluster`.
+- `KMESH_OPA_EXPERIMENTAL_USE_DYNAMIC_CONFIG` is a **data plane** env var (not CP config).
+  Documented only as an opt-out, so the default is `true` in 2.13.x and 2.14.x. Gone on 3.0.
+- **`MeshApiRateLimit` does not exist** in any Kong Mesh or Kuma source — do not add handling
+  for it. Likely a conflation with OSS `MeshRateLimit` or enterprise `MeshGlobalRateLimit`.
+- 2.14 adds `MeshIdentity` `spec.provider.type: Extension` + `spec.provider.extension.{name,config}`,
+  with Kong Mesh registering `acmpca`, `vault`, `certmanager`.
 
 ### MeshOPA dynamic vs static config
 - **Static** (current `MeshOPA`): `spec.default.appendPolicies[].rego.inlineString`

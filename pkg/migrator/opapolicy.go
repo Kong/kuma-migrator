@@ -13,10 +13,16 @@ import (
 //   - spec.conf.policies[].inlineString → spec.default.appendPolicies[].rego.inlineString
 //   - spec.conf.policies[].secret      → spec.default.appendPolicies[].rego.secret
 //   - spec.conf.agentConfig            → spec.default.agentConfig (preserved as-is)
-//   - spec.targetRef                   → spec.targetRef (preserved as-is)
+//   - spec.targetRef                   → spec.targetRef (preserved under a v2 target)
 //
-// If the resource already has kind: MeshOPA it is returned unchanged.
-func TransformOPAPolicy(raw []byte) ([][]byte, []string, error) {
+// Under TargetV3 the targetRef is additionally rewritten: 3.0 removes
+// spec.targetRef.{name,namespace,mesh}, and `name` is converted to
+// labels["kuma.io/display-name"] so the policy keeps its original scope. See
+// fixMeshOPATargetRefForV3.
+//
+// A resource that already has kind: MeshOPA is returned unchanged under a v2
+// target, and gets only the targetRef rewrite under v3.
+func TransformOPAPolicy(raw []byte, target TargetVersion) ([][]byte, []string, error) {
 	var obj map[string]interface{}
 	if err := yaml.Unmarshal(raw, &obj); err != nil {
 		return nil, nil, fmt.Errorf("unmarshal OPAPolicy: %w", err)
@@ -26,8 +32,19 @@ func TransformOPAPolicy(raw []byte) ([][]byte, []string, error) {
 	name := extractNameFromObj(obj)
 
 	if kind == "MeshOPA" {
-		// Already converted.
-		return [][]byte{raw}, nil, nil
+		// Already converted. Under v3 the targetRef still needs rewriting.
+		if !target.IsV3() {
+			return [][]byte{raw}, nil, nil
+		}
+		changed, ws := fixMeshOPATargetRefForV3(obj, name)
+		if !changed {
+			return [][]byte{raw}, ws, nil
+		}
+		out, err := yaml.Marshal(obj)
+		if err != nil {
+			return nil, nil, fmt.Errorf("marshal MeshOPA %q: %w", name, err)
+		}
+		return [][]byte{out}, ws, nil
 	}
 
 	var warnings []string
@@ -97,9 +114,82 @@ func TransformOPAPolicy(raw []byte) ([][]byte, []string, error) {
 
 	obj["spec"] = spec
 
+	if target.IsV3() {
+		_, ws := fixMeshOPATargetRefForV3(obj, name)
+		warnings = append(warnings, ws...)
+	}
+
 	out, err := yaml.Marshal(obj)
 	if err != nil {
 		return nil, nil, fmt.Errorf("marshal MeshOPA %q: %w", name, err)
 	}
 	return [][]byte{out}, warnings, nil
+}
+
+// fixMeshOPATargetRefForV3 rewrites a MeshOPA targetRef for the 3.0 API, which
+// removes spec.targetRef.{name,namespace,mesh}.
+//
+// `name` is converted to labels["kuma.io/display-name"] rather than dropped.
+// That distinction is the whole point: simply deleting `name` is what produces
+// 3.0's scope-widening failure, where a policy scoped to one service silently
+// starts applying to every service matching `kind` and the rego begins evaluating
+// requests it never saw. Carrying the value into the label preserves the original
+// scope.
+//
+// `namespace` and `mesh` are dropped: the API server prunes namespace on the next
+// write on Kubernetes, it is ignored on load in Universal, and `mesh` was only
+// ever reserved for future use.
+//
+// Returns whether the document was modified.
+func fixMeshOPATargetRefForV3(obj map[string]interface{}, name string) (bool, []string) {
+	spec, _ := obj["spec"].(map[string]interface{})
+	if spec == nil {
+		return false, nil
+	}
+	targetRef, _ := spec["targetRef"].(map[string]interface{})
+	if targetRef == nil {
+		return false, nil
+	}
+
+	var warnings []string
+	changed := false
+
+	if tName, ok := targetRef["name"].(string); ok && tName != "" {
+		labels, _ := targetRef["labels"].(map[string]interface{})
+		if labels == nil {
+			labels = map[string]interface{}{}
+		}
+		if existing, ok := labels["kuma.io/display-name"].(string); ok && existing != "" && existing != tName {
+			// Do not silently overwrite a conflicting selector.
+			warnings = append(warnings, fmt.Sprintf(
+				"MeshOPA %q: spec.targetRef.name=%q conflicts with the existing "+
+					"labels[\"kuma.io/display-name\"]=%q. 3.0 removes targetRef.name; the label was "+
+					"left as-is and name was NOT migrated — resolve this by hand.",
+				name, tName, existing))
+		} else {
+			labels["kuma.io/display-name"] = tName
+			targetRef["labels"] = labels
+			delete(targetRef, "name")
+			changed = true
+			warnings = append(warnings, fmt.Sprintf(
+				"MeshOPA %q: spec.targetRef.name=%q was moved to "+
+					"labels[\"kuma.io/display-name\"] (3.0 removes targetRef.name). This preserves the "+
+					"original scope — dropping the field instead would widen the policy to every "+
+					"service matching its kind.",
+				name, tName))
+		}
+	}
+
+	for _, f := range []string{"namespace", "mesh"} {
+		if v, ok := targetRef[f]; ok && v != nil && v != "" {
+			delete(targetRef, f)
+			changed = true
+			warnings = append(warnings, fmt.Sprintf(
+				"MeshOPA %q: spec.targetRef.%s was removed (3.0 removes it; it is pruned by the "+
+					"API server on Kubernetes and ignored on load in Universal).",
+				name, f))
+		}
+	}
+
+	return changed, warnings
 }

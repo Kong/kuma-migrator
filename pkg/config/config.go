@@ -19,20 +19,31 @@ var DefaultSkipKindsKubernetes = []string{
 	"ZoneEgress",
 	"ZoneIngress",
 	"Zone",
-	"HostnameGenerator",
 	"Workload",
 	"Secret",
 	"GlobalSecret",
 }
 
 // DefaultSkipKindsUniversal is the built-in skip list for Universal deployments.
-// Dataplane, ZoneIngress, ZoneEgress, and Workload are hand-authored in Universal
-// and may carry deprecated fields that the migrator should scan and fix.
+// Dataplane, ZoneIngress and ZoneEgress are hand-authored in Universal and may
+// carry deprecated fields that the migrator should scan and fix, so they are
+// deliberately absent here.
+//
+// Workload is NOT in that category: it is CP-generated in both environments
+// ("Workload resources are automatically managed… Manual creation is not
+// supported" — Kuma docs). On Universal the difference is only where the
+// kuma.io/workload label lives (on the Dataplane rather than a Pod annotation),
+// not who owns the resource. Extracting it would feed CP-generated objects into
+// the migration set.
+//
+// HostnameGenerator is user-authored and is scanned: Kuma 2.14 validates the
+// rendered spec.template at creation time, so a template that used to produce a
+// silently-broken hostname now fails on apply.
 var DefaultSkipKindsUniversal = []string{
 	"AccessRole",
 	"AccessRoleBinding",
 	"Zone",
-	"HostnameGenerator",
+	"Workload",
 	"Secret",
 	"GlobalSecret",
 }

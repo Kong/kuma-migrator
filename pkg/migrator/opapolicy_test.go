@@ -23,7 +23,7 @@ spec:
           default allow = false
           allow { input.attributes.request.http.method == "GET" }
 `
-	docs, warnings, err := TransformOPAPolicy([]byte(input))
+	docs, warnings, err := TransformOPAPolicy([]byte(input), TargetV2)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -81,7 +81,7 @@ spec:
     agentConfig:
       inlineString: "decision_logs:\n  console: true\n"
 `
-	docs, _, err := TransformOPAPolicy([]byte(input))
+	docs, _, err := TransformOPAPolicy([]byte(input), TargetV2)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -112,7 +112,7 @@ spec:
       - rego:
           inlineString: "package envoy.authz\ndefault allow = true\n"
 `
-	docs, _, err := TransformOPAPolicy([]byte(input))
+	docs, _, err := TransformOPAPolicy([]byte(input), TargetV2)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -139,7 +139,7 @@ spec:
   targetRef:
     kind: Mesh
 `
-	docs, warnings, err := TransformOPAPolicy([]byte(input))
+	docs, warnings, err := TransformOPAPolicy([]byte(input), TargetV2)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -174,5 +174,87 @@ spec:
 	}
 	if scenario != ScenarioOPAPolicy {
 		t.Errorf("expected ScenarioOPAPolicy, got %v", scenario)
+	}
+}
+
+// TestTransformOPAPolicy_V3TargetRef checks the 3.0 targetRef rewrite. The
+// important behaviour is that targetRef.name is CARRIED into the display-name
+// label rather than dropped: dropping it is what silently widens the policy to
+// every service matching its kind.
+func TestTransformOPAPolicy_V3TargetRef(t *testing.T) {
+	input := `
+apiVersion: kuma.io/v1alpha1
+kind: OPAPolicy
+metadata:
+  name: my-opa
+spec:
+  targetRef:
+    kind: MeshService
+    name: backend
+    namespace: demo
+    mesh: default
+  conf:
+    policies:
+      - inlineString: "package envoy.authz"
+`
+	// v2: targetRef preserved untouched.
+	docs, _, err := TransformOPAPolicy([]byte(input), TargetV2)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(string(docs[0]), "name: backend") {
+		t.Errorf("v2 target should preserve targetRef.name, got:\n%s", docs[0])
+	}
+
+	// v3: name → labels["kuma.io/display-name"], namespace and mesh dropped.
+	docs, warnings, err := TransformOPAPolicy([]byte(input), TargetV3)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := string(docs[0])
+	if !strings.Contains(out, "kuma.io/display-name: backend") {
+		t.Errorf("expected display-name label carrying the original name, got:\n%s", out)
+	}
+	// Match the bare targetRef key, not the display-name label that now carries
+	// the same value.
+	if strings.Contains(out, "\n    name: backend") {
+		t.Errorf("expected targetRef.name to be removed, got:\n%s", out)
+	}
+	if strings.Contains(out, "namespace: demo") || strings.Contains(out, "mesh: default") {
+		t.Errorf("expected targetRef.namespace and .mesh to be removed, got:\n%s", out)
+	}
+	joined := strings.Join(warnings, "\n")
+	if !strings.Contains(joined, "widen") {
+		t.Errorf("expected the scope-widening rationale in warnings, got: %v", warnings)
+	}
+}
+
+// TestTransformOPAPolicy_V3TargetRef_ConflictingLabel verifies we refuse to
+// overwrite an existing, different display-name selector.
+func TestTransformOPAPolicy_V3TargetRef_ConflictingLabel(t *testing.T) {
+	input := `
+apiVersion: kuma.io/v1alpha1
+kind: MeshOPA
+metadata:
+  name: my-opa
+spec:
+  targetRef:
+    kind: MeshService
+    name: backend
+    labels:
+      kuma.io/display-name: frontend
+  default:
+    appendPolicies: []
+`
+	docs, warnings, err := TransformOPAPolicy([]byte(input), TargetV3)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := string(docs[0])
+	if !strings.Contains(out, "kuma.io/display-name: frontend") {
+		t.Errorf("existing label must be preserved, got:\n%s", out)
+	}
+	if !strings.Contains(strings.Join(warnings, "\n"), "resolve this by hand") {
+		t.Errorf("expected a conflict warning, got: %v", warnings)
 	}
 }

@@ -576,7 +576,7 @@ metadata:
   namespace: kong-mesh-system
 spec: {}
 `
-	docs, _, scenario, err := TransformDocument([]byte(input))
+	docs, _, scenario, err := TransformDocument([]byte(input), TargetV2)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

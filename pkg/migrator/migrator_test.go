@@ -47,7 +47,7 @@ conf:
   connectTimeout: 5s
 `)
 
-	if err := Plan(in, out, ""); err != nil {
+	if err := Plan(in, out, "", TargetV2); err != nil {
 		t.Fatalf("Plan returned error: %v", err)
 	}
 
@@ -81,7 +81,7 @@ metadata:
 spec: {}
 `)
 
-	if err := Plan(in, out, ""); err != nil {
+	if err := Plan(in, out, "", TargetV2); err != nil {
 		t.Fatalf("Plan: %v", err)
 	}
 	content, err := os.ReadFile(filepath.Join(out, "migration-plan.md"))
@@ -122,7 +122,7 @@ conf:
   connectTimeout: 5s
 `)
 
-	if err := Migrate(in, out, ""); err != nil {
+	if err := Migrate(in, out, "", TargetV2); err != nil {
 		t.Fatalf("Migrate returned error: %v", err)
 	}
 
@@ -155,7 +155,7 @@ conf:
   connectTimeout: 5s
 `)
 
-	if err := Migrate(in, out, ""); err != nil {
+	if err := Migrate(in, out, "", TargetV2); err != nil {
 		t.Fatalf("Migrate: %v", err)
 	}
 
@@ -221,7 +221,7 @@ spec:
   replicas: 1
 `)
 
-	report, err := runMigration(in, out, false, "")
+	report, err := runMigration(in, out, false, "", TargetV2)
 	if err != nil {
 		t.Fatalf("runMigration: %v", err)
 	}
@@ -261,7 +261,7 @@ conf:
   connectTimeout: 5s
 `)
 
-	report, err := runMigration(in, out, false, "")
+	report, err := runMigration(in, out, false, "", TargetV2)
 	if err != nil {
 		t.Fatalf("runMigration: %v", err)
 	}
@@ -303,7 +303,7 @@ spec:
           numRetries: 3
 `)
 
-	report, err := runMigration(in, out, false, "")
+	report, err := runMigration(in, out, false, "", TargetV2)
 	if err != nil {
 		t.Fatalf("runMigration: %v", err)
 	}
@@ -356,7 +356,7 @@ spec:
               value: backend_demo_svc_3001.mesh
 `)
 
-	report, err := runMigration(in, out, false, "")
+	report, err := runMigration(in, out, false, "", TargetV2)
 	if err != nil {
 		t.Fatalf("runMigration: %v", err)
 	}
@@ -391,7 +391,7 @@ spec:
         type: builtin
 `)
 
-	if err := Migrate(in, out, ""); err != nil {
+	if err := Migrate(in, out, "", TargetV2); err != nil {
 		t.Fatalf("Migrate: %v", err)
 	}
 
@@ -428,7 +428,7 @@ conf:
   connectTimeout: 5s
 `)
 
-	if err := Migrate(in, out, ""); err != nil {
+	if err := Migrate(in, out, "", TargetV2); err != nil {
 		t.Fatalf("Migrate: %v", err)
 	}
 
@@ -473,7 +473,7 @@ conf:
   connectTimeout: 5s
 `)
 
-	report, err := runMigration(in, out, false, "")
+	report, err := runMigration(in, out, false, "", TargetV2)
 	if err != nil {
 		t.Fatalf("runMigration: %v", err)
 	}
@@ -512,7 +512,7 @@ spec: {}
 `)
 	}
 
-	report, err := runMigration(in, out, false, "default")
+	report, err := runMigration(in, out, false, "default", TargetV2)
 	if err != nil {
 		t.Fatalf("runMigration: %v", err)
 	}
@@ -544,7 +544,7 @@ spec: {}
 `)
 
 	// meshFilter set but no mesh subdir → file must still be processed.
-	report, err := runMigration(in, out, false, "default")
+	report, err := runMigration(in, out, false, "default", TargetV2)
 	if err != nil {
 		t.Fatalf("runMigration: %v", err)
 	}
@@ -576,7 +576,7 @@ conf:
   connectTimeout: 5s
 `)
 
-	if err := Migrate(in, out, ""); err != nil {
+	if err := Migrate(in, out, "", TargetV2); err != nil {
 		t.Fatalf("Migrate: %v", err)
 	}
 	// Output must mirror context-first layout: <out>/my-cp-global-ctx/mesh-default/resiliency/MeshTimeout-my-timeout.yaml

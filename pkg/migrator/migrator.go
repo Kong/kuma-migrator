@@ -48,6 +48,7 @@ type MigrationReport struct {
 	Mode      string // "plan" or "apply"
 	InputDir  string
 	OutputDir string
+	Target    TargetVersion // --to-latest: which major version the output targets
 	Files     []FileReport
 
 	// Aggregates (computed from Files).
@@ -75,9 +76,9 @@ type MigrationReport struct {
 // meshFilter, when non-empty, restricts processing to files under the named
 // mesh subdirectory (e.g. "default"). Files without a mesh directory prefix
 // are always processed.
-func Plan(inputDir, outputDir, meshFilter string) error {
+func Plan(inputDir, outputDir, meshFilter string, target TargetVersion) error {
 	ui.Header("plan")
-	report, err := runMigration(inputDir, outputDir, false, meshFilter)
+	report, err := runMigration(inputDir, outputDir, false, meshFilter, target)
 	if err != nil {
 		return err
 	}
@@ -92,9 +93,9 @@ func Plan(inputDir, outputDir, meshFilter string) error {
 // meshFilter, when non-empty, restricts processing to files under the named
 // mesh subdirectory (e.g. "default"). Files without a mesh directory prefix
 // are always processed.
-func Migrate(inputDir, outputDir, meshFilter string) error {
+func Migrate(inputDir, outputDir, meshFilter string, target TargetVersion) error {
 	ui.Header("migrate")
-	report, err := runMigration(inputDir, outputDir, true, meshFilter)
+	report, err := runMigration(inputDir, outputDir, true, meshFilter, target)
 	if err != nil {
 		return err
 	}
@@ -118,7 +119,7 @@ func isKindSubfolder(s string) bool {
 	return false
 }
 
-func runMigration(inputDir, outputDir string, writeFiles bool, meshFilter string) (*MigrationReport, error) {
+func runMigration(inputDir, outputDir string, writeFiles bool, meshFilter string, target TargetVersion) (*MigrationReport, error) {
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		return nil, fmt.Errorf("create output directory %q: %w", outputDir, err)
 	}
@@ -132,6 +133,7 @@ func runMigration(inputDir, outputDir string, writeFiles bool, meshFilter string
 	report := &MigrationReport{
 		InputDir:  inputDir,
 		OutputDir: outputDir,
+		Target:    target,
 	}
 	allHits := map[string]EnvVarHit{}
 
@@ -189,7 +191,7 @@ func runMigration(inputDir, outputDir string, writeFiles bool, meshFilter string
 		}
 
 		report.TotalFiles++
-		fr := processFile(path, outputDir, cpModeDir, meshDir, writeFiles, skipSet)
+		fr := processFile(path, outputDir, cpModeDir, meshDir, writeFiles, skipSet, target)
 		if rel, relErr := filepath.Rel(inputDir, path); relErr == nil {
 			fr.InputRelPath = filepath.ToSlash(rel)
 		}
@@ -268,7 +270,7 @@ func isGatewayAPIOutputKind(kind string) bool {
 	return false
 }
 
-func processFile(inputPath, outputDir, cpModeDir, meshDir string, writeFile bool, skipSet map[string]bool) FileReport {
+func processFile(inputPath, outputDir, cpModeDir, meshDir string, writeFile bool, skipSet map[string]bool, target TargetVersion) FileReport {
 	name := filepath.Base(inputPath)
 	fr := FileReport{FileName: name, CPModeDir: cpModeDir, OutputCPModeDir: cpModeDir, MeshDir: meshDir}
 
@@ -300,7 +302,7 @@ func processFile(inputPath, outputDir, cpModeDir, meshDir string, writeFile bool
 			continue
 		}
 
-		results, warnings, scenario, tErr := TransformDocument(doc)
+		results, warnings, scenario, tErr := TransformDocument(doc, target)
 		dc.Scenario = scenario
 		dc.Warnings = warnings
 		if tErr != nil {

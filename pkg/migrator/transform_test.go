@@ -40,7 +40,7 @@ spec:
           requestTimeout: 1s
 `
 
-	docs, warnings, scenario, err := TransformDocument([]byte(input))
+	docs, warnings, scenario, err := TransformDocument([]byte(input), TargetV2)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -122,7 +122,7 @@ spec:
           requestTimeout: 3s
 `
 
-	docs, warnings, scenario, err := TransformDocument([]byte(input))
+	docs, warnings, scenario, err := TransformDocument([]byte(input), TargetV2)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -207,7 +207,7 @@ spec:
           requestTimeout: 1s
 `
 
-	docs, warnings, scenario, err := TransformDocument([]byte(input))
+	docs, warnings, scenario, err := TransformDocument([]byte(input), TargetV2)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -260,7 +260,7 @@ conf:
   connectTimeout: 21s
 `
 
-	docs, _, scenario, err := TransformDocument([]byte(input))
+	docs, _, scenario, err := TransformDocument([]byte(input), TargetV2)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -298,7 +298,7 @@ conf:
   connectTimeout: 5s
 `
 
-	docs, warnings, scenario, err := TransformDocument([]byte(input))
+	docs, warnings, scenario, err := TransformDocument([]byte(input), TargetV2)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -365,7 +365,7 @@ spec:
           maxConnections: 100
 `
 
-	docs, _, _, err := TransformDocument([]byte(input))
+	docs, _, _, err := TransformDocument([]byte(input), TargetV2)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -420,7 +420,7 @@ spec:
         http:
           requestTimeout: 5s
 `
-	docs, warnings, scenario, err := TransformDocument([]byte(input))
+	docs, warnings, scenario, err := TransformDocument([]byte(input), TargetV2)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
