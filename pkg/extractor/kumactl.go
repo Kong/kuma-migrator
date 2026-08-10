@@ -56,6 +56,19 @@ func ExtractViaKumactl(contextName, outputDir, meshFilter, outputFormat string) 
 		ui.KV("Environment:", cpEnv)
 	}
 
+	// A Kubernetes-backed CP stores policies as CRDs. Universal output cannot be
+	// applied back to it: `kumactl apply` is refused for k8s-managed resources, and
+	// the store additionally requires Universal names to be "name.namespace", which
+	// cluster-scoped legacy resources do not have. Kubernetes output + kubectl is
+	// the round-trippable combination there.
+	if cpEnv == CPEnvKubernetes && outputFormat != "kubernetes" {
+		ui.Warn("This control plane is Kubernetes-backed, but --output-format is " +
+			outputFormat + ". The migrated output will not be applicable with kumactl " +
+			"or kubectl. Re-run with --output-format kubernetes to get output you can " +
+			"kubectl apply.")
+		fmt.Println()
+	}
+
 	skipSet := loadSkipSet(cpEnv)
 	dirLabel := cpModeDirectoryLabel(resolvedCtx, cpMode)
 	if err := WriteContextMeta(outputDir, dirLabel, "kumactl", resolvedCtx, cpMode, isKonnectURL(cpURL)); err != nil {
@@ -126,21 +139,51 @@ func ExtractViaKumactl(contextName, outputDir, meshFilter, outputFormat string) 
 		total += n
 	}
 
-	// Mesh-scoped resources: one banner per mesh, then all types for that mesh.
+	total += runMeshScopedTypes(loopMeshes, meshScopedTypes, resolvedCtx, cpURL, bearerToken,
+		outputDir, skipSet, cpMode, dirLabel, meshFilter, outputFormat, &zoneOriginSkips)
+
+	ui.ExtractDone(total, outputDir)
+	printZoneOriginSkips(zoneOriginSkips)
+	return nil
+}
+
+// runMeshScopedTypes fetches every Mesh-scoped resource type for each mesh and
+// returns the number of files written.
+//
+// Some types are reported as Mesh-scoped by /_resources but rejected by kumactl
+// when passed --mesh ("unknown flag: --mesh"; "health-checks" is the common one).
+// Those are retried once without --mesh and recorded, so the retry happens a
+// single time overall rather than once per mesh.
+//
+// A type that fails this way must NOT stop the remaining types from being
+// fetched: on a live CP the first such type appears 5th out of 44, so aborting
+// silently drops nearly every policy while extract still reports success.
+func runMeshScopedTypes(
+	loopMeshes []string,
+	meshScopedTypes []resourceTypeEntry,
+	resolvedCtx, cpURL, bearerToken, outputDir string,
+	skipSet map[string]bool,
+	cpMode, dirLabel, meshFilter, outputFormat string,
+	zoneOriginSkips *[]ZoneOriginSkip,
+) int {
+	total := 0
+	globallyExtracted := map[string]bool{}
 	for _, mesh := range loopMeshes {
 		ui.StartMesh(mesh)
 		for _, rt := range meshScopedTypes {
-			n, err := dumpKumactlResources(resolvedCtx, cpURL, bearerToken, rt, mesh, outputDir, skipSet, cpMode, dirLabel, meshFilter, outputFormat, &zoneOriginSkips)
+			if globallyExtracted[rt.Path] {
+				continue
+			}
+			n, err := dumpResources(resolvedCtx, cpURL, bearerToken, rt, mesh, outputDir, skipSet, cpMode, dirLabel, meshFilter, outputFormat, zoneOriginSkips)
 			if err != nil {
 				if isUnknownMeshFlag(err) {
-					// API reported Mesh-scoped but kumactl rejects --mesh:
-					// fall back to a single global extraction.
-					n2, err2 := dumpKumactlResources(resolvedCtx, cpURL, bearerToken, rt, "", outputDir, skipSet, cpMode, dirLabel, meshFilter, outputFormat, &zoneOriginSkips)
+					globallyExtracted[rt.Path] = true
+					n2, err2 := dumpResources(resolvedCtx, cpURL, bearerToken, rt, "", outputDir, skipSet, cpMode, dirLabel, meshFilter, outputFormat, zoneOriginSkips)
 					if err2 != nil {
 						ui.Warn(fmt.Sprintf("%s: %v", rt.Path, err2))
 					}
 					total += n2
-					break
+					continue
 				}
 				ui.Warn(fmt.Sprintf("%s (mesh %s): %v", rt.Path, mesh, err))
 				continue
@@ -148,9 +191,7 @@ func ExtractViaKumactl(contextName, outputDir, meshFilter, outputFormat string) 
 			total += n
 		}
 	}
-	ui.ExtractDone(total, outputDir)
-	printZoneOriginSkips(zoneOriginSkips)
-	return nil
+	return total
 }
 
 // listZoneNamesKumactl returns the names of all Zone resources.
@@ -387,6 +428,10 @@ func parseMeshNamesFromYAML(data []byte) []string {
 // via a direct authenticated HTTP GET with ?format=kubernetes so that the response
 // is in Kubernetes format rather than Universal format. For all other CPs the
 // kumactl CLI is used.
+// dumpResources is the indirection used by the extraction loops so tests can
+// substitute a fake fetcher. Defaults to dumpKumactlResources.
+var dumpResources = dumpKumactlResources
+
 func dumpKumactlResources(kumactlCtx, cpURL, bearerToken string, rt resourceTypeEntry, mesh, outputDir string, skipSet map[string]bool, cpMode, cpModeDir, meshFilter, outputFormat string, skips *[]ZoneOriginSkip) (int, error) {
 	var (
 		out []byte

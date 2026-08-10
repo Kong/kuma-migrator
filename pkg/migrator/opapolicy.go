@@ -6,6 +6,24 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
+// opaLegacyBody returns the map holding the legacy OPAPolicy body (conf and/or
+// selectors): spec when it carries them, otherwise the document root, which is
+// where the Universal form of this resource keeps them.
+func opaLegacyBody(obj map[string]interface{}) map[string]interface{} {
+	if spec, ok := obj["spec"].(map[string]interface{}); ok {
+		if spec["conf"] != nil || spec["selectors"] != nil {
+			return spec
+		}
+	}
+	if obj["conf"] != nil || obj["selectors"] != nil {
+		return obj
+	}
+	if spec, ok := obj["spec"].(map[string]interface{}); ok {
+		return spec
+	}
+	return map[string]interface{}{}
+}
+
 // TransformOPAPolicy converts a Kong Mesh OPAPolicy resource to the new MeshOPA API.
 //
 // Structural change (Kong Mesh 2.5+):
@@ -28,7 +46,22 @@ func TransformOPAPolicy(raw []byte, target TargetVersion) ([][]byte, []string, e
 		return nil, nil, fmt.Errorf("unmarshal OPAPolicy: %w", err)
 	}
 
+	// Universal format uses "type" instead of "kind". The legacy OPAPolicy is
+	// unusual in that its body (conf/selectors) sits at the document ROOT with no
+	// spec wrapper, while MeshOPA — an ordinary policy — requires spec even in
+	// Universal ("kumactl apply" rejects it with ".spec in body is required").
+	// So the read container and the write container differ for this format.
+	//
+	// Treating a Universal document as Kubernetes produced a hybrid carrying both
+	// type: OPAPolicy and kind: MeshOPA with the payload left unconverted.
 	kind, _ := obj["kind"].(string)
+	universal := false
+	if kind == "" {
+		if t, ok := obj["type"].(string); ok && t != "" {
+			kind = t
+			universal = true
+		}
+	}
 	name := extractNameFromObj(obj)
 
 	if kind == "MeshOPA" {
@@ -49,17 +82,31 @@ func TransformOPAPolicy(raw []byte, target TargetVersion) ([][]byte, []string, e
 
 	var warnings []string
 
-	// Rewrite kind.
-	obj["kind"] = "MeshOPA"
+	// Rewrite the type/kind discriminator in whichever format this document uses.
+	if universal {
+		obj["type"] = "MeshOPA"
+	} else {
+		obj["kind"] = "MeshOPA"
+	}
 
-	// Transform spec.
+	// src is where the legacy body (conf/selectors) is read from; spec is where the
+	// MeshOPA body is written. They are not always the same container:
+	//
+	//   - Kubernetes OPAPolicy:     body under spec  → src == spec
+	//   - Universal OPAPolicy:      body at the root (this resource has no spec
+	//                               wrapper) but MeshOPA requires one
+	//   - Universal converted to Kubernetes by the extractor: universalToKubernetes
+	//     maps type/name/mesh but does not relocate the root-level body, so conf and
+	//     selectors are still at the root next to an empty spec
+	//
+	// Picking src by where conf/selectors actually are covers all three.
+	src := opaLegacyBody(obj)
 	spec, _ := obj["spec"].(map[string]interface{})
 	if spec == nil {
 		spec = map[string]interface{}{}
-		obj["spec"] = spec
 	}
 
-	conf, _ := spec["conf"].(map[string]interface{})
+	conf, _ := src["conf"].(map[string]interface{})
 	if conf == nil {
 		// No conf — nothing to migrate inside spec; just change the kind.
 		warnings = append(warnings, fmt.Sprintf(
@@ -109,7 +156,7 @@ func TransformOPAPolicy(raw []byte, target TargetVersion) ([][]byte, []string, e
 		}
 
 		spec["default"] = newDefault
-		delete(spec, "conf")
+		delete(src, "conf")
 	}
 
 	obj["spec"] = spec
@@ -117,7 +164,10 @@ func TransformOPAPolicy(raw []byte, target TargetVersion) ([][]byte, []string, e
 	// The legacy OPAPolicy CRD carries the mesh as a TOP-LEVEL field, not as the
 	// standard kuma.io/mesh label. MeshOPA is an ordinary policy CRD and rejects
 	// an unknown top-level "mesh" with a strict decoding error, so it has to move.
-	if meshName, ok := obj["mesh"].(string); ok && meshName != "" {
+	//
+	// Universal format is the opposite: a top-level `mesh` is the correct and
+	// required spelling there, so it is left alone.
+	if meshName, ok := obj["mesh"].(string); ok && meshName != "" && !universal {
 		meta, _ := obj["metadata"].(map[string]interface{})
 		if meta == nil {
 			meta = map[string]interface{}{}
@@ -137,7 +187,7 @@ func TransformOPAPolicy(raw []byte, target TargetVersion) ([][]byte, []string, e
 	// Legacy OPAPolicy selects workloads with spec.selectors[].match tag sets.
 	// MeshOPA uses a single spec.targetRef, and leaving selectors in place makes
 	// the document invalid (unknown field spec.selectors).
-	docs, selWarnings, err := applyOPASelectors(obj, spec, name, target)
+	docs, selWarnings, err := applyOPASelectors(obj, src, name, target)
 	warnings = append(warnings, selWarnings...)
 	if err != nil {
 		return nil, nil, err
@@ -152,13 +202,14 @@ func TransformOPAPolicy(raw []byte, target TargetVersion) ([][]byte, []string, e
 // split into one MeshOPA per selector — the same shape transformGenericLegacy
 // uses for multiple legacy sources. A selector matching kuma.io/service: '*'
 // collapses to kind: Mesh.
-func applyOPASelectors(obj, spec map[string]interface{}, name string, target TargetVersion) ([][]byte, []string, error) {
+func applyOPASelectors(obj, src map[string]interface{}, name string, target TargetVersion) ([][]byte, []string, error) {
 	var warnings []string
 
-	rawSelectors, hasSelectors := spec["selectors"].([]interface{})
+	rawSelectors, hasSelectors := src["selectors"].([]interface{})
 	if !hasSelectors {
 		// No legacy selectors. An existing targetRef is preserved as-is.
-		if _, ok := spec["targetRef"]; !ok {
+		specMap, _ := obj["spec"].(map[string]interface{})
+		if _, ok := specMap["targetRef"]; !ok {
 			warnings = append(warnings, fmt.Sprintf(
 				"OPAPolicy %q: no spec.selectors and no spec.targetRef — MeshOPA requires a targetRef; "+
 					"add one by hand before applying.", name))
@@ -173,7 +224,7 @@ func applyOPASelectors(obj, spec map[string]interface{}, name string, target Tar
 		}
 		return [][]byte{out}, warnings, nil
 	}
-	delete(spec, "selectors")
+	delete(src, "selectors")
 
 	selectors := make([]OldSelector, 0, len(rawSelectors))
 	for _, rs := range rawSelectors {
@@ -207,7 +258,16 @@ func applyOPASelectors(obj, spec map[string]interface{}, name string, target Tar
 
 		doc := deepCopyMap(obj)
 		docSpec, _ := doc["spec"].(map[string]interface{})
+		if docSpec == nil {
+			docSpec = map[string]interface{}{}
+			doc["spec"] = docSpec
+		}
 		docSpec["targetRef"] = targetRefToMap(ref)
+		// A legacy Universal document also carries a stray root-level targetRef
+		// only if it was partially migrated; keep the spec copy authoritative.
+		if _, isUniversal := doc["type"]; isUniversal {
+			delete(doc, "targetRef")
+		}
 
 		docName := name
 		if len(selectors) > 1 {

@@ -376,3 +376,96 @@ spec:
 		t.Errorf("expected a warning telling the operator to apply both, got: %v", warnings)
 	}
 }
+
+// TestTransformOPAPolicy_UniversalFormat covers the shape kumactl returns for a
+// legacy OPAPolicy: type instead of kind, and the body (conf/selectors) at the
+// document ROOT with no spec wrapper. MeshOPA still requires a spec even in
+// Universal — kumactl apply rejects it with ".spec in body is required" — so the
+// transform reads from the root and writes into a real spec.
+func TestTransformOPAPolicy_UniversalFormat(t *testing.T) {
+	input := `
+type: OPAPolicy
+name: global-legacy-opa
+mesh: default
+labels:
+  kuma.io/display-name: global-legacy-opa
+selectors:
+- match:
+    kuma.io/service: '*'
+conf:
+  policies:
+  - inlineString: package envoy.authz
+`
+	docs, _, err := TransformOPAPolicy([]byte(input), TargetV2)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := string(docs[0])
+
+	if !strings.Contains(out, "type: MeshOPA") {
+		t.Errorf("Universal output must use type:, got:\n%s", out)
+	}
+	// Check for a ROOT-level kind key; "kind: Mesh" nested under targetRef is fine.
+	if strings.HasPrefix(out, "kind:") || strings.Contains(out, "\nkind:") {
+		t.Errorf("Universal output must not gain a root-level kind: key, got:\n%s", out)
+	}
+	// mesh stays at the root in Universal — it is the required spelling there.
+	if !strings.Contains(out, "\nmesh: default") {
+		t.Errorf("Universal output must keep the top-level mesh, got:\n%s", out)
+	}
+	if strings.Contains(out, "kuma.io/mesh:") {
+		t.Errorf("Universal output must not move mesh into labels, got:\n%s", out)
+	}
+	for _, leftover := range []string{"conf:", "selectors:"} {
+		if strings.Contains(out, leftover) {
+			t.Errorf("legacy key %q must be removed, got:\n%s", leftover, out)
+		}
+	}
+	if !strings.Contains(out, "spec:") || !strings.Contains(out, "appendPolicies:") || !strings.Contains(out, "targetRef:") {
+		t.Errorf("expected spec with default.appendPolicies and targetRef, got:\n%s", out)
+	}
+}
+
+// TestTransformOPAPolicy_UniversalConvertedToKubernetes covers what the extractor
+// produces with --output-format kubernetes: universalToKubernetes maps
+// type/name/mesh but does not relocate the root-level body, so conf and selectors
+// arrive at the root next to an empty spec. Reading the body only from spec left
+// them in place and emitted an empty MeshOPA that the CP rejected with
+// `unknown field "conf", unknown field "selectors"`.
+func TestTransformOPAPolicy_UniversalConvertedToKubernetes(t *testing.T) {
+	input := `
+apiVersion: kuma.io/v1alpha1
+kind: OPAPolicy
+metadata:
+  name: global-legacy-opa
+  labels:
+    kuma.io/mesh: default
+conf:
+  policies:
+  - inlineString: package envoy.authz
+selectors:
+- match:
+    kuma.io/service: '*'
+spec: {}
+`
+	docs, _, err := TransformOPAPolicy([]byte(input), TargetV2)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := string(docs[0])
+
+	for _, leftover := range []string{"\nconf:", "\nselectors:"} {
+		if strings.Contains(out, leftover) {
+			t.Errorf("root-level %q must be consumed, got:\n%s", strings.TrimSpace(leftover), out)
+		}
+	}
+	if !strings.Contains(out, "appendPolicies:") {
+		t.Errorf("rego must be migrated into spec.default, got:\n%s", out)
+	}
+	if !strings.Contains(out, "targetRef:") || !strings.Contains(out, "kind: Mesh") {
+		t.Errorf("selectors must become a targetRef, got:\n%s", out)
+	}
+	if !strings.Contains(out, "kind: MeshOPA") {
+		t.Errorf("expected kind: MeshOPA, got:\n%s", out)
+	}
+}
