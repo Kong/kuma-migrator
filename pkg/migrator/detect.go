@@ -19,6 +19,21 @@ var knownLegacyTypes = map[string]bool{
 	"TrafficTrace":      true,
 	"TrafficRoute":      true,
 	"ProxyTemplate":     true,
+	// VirtualOutbound is detected so that it is reported rather than silently
+	// skipped. It cannot be auto-converted — see transformScenarioLegacy.
+	"VirtualOutbound": true,
+}
+
+// recognisedNonPolicyKinds are Kuma resources that are neither legacy policies
+// nor Mesh* policies and need no migration. They are passed through unchanged
+// rather than reported as unrecognised input.
+//
+// ContainerPatch is Kubernetes-only (it patches the injected sidecar and init
+// containers via JSON patch) and has no targetRef policy successor. It is not
+// part of the 12 legacy policy resources removed in Kuma 3.0 and is still served
+// there, so it needs no action on any migration path.
+var recognisedNonPolicyKinds = map[string]bool{
+	"ContainerPatch": true,
 }
 
 // probe is a minimal struct used only for scenario detection — never for transformation.
@@ -92,6 +107,11 @@ func DetectScenario(raw []byte) (Scenario, error) {
 		if meshNeedsMigration(raw) {
 			return ScenarioMesh, nil
 		}
+		return ScenarioPassthrough, nil
+	}
+
+	// Kuma resources that are not policies and need no migration.
+	if recognisedNonPolicyKinds[kind] {
 		return ScenarioPassthrough, nil
 	}
 

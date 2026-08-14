@@ -111,7 +111,12 @@ type UniversalPolicy struct {
 	Mesh         string          `json:"mesh,omitempty"`
 	Sources      []OldSelector   `json:"sources,omitempty"`
 	Destinations []OldSelector   `json:"destinations,omitempty"`
-	Conf         json.RawMessage `json:"conf,omitempty"`
+	// Selectors is the scoping field of the legacy policies that have no
+	// direction: TrafficTrace, ProxyTemplate and VirtualOutbound. Without it those
+	// policies parse with zero sources and zero destinations, and their conf has
+	// nowhere to be attached.
+	Selectors []OldSelector   `json:"selectors,omitempty"`
+	Conf      json.RawMessage `json:"conf,omitempty"`
 }
 
 // OldSelector is a single match clause in sources[] or destinations[].

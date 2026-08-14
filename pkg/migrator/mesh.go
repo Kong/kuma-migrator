@@ -315,40 +315,10 @@ func tracingToMeshTrace(t oldMeshTracingSection, meshName, ns string) ([][]byte,
 	var sampling map[string]interface{}
 
 	for _, b := range t.Backends {
-		switch strings.ToLower(b.Type) {
-		case "zipkin":
-			var conf oldZipkinConf
-			_ = json.Unmarshal(b.Conf, &conf)
-			zipkinConf := map[string]interface{}{"url": conf.URL}
-			if conf.TraceId128bit != nil {
-				zipkinConf["traceId128bit"] = *conf.TraceId128bit
-			}
-			if conf.APIVersion != "" {
-				zipkinConf["apiVersion"] = conf.APIVersion
-			}
-			if conf.SharedSpan != nil {
-				zipkinConf["sharedSpanContext"] = *conf.SharedSpan
-			}
-			backends = append(backends, map[string]interface{}{
-				"type":   "Zipkin",
-				"zipkin": zipkinConf,
-			})
-
-		case "datadog":
-			var conf oldDatadogConf
-			_ = json.Unmarshal(b.Conf, &conf)
-			ddConf := map[string]interface{}{"url": conf.Address}
-			if conf.SplitService != nil {
-				ddConf["splitService"] = *conf.SplitService
-			}
-			backends = append(backends, map[string]interface{}{
-				"type":    "Datadog",
-				"datadog": ddConf,
-			})
-
-		default:
-			warnings = append(warnings,
-				fmt.Sprintf("MeshTrace: unsupported backend type %q — migrate this backend manually", b.Type))
+		converted, w := tracingBackendToNew(b)
+		warnings = append(warnings, w...)
+		if converted != nil {
+			backends = append(backends, converted)
 		}
 
 		// Map old per-backend sampling (float 0–100) to new spec-level sampling.overall (int).
@@ -385,26 +355,10 @@ func loggingToMeshAccessLog(l oldMeshLoggingSection, meshName, ns string) ([][]b
 	var backends []map[string]interface{}
 
 	for _, b := range l.Backends {
-		switch strings.ToLower(b.Type) {
-		case "file":
-			var conf oldFileLogConf
-			_ = json.Unmarshal(b.Conf, &conf)
-			backends = append(backends, map[string]interface{}{
-				"type": "File",
-				"file": map[string]interface{}{"path": conf.Path},
-			})
-
-		case "tcp":
-			var conf oldTCPLogConf
-			_ = json.Unmarshal(b.Conf, &conf)
-			backends = append(backends, map[string]interface{}{
-				"type": "Tcp",
-				"tcp":  map[string]interface{}{"address": conf.Address},
-			})
-
-		default:
-			warnings = append(warnings,
-				fmt.Sprintf("MeshAccessLog: unsupported backend type %q — migrate this backend manually", b.Type))
+		converted, w := loggingBackendToNew(b)
+		warnings = append(warnings, w...)
+		if converted != nil {
+			backends = append(backends, converted)
 		}
 	}
 

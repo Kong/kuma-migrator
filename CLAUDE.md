@@ -306,7 +306,7 @@ instead of `metadata`. All migrate-side parsing must normalise these:
 
 | Scenario | Trigger | Output |
 |---|---|---|
-| Legacy | `sources`/`destinations` policies or legacy type names | `targetRef`/`to`/`from` |
+| Legacy | `sources`/`destinations`/`selectors` policies or legacy type names | `targetRef`/`to`/`from`/`rules`/`default` — see **Legacy policy conversion** |
 | Subset | `MeshSubset` **or `MeshService` with old Kuma-internal name** in any targetRef | `Dataplane`/`MeshService` |
 | Passthrough | Already using `MeshService` — pass-through | unchanged |
 | Rules | New-style Mesh* with deprecated `from[]` (Kuma 2.10+) | `rules[]` |
@@ -314,6 +314,102 @@ instead of `metadata`. All migrate-side parsing must normalise these:
 | ExternalService | `ExternalService` | `MeshExternalService` |
 | GW | `MeshGateway`, `MeshGatewayInstance`, `MeshGatewayRoute`, `MeshHTTPRoute`, `MeshTCPRoute` | Gateway API CRDs |
 | OPAPolicy | Kong Mesh `OPAPolicy` | `MeshOPA` |
+
+## Legacy policy conversion (ScenarioLegacy)
+
+The 12 legacy (non-`Mesh*`) policy resources are the set Kuma 3.0 removes from the
+resource registry. Coverage:
+
+| Legacy kind | Handling |
+|---|---|
+| `Timeout`, `CircuitBreaker`, `Retry`, `HealthCheck`, `TrafficLog` | converted, **outbound** shape |
+| `TrafficPermission`, `FaultInjection`, `RateLimit` | converted, **inbound** (inverted) shape |
+| `TrafficTrace`, `ProxyTemplate` | converted, **selector** shape |
+| `TrafficRoute` | error — ambiguous HTTP vs TCP, manual |
+| `VirtualOutbound` | error — manual (see below) |
+
+### Shape (`legacyShapes` in `transform.go`)
+
+| Shape | Mapping |
+|---|---|
+| outbound | `sources` → `spec.targetRef`; `destinations` → `to[]` |
+| inbound | `destinations` → `spec.targetRef`; `sources` → `from[]` |
+| selector | `selectors` → `spec.targetRef`; conf → `spec.default` (no `to[]`/`from[]` on `MeshTrace`/`MeshProxyPatch`) |
+
+`FaultInjection` and `RateLimit` are inbound policies like `TrafficPermission` — the
+fault/limit is enforced by the **destination's** sidecar. `UniversalPolicy.Selectors`
+must exist or `TrafficTrace`/`ProxyTemplate` parse with zero sources and zero
+destinations and lose both scope and conf.
+
+`RateLimit` → `MeshRateLimit` emits **`rules[]`, not `from[]`**: `from[]` accepts only
+`kind: Mesh` and 3.0 removes it, with `rules[]` documented as the mechanical
+equivalent for the all-clients case. Any specific `sources` selector is lost — warned
+as a scope widening.
+
+An empty `destinations` list means "all destinations": substitute a wildcard selector
+so the conf still has a `to[]` entry, otherwise it is dropped silently.
+
+### `conf` → `default` (`legacyconf.go`)
+
+A legacy `conf` body is **never** structurally compatible with the new `default`
+section; a verbatim copy applies cleanly and silently does nothing. One converter per
+kind, each written as an explicit list of moves so `confMapper.unmapped()` can warn
+about every input leaf no move consumed. Highlights (full table in
+`.claude/skills/migration-rules.md` §6b):
+
+- `Timeout`: `connectTimeout`→`connectionTimeout`, `tcp.idleTimeout`→`idleTimeout`,
+  no `grpc` section (folds into `http`)
+- `CircuitBreaker`: `thresholds`→`connectionLimits`, rest under `outlierDetection`,
+  every detector renamed (`totalErrors`→`totalFailures`, `standardDeviation`→`successRate`, …)
+- `Retry`: `tcp.maxConnectAttempts`→`maxConnectAttempt` (singular), `retryOn` enum
+  recased, `retriableMethods`→`retryOn: [HttpMethod*]`, grpc `cancelled`→`Canceled`;
+  `retriableStatusCodes` has **no equivalent** (dropped, warned)
+- `HealthCheck`: `http.requestHeadersToAdd` → `{add,set}` split (`append` unset ⇒ `add`)
+- `FaultInjection`: single conf → one-element `default.http[]`
+- `RateLimit`: `http.{requests,interval}`→`local.http.requestRate.{num,interval}`
+- `ProxyTemplate`: `modifications`→`appendModifications`, operations recased;
+  `httpFilter`/`networkFilter`/`virtualHost` have no plain `Add` → `AddLast` (warned);
+  `imports`/`resources` have no equivalent
+
+Percentages are emitted as numbers when whole and strings when fractional — the new
+schemas type them `anyOf: [integer, string]`.
+
+### Cross-document context (`TransformOptions`)
+
+`TrafficLog`/`TrafficTrace` `conf.backend` is a **name reference** into
+`Mesh.spec.logging.backends` / `spec.tracing.backends`; `MeshAccessLog`/`MeshTrace`
+declare the backend inline. `runMigration` runs `BuildMeshBackendIndex(inputDir)` as a
+pre-pass and threads it through `TransformOptions` into
+`TransformDocumentWithOptions`. `TransformDocument(raw, target)` remains as a wrapper
+with no index — every consumer degrades to a warning naming the backend to write by
+hand rather than emitting an empty policy. Backend→`default.backends[]` conversion is
+shared with `TransformMesh` via `tracingBackendToNew`/`loggingBackendToNew`
+(`legacybackend.go`).
+
+### `VirtualOutbound` — no single successor
+
+`conf.host`/`conf.port` are Go templates rendered from **arbitrary Dataplane tags**
+(`parameters[].tagKey`), with a VIP allocated per rendered hostname.
+`HostnameGenerator` is the closest replacement but is not equivalent:
+
+| | `VirtualOutbound` | `HostnameGenerator` |
+|---|---|---|
+| selects | Dataplanes by tags | `MeshService`/`MeshExternalService`/`MeshMultiZoneService` by label selector |
+| template vars | any Dataplane tag via `parameters[]` | fixed `.Name`, `.DisplayName`, `.Namespace`, `.Mesh`, `.Zone` + a `label` function |
+| port | templatable (`conf.port`) | **not templatable** — ports come from the MeshService |
+| result | VIP + hostname | hostname published in the resource's `status.addresses` |
+
+Upstream `UPGRADE.md` directs `VirtualOutbound` → `MeshHTTPRoute`/`MeshTCPRoute` for
+the routing half. The migrator errors with both halves named; the original document is
+preserved in the output directory (same handling as `TrafficRoute`).
+
+### Non-policy kinds
+
+`recognisedNonPolicyKinds` in `detect.go` → `ScenarioPassthrough`. Currently just
+`ContainerPatch`: Kubernetes-only JSON patches for the injected sidecar/init
+containers, no `targetRef` successor, **not** one of the 12 removed legacy policies,
+and still served in Kuma 3.0. It is copied through unchanged rather than reported as
+unrecognised input.
 
 ## Deprecation Warnings (all implemented via `ScanForDeprecations`)
 

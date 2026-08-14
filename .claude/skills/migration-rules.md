@@ -9,7 +9,7 @@ any scenario transform, detection logic, or deprecation scanner.
 
 | Scenario | Constant | Trigger | Output |
 |---|---|---|---|
-| Legacy | `ScenarioLegacy` | Top-level `sources`/`destinations` or non-`Mesh*` `type` | `targetRef`/`to`/`from` style |
+| Legacy | `ScenarioLegacy` | Top-level `sources`/`destinations`/`selectors` or non-`Mesh*` `type` | `targetRef`/`to`/`from`/`rules`/`default` — see §6 |
 | Subset | `ScenarioSubset` | `Mesh*` kind + `MeshSubset` with service-identity tags | `Dataplane`/`MeshService` targetRefs |
 | Passthrough | `ScenarioPassthrough` | `Mesh*` kind + no service-identity tags + no `from[]` | pass through unchanged |
 | Rules | `ScenarioRules` | `Mesh*` kind + `from[]` + no service-identity tags | `from[]` → `rules[]` |
@@ -33,8 +33,9 @@ any scenario transform, detection logic, or deprecation scanner.
 3. **Mesh** — `kind: Mesh` + `meshNeedsMigration()` returns true → `ScenarioMesh`; otherwise `ScenarioPassthrough`
 4. **Gateway/Instance/Routes** — `kind: MeshGateway/MeshGatewayInstance/MeshHTTPRoute/MeshTCPRoute/MeshGatewayRoute`
 5. **OPAPolicy** — `kind: OPAPolicy` → `ScenarioOPAPolicy`
-6. **Legacy** — top-level `sources` or `destinations` key present, OR `type` is a non-`Mesh*` policy name → `ScenarioLegacy`
-7. **Mesh*-style policies** — has `apiVersion: kuma.io/v1alpha1` + `Mesh*` kind:
+6. **Recognised non-policy** — `kind` in `recognisedNonPolicyKinds` (`ContainerPatch`) → `ScenarioPassthrough`
+7. **Legacy** — top-level `sources` or `destinations` key present, OR `type` is in `knownLegacyTypes` → `ScenarioLegacy`
+8. **Mesh*-style policies** — has `apiVersion: kuma.io/v1alpha1` + `Mesh*` kind:
    - If any `targetRef` has service-identity tags → `ScenarioSubset`
    - Else if `from[]` is present → `ScenarioRules`
    - Else → `ScenarioPassthrough`
@@ -174,17 +175,72 @@ selection. The CP sets `kuma.io/display-name` on every auto-generated MeshServic
 | `TrafficTrace` | `MeshTrace` |
 | `TrafficRoute` | **error** — requires manual migration to `MeshHTTPRoute`/`MeshTCPRoute` |
 | `ProxyTemplate` | `MeshProxyPatch` |
+| `VirtualOutbound` | **error** — requires manual migration (`HostnameGenerator` + `MeshHTTPRoute`/`MeshTCPRoute`) |
+
+These are the 12 legacy policy resources Kuma 3.0 removes from the resource
+registry. `ExternalService` (→ `MeshExternalService`) is removed in 3.0 as well but
+has its own scenario. **`ContainerPatch` is not in this set**: it is a
+Kubernetes-only JSON-patch resource for the injected sidecar/init containers, it
+has no `targetRef` successor, and it is still served in 3.0 — pass it through
+unchanged (`recognisedNonPolicyKinds` in `detect.go`).
 
 ---
 
-## 6. TrafficPermission Inversion (ScenarioLegacy only)
+## 6. Legacy Policy Shape (`legacyShapes` in `transform.go`)
 
-`TrafficPermission` has **inverted semantics** vs all other old-style policies:
+The legacy selector fields do not map onto the new API the same way for every kind.
+Getting this wrong produces a policy attached to the wrong proxy.
 
-| Field | Meaning in all other policies | Meaning in TrafficPermission |
+| Shape | Kinds | Mapping |
 |---|---|---|
-| `sources` | who the policy applies to → `spec.targetRef` | who is allowed in → `from[].targetRef` |
-| `destinations` | where traffic goes → `to[].targetRef` | the service being protected → `spec.targetRef` |
+| **outbound** | `Timeout`, `CircuitBreaker`, `Retry`, `HealthCheck`, `TrafficLog` | `sources` → `spec.targetRef`; `destinations` → `to[].targetRef` |
+| **inbound** (inverted) | `TrafficPermission`, `FaultInjection`, `RateLimit` | `destinations` → `spec.targetRef`; `sources` → `from[].targetRef` |
+| **selector** | `TrafficTrace`, `ProxyTemplate` | `selectors` → `spec.targetRef`; conf → `spec.default` (successors have no `to[]`/`from[]`) |
+
+Notes:
+
+- `FaultInjection` and `RateLimit` are enforced by the **destination's** sidecar,
+  exactly like `TrafficPermission`. Treating them as outbound targets the client.
+- `RateLimit` → `MeshRateLimit` emits **`rules[]`, not `from[]`**: local rate
+  limiting is client-agnostic (`from[]` accepts only `kind: Mesh`, and 3.0 removes
+  `from[]` with `rules[]` as the documented mechanical replacement). Any specific
+  `sources` selector is lost — warn loudly, it is a scope widening.
+- `TrafficTrace` and `ProxyTemplate` scope with `selectors[]`, **not**
+  `sources`/`destinations`. `UniversalPolicy.Selectors` must be populated or both
+  the scope and the conf are dropped and the output is an empty shell policy.
+- An empty `destinations` list means "all destinations"; substitute a wildcard
+  selector so the conf still has a `to[]` entry to live in.
+
+---
+
+## 6b. Legacy `conf` → new `default` (`legacyconf.go`)
+
+**A legacy `conf` body is never structurally compatible with the new `default`
+section.** Copying it verbatim yields a document that applies cleanly and silently
+does nothing. Every converter is written as an explicit list of moves, and
+`confMapper.unmapped()` reports any input leaf no move consumed.
+
+| Legacy | New | Notable changes |
+|---|---|---|
+| `Timeout` | `MeshTimeout` | `connectTimeout`→`connectionTimeout`; `tcp.idleTimeout`→`idleTimeout`; **no `grpc` section** (folds into `http`); no `http.idleTimeout` |
+| `CircuitBreaker` | `MeshCircuitBreaker` | `thresholds.*`→`connectionLimits.*`; everything else under `outlierDetection`; `detectors.totalErrors`→`totalFailures`, `gatewayErrors`→`gatewayFailures`, `localErrors`→`localOriginFailures`, `standardDeviation`→`successRate` (`factor`→`standardDeviationFactor`), `failure`→`failurePercentage` |
+| `Retry` | `MeshRetry` | `tcp.maxConnectAttempts`→**`maxConnectAttempt`** (singular); `retryOn` enum snake_case→CamelCase; `retriableMethods`→`retryOn: [HttpMethodGet, …]`; grpc `cancelled`→**`Canceled`**; `retriableStatusCodes` and `retryOn: retriable_status_codes`/`retriable_headers` have **no equivalent** (dropped, warned) |
+| `HealthCheck` | `MeshHealthCheck` | `http.requestHeadersToAdd: [{header:{key,value},append}]` → `{add:[{name,value}], set:[…]}` (`append` unset defaults to **true** → `add`); `tcp.send`/`receive` stay base64 |
+| `FaultInjection` | `MeshFaultInjection` | the single conf becomes a one-element `default.http[]` list |
+| `RateLimit` | `MeshRateLimit` | `http.{requests,interval}`→`local.http.requestRate.{num,interval}`; `onRateLimit.headers[{key,value,append}]`→`{add,set}` with `name` |
+| `TrafficLog` | `MeshAccessLog` | `conf.backend` is a **name reference** into `Mesh.spec.logging.backends` — resolved via `MeshBackendIndex`, inlined as `default.backends[]` |
+| `TrafficTrace` | `MeshTrace` | same indirection against `Mesh.spec.tracing.backends`; the backend's `sampling` becomes `default.sampling.overall` |
+| `ProxyTemplate` | `MeshProxyPatch` | `modifications`→`appendModifications`; operation `add`/`remove`/`patch`→`Add`/`Remove`/`Patch`, except `httpFilter`/`networkFilter`/`virtualHost` where `Add` does not exist (→ `AddLast`, warned); `imports` and `resources` have **no equivalent** |
+| `TrafficPermission` | `MeshTrafficPermission` | no conf; synthesise `{action: Allow}` per `from[]` entry |
+
+Percentages: whole numbers stay numeric, fractions become strings — the new
+schemas type these as `anyOf: [integer, string]`.
+
+**Cross-document context.** `TrafficLog`/`TrafficTrace` need the `Mesh` resource,
+which the policy document does not contain. `runMigration` runs
+`BuildMeshBackendIndex(inputDir)` as a pre-pass and threads it through
+`TransformOptions`. When the `Mesh` is not in the input set the conversion emits a
+warning naming the backend to write by hand rather than an empty policy.
 
 ---
 
@@ -379,16 +435,32 @@ The form used in `to[].targetRef` determines the Kuma-assigned policy role:
 
 ## 14. `meshServices.mode` on the `Mesh` resource
 
+Four modes, from `Mesh_MeshServices_Mode` in `kuma/api/mesh/v1alpha1/mesh.proto`:
+
 | Mode | Behaviour |
 |---|---|
-| `ReachableBackends` *(default)* | Both `kuma.io/service` tags and `MeshService` resources active. Policies can match either. |
-| `Exclusive` | **Only** `MeshService`/`MeshExternalService`/`MeshMultizoneService`. Legacy tag matching disabled. |
+| `Disabled` (0) | No `MeshService` generation. **This is what a nil `meshServices` block resolves to on 2.x** (`MeshServicesMode()` in `api/mesh/v1alpha1/mesh_helpers.go`). |
+| `Everywhere` (1) | Both `kuma.io/service` and `MeshService` generate Envoy clusters/CLAs — roughly twice the resources. |
+| `ReachableBackends` (2) | `MeshService`s are generated but only materialised into a proxy's config where that `Dataplane` lists them in `transparentProxying.reachableBackends`. **`kuma.io/service` stays fully active** — this is the gradual, consumer-by-consumer on-ramp. |
+| `Exclusive` (3) | **Only** `MeshService`/`MeshExternalService`/`MeshMultiZoneService`. Legacy tag matching disabled. |
+
+Only `Exclusive` turns `kuma.io/service` off.
 
 `kuma-migrator` always sets `spec.meshServices.mode: Exclusive` on every Mesh CRD it
 processes. This is required for MeshService-based policies to take effect.
 
 **Before enabling Exclusive mode**, confirm all policies and workload env-var addresses
 in the mesh have been migrated.
+
+**Kuma 3.0:** `meshServices` (field and enum) is **removed from the `Mesh` schema**
+entirely — `reserved 9` in `mesh.proto`, `mesh_helpers.go` deleted. Behaviour is
+unconditionally what `Exclusive` used to mean. Per `UPGRADE.md` a `Mesh` that still
+sets `meshServices` applies successfully and the field is silently ignored, so the
+`Exclusive` line the migrator emits is harmless on 3.0 — just inert. (This
+supersedes kuma#17102, which only flipped the nil default to `Exclusive`.)
+Related 3.0 removals: `Dataplane.spec.networking.transparentProxying.reachableServices`
+and the `kuma.io/transparent-proxying-reachable-services` annotation, both replaced
+by `reachableBackends` / `kuma.io/reachable-backends`.
 
 ---
 

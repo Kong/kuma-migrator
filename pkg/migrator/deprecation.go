@@ -738,12 +738,15 @@ func warnMeshServicesDefaultFlip(obj map[string]interface{}, name string) []stri
 		}
 	}
 	return []string{fmt.Sprintf(
-		"Mesh %q: no spec.meshServices block is set. Kuma 3.0 flips the default for meshes without "+
-			"this block from permissive to meshServices.mode: Exclusive (kumahq/kuma#17102), which "+
-			"restricts outbound connectivity to explicitly-reachable services and requires "+
-			"reachableServices/reachableBackends to use MeshService display names. Before upgrading "+
-			"to 3.0, set spec.meshServices.mode explicitly (e.g. Everywhere to preserve current "+
-			"behaviour) or declare reachable services/backends, to avoid breaking connectivity.",
+		"Mesh %q: no spec.meshServices block is set. Kuma 3.0 removes the meshServices field and its "+
+			"mode enum from the Mesh schema entirely and behaves as the old Exclusive mode "+
+			"unconditionally (kumahq/kuma#17102 flipped the nil default first; the field was then "+
+			"removed). Outbound connectivity is restricted to explicitly-reachable services, and "+
+			"reachableBackends must name MeshService resources — reachableServices and the "+
+			"kuma.io/transparent-proxying-reachable-services annotation are removed in 3.0 too. Set "+
+			"spec.meshServices.mode explicitly now (Everywhere preserves current 2.x behaviour) and "+
+			"declare reachable backends before upgrading, to avoid breaking connectivity. A Mesh that "+
+			"still sets meshServices applies successfully on 3.0; the field is silently ignored.",
 		name)}
 }
 

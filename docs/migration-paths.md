@@ -10,7 +10,7 @@ Every transformation `kuma-migrator` performs, and every deprecated field it det
 
 | Scenario | Description |
 |---|---|
-| **Legacy** | Old-style `sources`/`destinations` policies (e.g. `Timeout`, `TrafficPermission`) → `targetRef`/`to`/`from` |
+| **Legacy** | Old-style `sources`/`destinations`/`selectors` policies (e.g. `Timeout`, `TrafficPermission`) → `targetRef`/`to`/`from`/`rules`/`default` — see [below](#legacy-policies-in-detail) |
 | **Subset** | New `Mesh*` policy types still using `MeshSubset` with `kuma.io/service` or `k8s.kuma.io/service-name` tags → `Dataplane`/`MeshService` |
 | **Passthrough** | Already using `MeshService` kind throughout — passed through unchanged |
 | **Rules** | New-style `Mesh*` policies with deprecated `from[]` → `rules[]` (Kuma 2.10+) |
@@ -38,7 +38,7 @@ The tool also emits warnings for deprecated fields that require manual action:
 - `MeshAccessLog` `openTelemetry.attributes[].key` stricter validation (reserved `otel.` prefix, casing, placeholders) *(warn, Kuma 2.14)*
 - `Mesh` `spec.routing.defaultForbidMeshExternalServiceAccess` removed *(warn, Kuma 3.0)*
 - `Mesh` `spec.mtls.backends` → `MeshIdentity` + `MeshTrust` successor model *(advisory only — guided CA cutover, not a transform; `spec.mtls` is not deprecated)*
-- `Mesh` with no `spec.meshServices` block → 3.0 defaults `meshServices.mode` to `Exclusive` (restricts outbound reachability) *(advisory only — set the mode explicitly before upgrading to 3.0)*
+- `Mesh` with no `spec.meshServices` block → 3.0 removes the `meshServices` field entirely and behaves as `Exclusive` unconditionally (restricts outbound reachability) *(advisory only — set the mode explicitly before upgrading to 3.0)*
 - `MeshTrafficPermission`/`MeshFaultInjection` `from[]` deprecated → `rules[]` API *(warn — manual, MFI 2.13 / MTP 2.14)*
 - Deprecated top-level `spec.targetRef.kind`: `MeshSubset`/`MeshService`/`MeshServiceSubset` → `Dataplane`; `MeshHTTPRoute` → `spec.to[].targetRef` *(warn, Kuma 2.10/2.11)*
 - `kuma.io/*` annotation values `"yes"`/`"no"` → `"true"`/`"false"` *(scanner, Kuma 2.9)*
@@ -46,3 +46,56 @@ The tool also emits warnings for deprecated fields that require manual action:
 - RFC 1035/1123 name validation for `Mesh*Service` resources — hard error in 3.0 *(warn)*
 
 For why `MeshTrafficPermission`'s `from[]` is never auto-converted, see [MeshTrafficPermission modes](meshtrafficpermission-modes.md).
+
+---
+
+## Legacy policies in detail
+
+The 12 legacy (non-`Mesh*`) policy resources are the set Kuma 3.0 removes outright.
+Applying any of them to a 3.0 control plane fails — the CRDs are no longer installed.
+
+| Legacy kind | Becomes | Notes |
+|---|---|---|
+| `Timeout` | `MeshTimeout` | `connectTimeout` → `connectionTimeout`; the `grpc` section folds into `http` |
+| `CircuitBreaker` | `MeshCircuitBreaker` | `thresholds` → `connectionLimits`; the rest moves under `outlierDetection` and every detector is renamed |
+| `Retry` | `MeshRetry` | `retryOn` values are recased; `retriableMethods` folds into `retryOn`; **`retriableStatusCodes` has no equivalent and is dropped** |
+| `HealthCheck` | `MeshHealthCheck` | `http.requestHeadersToAdd` splits into `{add, set}` |
+| `FaultInjection` | `MeshFaultInjection` | **inbound policy** — `destinations` become `spec.targetRef`, `sources` become `from[]` |
+| `RateLimit` | `MeshRateLimit` | **inbound policy**, emitted as `rules[]`. A specific `sources` selector cannot be preserved — the limit applies to every client |
+| `TrafficPermission` | `MeshTrafficPermission` | **inbound policy** |
+| `TrafficLog` | `MeshAccessLog` | `conf.backend` names a backend on the `Mesh`; it is resolved and inlined |
+| `TrafficTrace` | `MeshTrace` | scoped by `selectors[]`; `conf.backend` resolved and inlined, along with its sampling rate |
+| `ProxyTemplate` | `MeshProxyPatch` | scoped by `selectors[]`; `imports` and `resources` have no equivalent |
+| `TrafficRoute` | — | **manual**: ambiguous between `MeshHTTPRoute` and `MeshTCPRoute` |
+| `VirtualOutbound` | — | **manual**: see below |
+
+Two things to know about these conversions:
+
+- **`conf` bodies are rewritten, not copied.** No legacy `conf` is structurally
+  compatible with the `default` section of its successor. Any field with no
+  equivalent is reported rather than dropped quietly.
+- **`TrafficLog` and `TrafficTrace` need the `Mesh` resource.** They reference a
+  backend by name that their successors declare inline. Keep the `Mesh` document in
+  the input directory; without it the tool warns and names the backend you have to
+  write by hand.
+
+### `VirtualOutbound`
+
+`VirtualOutbound` renders a hostname *and* a port from arbitrary Dataplane tags, and
+allocates a VIP per result. Nothing reproduces that in one resource:
+
+- `HostnameGenerator` covers the hostname, but selects `MeshService`/
+  `MeshExternalService`/`MeshMultiZoneService` by label (not Dataplanes by tag), its
+  template sees only `.Name`, `.DisplayName`, `.Namespace`, `.Mesh`, `.Zone` and a
+  `label` function, and **it cannot template a port**.
+- `MeshHTTPRoute`/`MeshTCPRoute` cover the routing half, which is what upstream's
+  3.0 upgrade notes point to.
+
+The tool reports it as needing manual migration and leaves the original document in
+the output directory.
+
+### `ContainerPatch`
+
+`ContainerPatch` is **not** a legacy policy: it is a Kubernetes-only JSON patch for
+the injected sidecar and init containers, it has no `targetRef` successor, and Kuma
+3.0 still serves it. The tool passes it through unchanged — no action needed.

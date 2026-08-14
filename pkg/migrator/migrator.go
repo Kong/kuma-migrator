@@ -137,6 +137,11 @@ func runMigration(inputDir, outputDir string, writeFiles bool, meshFilter string
 	}
 	allHits := map[string]EnvVarHit{}
 
+	// Pre-pass: TrafficLog/TrafficTrace reference a backend declared on the Mesh
+	// resource, which their successors inline. Index those backends up front so a
+	// single-file transform can resolve them.
+	opts := TransformOptions{Target: target, MeshBackends: BuildMeshBackendIndex(inputDir)}
+
 	err = filepath.WalkDir(inputDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -191,7 +196,7 @@ func runMigration(inputDir, outputDir string, writeFiles bool, meshFilter string
 		}
 
 		report.TotalFiles++
-		fr := processFile(path, outputDir, cpModeDir, meshDir, writeFiles, skipSet, target)
+		fr := processFile(path, outputDir, cpModeDir, meshDir, writeFiles, skipSet, opts)
 		if rel, relErr := filepath.Rel(inputDir, path); relErr == nil {
 			fr.InputRelPath = filepath.ToSlash(rel)
 		}
@@ -270,7 +275,7 @@ func isGatewayAPIOutputKind(kind string) bool {
 	return false
 }
 
-func processFile(inputPath, outputDir, cpModeDir, meshDir string, writeFile bool, skipSet map[string]bool, target TargetVersion) FileReport {
+func processFile(inputPath, outputDir, cpModeDir, meshDir string, writeFile bool, skipSet map[string]bool, opts TransformOptions) FileReport {
 	name := filepath.Base(inputPath)
 	fr := FileReport{FileName: name, CPModeDir: cpModeDir, OutputCPModeDir: cpModeDir, MeshDir: meshDir}
 
@@ -302,7 +307,7 @@ func processFile(inputPath, outputDir, cpModeDir, meshDir string, writeFile bool
 			continue
 		}
 
-		results, warnings, scenario, tErr := TransformDocument(doc, target)
+		results, warnings, scenario, tErr := TransformDocumentWithOptions(doc, opts)
 		dc.Scenario = scenario
 		dc.Warnings = warnings
 		if tErr != nil {
