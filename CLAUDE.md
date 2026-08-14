@@ -411,6 +411,47 @@ containers, no `targetRef` successor, **not** one of the 12 removed legacy polic
 and still served in Kuma 3.0. It is copied through unchanged rather than reported as
 unrecognised input.
 
+## Known gaps for `--to-latest v3` (NOT yet implemented)
+
+Found while auditing `kuma/UPGRADE.md` on master (3.0-dev) during the 2026-08-14 legacy
+overhaul. None of these affect a `v2` target; all of them produce output a 3.0 CP rejects
+or ignores.
+
+- **`MeshGateway` → Gateway API `Gateway` is invalid under v3** *(open)*. Kuma 3.0's Gateway
+  API integration is **HTTPRoute-only**: `plugin_gateway.go` sets
+  `requiredGatewayCRDs = {HTTPRoute}` and registers only `HTTPRouteReconciler`, and the
+  `controllers/gatewayapi/` package holds only `http_route_*` files. The sole surviving
+  `GatewayClass` code path is `removeGatewayClassFinalizers`, which strips the
+  `gatewayapi_v1.GatewayClassFinalizerGatewaysExist` finalizer from Kuma-controlled
+  GatewayClasses at startup, logging *"removed GatewayClass finalizer for removed built-in
+  Gateway API support"*. So a `Gateway` carrying `gatewayClassName: gateways.kuma.io/controller`
+  is never reconciled on 3.0. `TransformMeshGateway` still emits one regardless of target.
+  **Not fixed** — unlike the Instance case there is no clean error to raise per-document:
+  the whole built-in-gateway topology has to become a delegated gateway, which is an operator
+  re-architecture. `MeshGatewayRoute`/`MeshHTTPRoute` → `HTTPRoute` remains correct (the
+  HTTPRoute reconciler survives).
+- **`MeshGateway` is no longer a valid `targetRef.kind` for any policy** in 3.0. No scanner
+  warns about a policy that targets one.
+- **`Dataplane networking.gateway.type: BUILTIN`** is rejected at admission in 3.0. Not scanned.
+- **`ExternalService`** is removed in 3.0 (CRD, API and webhook). Already converted by
+  `ScenarioExternalService`, so this only matters for a `--to-latest v3` advisory on inputs
+  the migrator leaves alone.
+- **`standalone` CP mode is removed** (rename to `zone`), and a **Kubernetes-native Global CP
+  is no longer supported** (Global must run Universal + non-Kubernetes store). The extractor
+  labels output directories `-standalone-ctx` and detects `mode=global` on Kubernetes; neither
+  is wrong today, but both describe topologies that cannot exist on 3.0.
+
+### Closed
+
+- **`MeshGatewayInstance` under v3** — `TransformMeshGatewayInstance(raw, target)` now errors
+  under `--to-latest v3` instead of emitting `GatewayClass` + `MeshGatewayConfig`, both of which
+  are dead on 3.0. The error names what was removed, points at the delegated-gateway
+  replacement (a Deployment/Service you own, pod labelled `kuma.io/gateway: enabled`), carries
+  over the settings the manifest does hold (`replicas`, `serviceType`, `tags`) via
+  `carriedGatewayInstanceSettings`, and says to re-run with `--to-latest v2` for the old output.
+  A pod spec and container image cannot be synthesised from a MeshGatewayInstance, so this is
+  reported rather than half-generated. **v2 behaviour is unchanged.**
+
 ## Deprecation Warnings (all implemented via `ScanForDeprecations`)
 
 - `MeshMetric sidecar.regex` → auto-fixed to `sidecar.profiles.exclude` (v2.7)

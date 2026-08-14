@@ -66,7 +66,7 @@ See [Choosing a target version](docs/target-version.md).
 
 | Scenario | Migration |
 |---|---|
-| **Legacy** | `sources`/`destinations` policies → `targetRef`/`to`/`from` |
+| **Legacy** | `sources`/`destinations`/`selectors` policies → `targetRef`/`to`/`from`/`rules`, with the `conf` body rewritten to the successor's schema |
 | **Subset** | `MeshSubset` with service tags → `Dataplane`/`MeshService` |
 | **Rules** | Deprecated `from[]` → `rules[]` (Kuma 2.10+) |
 | **Mesh** | `Mesh` CRD observability → standalone `MeshMetric`/`MeshTrace`/`MeshAccessLog` |

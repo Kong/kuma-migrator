@@ -117,7 +117,7 @@ func TransformDocumentWithOptions(raw []byte, opts TransformOptions) ([][]byte, 
 
 	case ScenarioGatewayInstance:
 		var err error
-		docs, warnings, err = TransformMeshGatewayInstance(raw)
+		docs, warnings, err = TransformMeshGatewayInstance(raw, target)
 		if err != nil {
 			return nil, nil, scenario, err
 		}

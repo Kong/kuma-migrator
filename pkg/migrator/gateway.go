@@ -3,6 +3,7 @@ package migrator
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 
 	"sigs.k8s.io/yaml"
@@ -166,7 +167,11 @@ func TransformMeshGateway(raw []byte) ([][]byte, []string, error) {
 
 // TransformMeshGatewayInstance converts a MeshGatewayInstance into a Gateway API
 // GatewayClass (cluster-scoped) plus a Kuma MeshGatewayConfig (namespaced).
-func TransformMeshGatewayInstance(raw []byte) ([][]byte, []string, error) {
+//
+// That output is 2.x-only. Kuma 3.0 removes the built-in gateway API entirely and
+// its Gateway API integration is reduced to HTTPRoute — see
+// meshGatewayInstanceRemovedInV3.
+func TransformMeshGatewayInstance(raw []byte, target TargetVersion) ([][]byte, []string, error) {
 	var inst oldMeshGatewayInstance
 	if err := yaml.Unmarshal(raw, &inst); err != nil {
 		return nil, nil, fmt.Errorf("unmarshal MeshGatewayInstance: %w", err)
@@ -175,6 +180,10 @@ func TransformMeshGatewayInstance(raw []byte) ([][]byte, []string, error) {
 	name := inst.Metadata.Name
 	namespace := inst.Metadata.Namespace
 	var warnings []string
+
+	if target.IsV3() {
+		return nil, nil, meshGatewayInstanceRemovedInV3(inst, name, namespace)
+	}
 
 	// GatewayClass is cluster-scoped (no namespace).
 	gcMeta := map[string]interface{}{"name": name}
@@ -231,6 +240,79 @@ func TransformMeshGatewayInstance(raw []byte) ([][]byte, []string, error) {
 		return nil, warnings, fmt.Errorf("marshal MeshGatewayConfig: %w", err)
 	}
 	return [][]byte{gcBytes, mgcBytes}, warnings, nil
+}
+
+// meshGatewayInstanceRemovedInV3 explains why a MeshGatewayInstance has no
+// mechanical successor on Kuma 3.0, and carries over the settings the manifest
+// does hold so the replacement workload can be written by hand.
+//
+// Kuma 3.0 removes the built-in gateway API in full: MeshGateway,
+// MeshGatewayRoute, MeshGatewayInstance *and* MeshGatewayConfig, including the
+// meshgatewayconfigs.kuma.io CRD. Both halves of the 2.x output are therefore
+// dead on 3.0 — the parametersRef target no longer exists, and the Gateway API
+// integration is reduced to HTTPRoute (plugin_gateway.go registers only the
+// HTTPRoute reconciler; the sole remaining GatewayClass code path strips
+// finalizers from Kuma-controlled GatewayClasses left behind by the removal).
+//
+// The replacement is a delegated gateway: a Deployment and Service you own, with
+// the pod labelled kuma.io/gateway: enabled so Kuma injects a sidecar. That
+// cannot be synthesised from a MeshGatewayInstance — the manifest has no
+// container image or pod spec — so this is reported rather than half-generated.
+func meshGatewayInstanceRemovedInV3(inst oldMeshGatewayInstance, name, namespace string) error {
+	carried := carriedGatewayInstanceSettings(inst)
+	detail := ""
+	if carried != "" {
+		detail = fmt.Sprintf(" Settings to carry over to the Deployment/Service: %s.", carried)
+	}
+
+	return fmt.Errorf(
+		"MeshGatewayInstance %q (%s) has no successor on Kuma 3.0: the built-in gateway API is removed "+
+			"in full (MeshGateway, MeshGatewayRoute, MeshGatewayInstance and MeshGatewayConfig, including "+
+			"the meshgatewayconfigs.kuma.io CRD), and the Gateway API integration is reduced to HTTPRoute — "+
+			"no Gateway or GatewayClass reconciler remains, and the control plane strips finalizers from "+
+			"Kuma-controlled GatewayClasses on startup. Replace it with a delegated gateway: a Deployment "+
+			"and Service you manage, with the pod labelled kuma.io/gateway: enabled so the sidecar is "+
+			"injected. That needs a container image and pod spec this manifest does not carry, so it cannot "+
+			"be generated.%s Re-run with --to-latest v2 to keep the 2.x GatewayClass + MeshGatewayConfig "+
+			"output", name, namespace, detail)
+}
+
+// carriedGatewayInstanceSettings renders the MeshGatewayInstance spec fields that
+// have a direct equivalent on a hand-written Deployment/Service, so the operator
+// does not have to re-read the original manifest.
+func carriedGatewayInstanceSettings(inst oldMeshGatewayInstance) string {
+	if len(inst.Spec) == 0 {
+		return ""
+	}
+	var spec struct {
+		Replicas    *int              `json:"replicas"`
+		ServiceType string            `json:"serviceType"`
+		Tags        map[string]string `json:"tags"`
+	}
+	if err := json.Unmarshal(inst.Spec, &spec); err != nil {
+		return ""
+	}
+
+	var parts []string
+	if spec.Replicas != nil {
+		parts = append(parts, fmt.Sprintf("replicas=%d", *spec.Replicas))
+	}
+	if spec.ServiceType != "" {
+		parts = append(parts, fmt.Sprintf("serviceType=%s", spec.ServiceType))
+	}
+	if len(spec.Tags) > 0 {
+		keys := make([]string, 0, len(spec.Tags))
+		for k := range spec.Tags {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		tags := make([]string, 0, len(keys))
+		for _, k := range keys {
+			tags = append(tags, fmt.Sprintf("%s=%s", k, spec.Tags[k]))
+		}
+		parts = append(parts, "tags{"+strings.Join(tags, ",")+"}")
+	}
+	return strings.Join(parts, ", ")
 }
 
 // ---- Helpers -----------------------------------------------------------------

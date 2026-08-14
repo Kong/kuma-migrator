@@ -239,7 +239,7 @@ spec:
       cpu: 100m
       memory: 128Mi
 `
-	docs, warnings, err := TransformMeshGatewayInstance([]byte(input))
+	docs, warnings, err := TransformMeshGatewayInstance([]byte(input), TargetV2)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -324,5 +324,52 @@ func TestDetectScenario_GatewayResources(t *testing.T) {
 				t.Errorf("expected %v, got %v", tc.scenario, scenario)
 			}
 		})
+	}
+}
+
+func TestTransformMeshGatewayInstance_V3_NoSuccessor(t *testing.T) {
+	input := `
+apiVersion: kuma.io/v1alpha1
+kind: MeshGatewayInstance
+metadata:
+  name: edge-gateway
+  namespace: kuma-demo
+spec:
+  replicas: 3
+  serviceType: LoadBalancer
+  tags:
+    kuma.io/service: edge-gateway
+`
+	// v2 keeps the 2.x output: GatewayClass + MeshGatewayConfig.
+	docs, _, err := TransformMeshGatewayInstance([]byte(input), TargetV2)
+	if err != nil {
+		t.Fatalf("v2: unexpected error: %v", err)
+	}
+	if len(docs) != 2 {
+		t.Fatalf("v2: expected GatewayClass + MeshGatewayConfig, got %d docs", len(docs))
+	}
+
+	// v3 has no successor: Kuma 3.0 removes the built-in gateway API in full,
+	// including the meshgatewayconfigs.kuma.io CRD, and keeps only the HTTPRoute
+	// half of the Gateway API integration. Emitting the 2.x pair would produce a
+	// document the control plane rejects and a GatewayClass it strips finalizers
+	// from on startup.
+	docs, _, err = TransformMeshGatewayInstance([]byte(input), TargetV3)
+	if err == nil {
+		t.Fatal("v3: expected an error, got none")
+	}
+	if len(docs) != 0 {
+		t.Errorf("v3: expected no output documents, got %d", len(docs))
+	}
+	for _, want := range []string{
+		"MeshGatewayConfig",        // names what is removed
+		"kuma.io/gateway: enabled", // names the delegated-gateway replacement
+		"replicas=3",               // carries the settings forward
+		"serviceType=LoadBalancer",
+		"--to-latest v2", // says how to get the old behaviour back
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("v3 error should mention %q: %v", want, err)
+		}
 	}
 }

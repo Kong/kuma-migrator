@@ -16,7 +16,7 @@ Every transformation `kuma-migrator` performs, and every deprecated field it det
 | **Rules** | New-style `Mesh*` policies with deprecated `from[]` → `rules[]` (Kuma 2.10+) |
 | **Mesh** | `Mesh` CRD with embedded observability/passthrough → standalone `MeshMetric`, `MeshTrace`, `MeshAccessLog`, `MeshPassthrough` CRDs |
 | **ExternalService** | `ExternalService` → `MeshExternalService` |
-| **GW** | `MeshGateway` → `Gateway`, `MeshGatewayInstance` → `GatewayClass`+`MeshGatewayConfig`, `MeshGatewayRoute`/`MeshHTTPRoute`/`MeshTCPRoute` → Gateway API `HTTPRoute`/`TCPRoute` |
+| **GW** | `MeshGateway` → `Gateway`, `MeshGatewayInstance` → `GatewayClass`+`MeshGatewayConfig` *(v2 only — see below)*, `MeshGatewayRoute`/`MeshHTTPRoute`/`MeshTCPRoute` → Gateway API `HTTPRoute`/`TCPRoute` |
 | **OPAPolicy** | Kong Mesh `OPAPolicy` → `MeshOPA` (Kong Mesh 2.5+) |
 
 ## Deprecated-field warnings (auto-detected, not auto-transformed)
@@ -93,6 +93,25 @@ allocates a VIP per result. Nothing reproduces that in one resource:
 
 The tool reports it as needing manual migration and leaves the original document in
 the output directory.
+
+### Built-in gateways and `--to-latest v3`
+
+Kuma 3.0 removes the built-in gateway API in full — `MeshGateway`, `MeshGatewayRoute`,
+`MeshGatewayInstance` and `MeshGatewayConfig`, including their CRDs — and reduces the
+Gateway API integration to `HTTPRoute` alone. There is no `Gateway` or `GatewayClass`
+reconciler left, and the control plane strips finalizers from Kuma-controlled
+`GatewayClass` objects on startup.
+
+`MeshGatewayInstance` therefore has **no successor on 3.0**. Under `--to-latest v3` the tool
+reports it instead of converting it, naming the settings to carry over (`replicas`,
+`serviceType`, `tags`). The replacement is a *delegated* gateway: a `Deployment` and
+`Service` you manage, with the pod labelled `kuma.io/gateway: enabled` so Kuma injects a
+sidecar. That needs a container image and pod spec the original manifest does not carry,
+so it cannot be generated for you.
+
+Under `--to-latest v2` the 2.x `GatewayClass` + `MeshGatewayConfig` output is unchanged.
+
+Route conversion (`MeshGatewayRoute`/`MeshHTTPRoute` → `HTTPRoute`) stays correct on 3.0.
 
 ### `ContainerPatch`
 
