@@ -26,7 +26,7 @@ spec:
         protocol: HTTP
         hostname: example.com
 `
-	docs, warnings, err := TransformMeshGateway([]byte(input))
+	docs, warnings, err := TransformMeshGateway([]byte(input), TransformOptions{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -59,8 +59,15 @@ spec:
 	}
 
 	spec := gw["spec"].(map[string]interface{})
-	if spec["gatewayClassName"] != "gateways.kuma.io/controller" {
-		t.Errorf("expected gatewayClassName=gateways.kuma.io/controller, got %v", spec["gatewayClassName"])
+	// No MeshGatewayInstance was indexed, so the GatewayClass name is unknown.
+	// It must NOT fall back to Kuma's controllerName: gatewayClassName names a
+	// GatewayClass object, and a Gateway pointing at a class that does not exist
+	// is created successfully and then never reconciled.
+	if spec["gatewayClassName"] != gatewayClassPlaceholder {
+		t.Errorf("expected gatewayClassName=%s, got %v", gatewayClassPlaceholder, spec["gatewayClassName"])
+	}
+	if !hasWarning(warnings, "could not determine spec.gatewayClassName") {
+		t.Errorf("expected an unresolved-class warning, got: %v", warnings)
 	}
 
 	listeners := spec["listeners"].([]interface{})
@@ -112,7 +119,7 @@ spec:
           certificates:
             - secret: my-tls-cert
 `
-	docs, _, err := TransformMeshGateway([]byte(input))
+	docs, _, err := TransformMeshGateway([]byte(input), TransformOptions{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -170,7 +177,7 @@ spec:
         tls:
           mode: PASSTHROUGH
 `
-	docs, _, err := TransformMeshGateway([]byte(input))
+	docs, _, err := TransformMeshGateway([]byte(input), TransformOptions{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -202,7 +209,7 @@ spec:
         protocol: HTTP
         crossMesh: true
 `
-	_, warnings, err := TransformMeshGateway([]byte(input))
+	_, warnings, err := TransformMeshGateway([]byte(input), TransformOptions{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -371,5 +378,129 @@ spec:
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("v3 error should mention %q: %v", want, err)
 		}
+	}
+}
+
+const meshGatewayForClassResolution = `
+apiVersion: kuma.io/v1alpha1
+kind: MeshGateway
+metadata:
+  name: edge
+spec:
+  selectors:
+    - match:
+        kuma.io/service: edge-gateway_kuma-demo_svc
+  conf:
+    listeners:
+      - port: 8080
+        protocol: HTTP
+`
+
+const meshGatewayInstanceForClassResolution = `
+apiVersion: kuma.io/v1alpha1
+kind: MeshGatewayInstance
+metadata:
+  name: edge-gateway
+  namespace: kuma-demo
+spec:
+  replicas: 2
+  serviceType: LoadBalancer
+  tags:
+    kuma.io/service: edge-gateway_kuma-demo_svc
+`
+
+// gatewayClassOptsFrom builds the index the way BuildTransformOptions does,
+// from the companion MeshGatewayInstance document.
+func gatewayClassOptsFrom(t *testing.T, target TargetVersion, instanceDocs ...string) TransformOptions {
+	t.Helper()
+	idx := GatewayClassIndex{}
+	for _, doc := range instanceDocs {
+		tag, class := parseGatewayClassEntry([]byte(doc))
+		if tag == "" || class == "" {
+			t.Fatalf("failed to index MeshGatewayInstance: tag=%q class=%q", tag, class)
+		}
+		idx.add(tag, class)
+	}
+	return TransformOptions{Target: target, GatewayClasses: idx}
+}
+
+func TestTransformMeshGateway_ResolvesGatewayClassName(t *testing.T) {
+	opts := gatewayClassOptsFrom(t, TargetV2, meshGatewayInstanceForClassResolution)
+
+	docs, warnings, err := TransformMeshGateway([]byte(meshGatewayForClassResolution), opts)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var gw map[string]interface{}
+	if err := yaml.Unmarshal(docs[0], &gw); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	// The MeshGateway and its MeshGatewayInstance share a kuma.io/service tag, and
+	// the generated GatewayClass is named after the instance — so the Gateway must
+	// reference "edge-gateway", not Kuma's controllerName.
+	spec := gw["spec"].(map[string]interface{})
+	if spec["gatewayClassName"] != "edge-gateway" {
+		t.Errorf("gatewayClassName = %v, want edge-gateway", spec["gatewayClassName"])
+	}
+	if hasWarning(warnings, "could not determine spec.gatewayClassName") {
+		t.Errorf("class was resolvable; should not warn: %v", warnings)
+	}
+}
+
+func TestTransformMeshGateway_AmbiguousGatewayClassWarns(t *testing.T) {
+	second := `
+apiVersion: kuma.io/v1alpha1
+kind: MeshGatewayInstance
+metadata:
+  name: another-gateway
+  namespace: kuma-demo
+spec:
+  tags:
+    kuma.io/service: edge-gateway_kuma-demo_svc
+`
+	opts := gatewayClassOptsFrom(t, TargetV2, meshGatewayInstanceForClassResolution, second)
+
+	_, warnings, err := TransformMeshGateway([]byte(meshGatewayForClassResolution), opts)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !hasWarning(warnings, "matches more than one MeshGatewayInstance") {
+		t.Errorf("expected an ambiguity warning, got: %v", warnings)
+	}
+}
+
+func TestTransformMeshGateway_V3_NoKumaGatewayClass(t *testing.T) {
+	// Even when a MeshGatewayInstance is present, v3 must not point the Gateway at
+	// a Kuma GatewayClass: 3.0's Gateway API integration is HTTPRoute-only, so no
+	// Gateway or GatewayClass reconciler exists to act on it.
+	opts := gatewayClassOptsFrom(t, TargetV3, meshGatewayInstanceForClassResolution)
+
+	docs, warnings, err := TransformMeshGateway([]byte(meshGatewayForClassResolution), opts)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var gw map[string]interface{}
+	if err := yaml.Unmarshal(docs[0], &gw); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	spec := gw["spec"].(map[string]interface{})
+	if spec["gatewayClassName"] != gatewayClassPlaceholder {
+		t.Errorf("gatewayClassName = %v, want %s", spec["gatewayClassName"], gatewayClassPlaceholder)
+	}
+	// The listener block is valid Gateway API on 3.0 and must survive — that is
+	// the whole reason this conversion is not an error like MeshGatewayInstance.
+	listeners := spec["listeners"].([]interface{})
+	if len(listeners) != 1 {
+		t.Fatalf("expected the listener to be preserved, got %d", len(listeners))
+	}
+	if l := listeners[0].(map[string]interface{}); l["port"] != float64(8080) {
+		t.Errorf("listener port = %v, want 8080", l["port"])
+	}
+	if !hasWarning(warnings, "HTTPRoute-only") && !hasWarning(warnings, "reduces its Gateway API") {
+		t.Errorf("expected a v3 explanation, got: %v", warnings)
+	}
+	if !hasWarning(warnings, "kuma.io/gateway: enabled") {
+		t.Errorf("expected the delegated-gateway pointer, got: %v", warnings)
 	}
 }

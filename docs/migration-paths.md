@@ -111,6 +111,20 @@ so it cannot be generated for you.
 
 Under `--to-latest v2` the 2.x `GatewayClass` + `MeshGatewayConfig` output is unchanged.
 
+`MeshGateway` itself **is** still converted on both targets — its listener block (ports,
+protocols, hostnames, TLS certificate references) is valid Gateway API on 3.0 and is the
+part worth automating. Only `spec.gatewayClassName` differs:
+
+- **v2** — resolved to the `GatewayClass` generated from the companion `MeshGatewayInstance`,
+  matched through the `kuma.io/service` tag the two share. Keep both documents in the input
+  directory so the link can be made.
+- **v3** — no Kuma `GatewayClass` exists, so it is left as
+  `REPLACE-WITH-YOUR-GATEWAYCLASS` with a warning. Point it at the gateway implementation you
+  adopt.
+
+If the class cannot be determined on either target you get the same placeholder and a warning,
+rather than a plausible-looking value that would leave the `Gateway` sitting unreconciled.
+
 Route conversion (`MeshGatewayRoute`/`MeshHTTPRoute` → `HTTPRoute`) stays correct on 3.0.
 
 ### `ContainerPatch`

@@ -137,10 +137,11 @@ func runMigration(inputDir, outputDir string, writeFiles bool, meshFilter string
 	}
 	allHits := map[string]EnvVarHit{}
 
-	// Pre-pass: TrafficLog/TrafficTrace reference a backend declared on the Mesh
-	// resource, which their successors inline. Index those backends up front so a
-	// single-file transform can resolve them.
-	opts := TransformOptions{Target: target, MeshBackends: BuildMeshBackendIndex(inputDir)}
+	// Pre-pass: some conversions need a document other than the one being
+	// transformed — TrafficLog/TrafficTrace reference a backend declared on the
+	// Mesh, and a MeshGateway must name the GatewayClass generated from its
+	// companion MeshGatewayInstance. One walk builds every index.
+	opts := BuildTransformOptions(inputDir, target)
 
 	err = filepath.WalkDir(inputDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {

@@ -26,6 +26,20 @@ func TransformDocument(raw []byte, target TargetVersion) ([][]byte, []string, Sc
 	return TransformDocumentWithOptions(raw, TransformOptions{Target: target})
 }
 
+// TransformOptions carries context a single document cannot provide. Build it
+// with BuildTransformOptions, which populates every index in one walk of the
+// input tree. A zero value (or any nil index) is valid — the conversions that
+// would have used it warn instead.
+type TransformOptions struct {
+	Target TargetVersion
+	// MeshBackends resolves TrafficLog/TrafficTrace conf.backend references
+	// against the Mesh resource that declares them.
+	MeshBackends MeshBackendIndex
+	// GatewayClasses resolves the GatewayClass a converted MeshGateway must name,
+	// which lives on the companion MeshGatewayInstance.
+	GatewayClasses GatewayClassIndex
+}
+
 // TransformDocumentWithOptions is TransformDocument with the cross-document
 // context some conversions need (see TransformOptions).
 func TransformDocumentWithOptions(raw []byte, opts TransformOptions) ([][]byte, []string, Scenario, error) {
@@ -110,7 +124,7 @@ func TransformDocumentWithOptions(raw []byte, opts TransformOptions) ([][]byte, 
 
 	case ScenarioGateway:
 		var err error
-		docs, warnings, err = TransformMeshGateway(raw)
+		docs, warnings, err = TransformMeshGateway(raw, opts)
 		if err != nil {
 			return nil, nil, scenario, err
 		}

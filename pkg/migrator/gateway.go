@@ -9,7 +9,72 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
-const gatewayAPIVersion = "gateway.networking.k8s.io/v1"
+const (
+	gatewayAPIVersion = "gateway.networking.k8s.io/v1"
+
+	// kumaGatewayController is the controllerName of Kuma's built-in gateway
+	// controller. It belongs on GatewayClass.spec.controllerName — NOT on
+	// Gateway.spec.gatewayClassName, which must name a GatewayClass object.
+	kumaGatewayController = "gateways.kuma.io/controller"
+
+	// gatewayClassPlaceholder is emitted when the GatewayClass a Gateway must
+	// name cannot be determined. It is deliberately not a plausible class name:
+	// an unresolvable gatewayClassName leaves the Gateway unreconciled either
+	// way, so the value's job is to read as a to-do in `kubectl describe gateway`
+	// rather than as a Kuma misconfiguration.
+	gatewayClassPlaceholder = "REPLACE-WITH-YOUR-GATEWAYCLASS"
+)
+
+// GatewayClassIndex maps the kuma.io/service tag of a built-in gateway to the
+// name of the GatewayClass generated for it.
+//
+// Gateway.spec.gatewayClassName must reference a GatewayClass by name, but a
+// MeshGateway document does not contain that name: the GatewayClass is generated
+// from the companion MeshGatewayInstance (whose own name becomes the class), and
+// the two are linked only by the kuma.io/service tag — MeshGateway selects it
+// through spec.selectors[].match, MeshGatewayInstance declares it in spec.tags.
+type GatewayClassIndex map[string][]string
+
+// add records a class for a service tag, keeping the list unique and ordered so
+// an ambiguous lookup is reported deterministically.
+func (idx GatewayClassIndex) add(serviceTag, className string) {
+	if serviceTag == "" || className == "" {
+		return
+	}
+	for _, existing := range idx[serviceTag] {
+		if existing == className {
+			return
+		}
+	}
+	idx[serviceTag] = append(idx[serviceTag], className)
+	sort.Strings(idx[serviceTag])
+}
+
+// parseGatewayClassEntry extracts the (kuma.io/service tag, GatewayClass name)
+// pair a MeshGatewayInstance contributes, or ("", "") for any other document.
+func parseGatewayClassEntry(raw []byte) (string, string) {
+	var probe struct {
+		Kind     string       `json:"kind"`
+		Type     string       `json:"type"`
+		Metadata KubeMetadata `json:"metadata"`
+		Spec     struct {
+			Tags map[string]string `json:"tags"`
+		} `json:"spec"`
+	}
+	if err := yaml.Unmarshal(raw, &probe); err != nil {
+		return "", ""
+	}
+	kind := probe.Kind
+	if kind == "" {
+		kind = probe.Type
+	}
+	if kind != "MeshGatewayInstance" {
+		return "", ""
+	}
+	// TransformMeshGatewayInstance names the generated GatewayClass after the
+	// instance, so the instance name is the class name.
+	return probe.Spec.Tags["kuma.io/service"], probe.Metadata.Name
+}
 
 // ---- Old MeshGateway structs (input) ----------------------------------------
 
@@ -61,7 +126,11 @@ type oldMeshGatewayInstance struct {
 // ---- MeshGateway → Gateway --------------------------------------------------
 
 // TransformMeshGateway converts a MeshGateway CRD into a Gateway API Gateway resource.
-func TransformMeshGateway(raw []byte) ([][]byte, []string, error) {
+//
+// The listener block (ports, protocols, hostnames, TLS certificateRefs) is valid
+// Gateway API on both targets, so this conversion is always performed. Only
+// spec.gatewayClassName is target-sensitive — see resolveGatewayClassName.
+func TransformMeshGateway(raw []byte, opts TransformOptions) ([][]byte, []string, error) {
 	var gw oldMeshGateway
 	if err := yaml.Unmarshal(raw, &gw); err != nil {
 		return nil, nil, fmt.Errorf("unmarshal MeshGateway: %w", err)
@@ -73,8 +142,9 @@ func TransformMeshGateway(raw []byte) ([][]byte, []string, error) {
 
 	if len(gw.Spec.Selectors) > 0 {
 		warnings = append(warnings, fmt.Sprintf(
-			"Gateway %q: spec.selectors has no equivalent in Gateway API — "+
-				"the gateway pods are now managed by the GatewayClass controller", name))
+			"Gateway %q: spec.selectors has no equivalent in Gateway API — the gateway workload is "+
+				"managed by the gateway implementation, not selected by the Gateway resource. The tag is "+
+				"still used here to resolve spec.gatewayClassName", name))
 	}
 	if len(gw.Spec.Tags) > 0 {
 		warnings = append(warnings, fmt.Sprintf(
@@ -143,18 +213,18 @@ func TransformMeshGateway(raw []byte) ([][]byte, []string, error) {
 		meta["annotations"] = ann
 	}
 
+	className, classWarnings := resolveGatewayClassName(gw, name, opts)
+	warnings = append(warnings, classWarnings...)
+
 	output := map[string]interface{}{
 		"apiVersion": gatewayAPIVersion,
 		"kind":       "Gateway",
 		"metadata":   meta,
 		"spec": map[string]interface{}{
-			"gatewayClassName": "gateways.kuma.io/controller",
+			"gatewayClassName": className,
 			"listeners":        listeners,
 		},
 	}
-
-	warnings = append(warnings, fmt.Sprintf(
-		"Gateway %q: ensure a GatewayClass named 'kuma' exists with controllerName: gateways.kuma.io/controller", name))
 
 	b, err := yaml.Marshal(output)
 	if err != nil {
@@ -240,6 +310,86 @@ func TransformMeshGatewayInstance(raw []byte, target TargetVersion) ([][]byte, [
 		return nil, warnings, fmt.Errorf("marshal MeshGatewayConfig: %w", err)
 	}
 	return [][]byte{gcBytes, mgcBytes}, warnings, nil
+}
+
+// resolveGatewayClassName determines the value of Gateway.spec.gatewayClassName.
+//
+// This field must name a GatewayClass *object*. The previous implementation
+// hardcoded Kuma's controllerName ("gateways.kuma.io/controller"), which is a
+// different identifier entirely and names no object the tool creates — so the
+// Gateway applied cleanly and was never reconciled. The GatewayClass actually
+// generated for a built-in gateway is named after its MeshGatewayInstance, which
+// lives in a separate document; GatewayClassIndex links the two through the
+// shared kuma.io/service tag.
+//
+// Under v3 there is nothing to resolve: Kuma 3.0's Gateway API integration is
+// HTTPRoute-only, so no Kuma GatewayClass exists and the operator has to point
+// the Gateway at whatever gateway implementation they adopt.
+func resolveGatewayClassName(gw oldMeshGateway, name string, opts TransformOptions) (string, []string) {
+	if opts.Target.IsV3() {
+		return gatewayClassPlaceholder, []string{fmt.Sprintf(
+			"Gateway %q: Kuma 3.0 removes the built-in gateway API and reduces its Gateway API "+
+				"integration to HTTPRoute — no Gateway or GatewayClass reconciler remains, so no Kuma "+
+				"GatewayClass exists to reference. The listener block below is valid Gateway API and "+
+				"carries over as-is; set spec.gatewayClassName to the GatewayClass of the gateway "+
+				"implementation you adopt, and rejoin the workload to the mesh as a delegated gateway "+
+				"(its pod labelled kuma.io/gateway: enabled). Left as %q so it cannot be applied unnoticed.",
+			name, gatewayClassPlaceholder)}
+	}
+
+	tags := gatewayServiceTags(gw)
+	var (
+		matched []string
+		seen    = map[string]bool{}
+	)
+	for _, tag := range tags {
+		for _, class := range opts.GatewayClasses[tag] {
+			if !seen[class] {
+				seen[class] = true
+				matched = append(matched, class)
+			}
+		}
+	}
+
+	switch len(matched) {
+	case 1:
+		return matched[0], nil
+	case 0:
+		hint := "no MeshGatewayInstance in the input set declares a matching kuma.io/service tag"
+		if len(tags) == 0 {
+			hint = "this MeshGateway declares no kuma.io/service tag in spec.selectors or spec.tags"
+		}
+		return gatewayClassPlaceholder, []string{fmt.Sprintf(
+			"Gateway %q: could not determine spec.gatewayClassName — %s. It must name the GatewayClass "+
+				"object generated from the companion MeshGatewayInstance (the tool names that class after "+
+				"the instance), not Kuma's controllerName. Left as %q; set it before applying, or a Gateway "+
+				"referencing a missing class is created and never reconciled.",
+			name, hint, gatewayClassPlaceholder)}
+	default:
+		return matched[0], []string{fmt.Sprintf(
+			"Gateway %q: its kuma.io/service tag matches more than one MeshGatewayInstance (%s). "+
+				"Used %q for spec.gatewayClassName — confirm that is the intended gateway.",
+			name, strings.Join(matched, ", "), matched[0])}
+	}
+}
+
+// gatewayServiceTags collects the kuma.io/service values a MeshGateway is scoped
+// by, from spec.selectors[].match and spec.tags.
+func gatewayServiceTags(gw oldMeshGateway) []string {
+	var out []string
+	seen := map[string]bool{}
+	add := func(v string) {
+		if v == "" || v == "*" || seen[v] {
+			return
+		}
+		seen[v] = true
+		out = append(out, v)
+	}
+	for _, sel := range gw.Spec.Selectors {
+		add(sel.Match["kuma.io/service"])
+	}
+	add(gw.Spec.Tags["kuma.io/service"])
+	return out
 }
 
 // meshGatewayInstanceRemovedInV3 explains why a MeshGatewayInstance has no

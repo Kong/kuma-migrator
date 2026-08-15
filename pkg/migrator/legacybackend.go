@@ -23,8 +23,10 @@ import (
 // not part of the input (a partial extract, or a single file), the conversion
 // degrades to a warning naming the backend that has to be written by hand.
 
-// meshDocPattern matches the kind/type line of a Mesh resource in either layout.
-var meshDocPattern = regexp.MustCompile(`(?m)^\s*(kind|type)\s*:\s*["']?Mesh["']?\s*$`)
+// indexedDocPattern matches the kind/type line of the resources the pre-pass
+// indexes, in either layout. It is a cheap prefilter: without it the pre-pass
+// unmarshals every YAML file in the tree.
+var indexedDocPattern = regexp.MustCompile(`(?m)^\s*(kind|type)\s*:\s*["']?(Mesh|MeshGatewayInstance)["']?\s*$`)
 
 // meshBackends holds the observability backends declared by one Mesh resource.
 type meshBackends struct {
@@ -37,20 +39,13 @@ type meshBackends struct {
 // MeshBackendIndex maps a mesh name to the backends its Mesh resource declares.
 type MeshBackendIndex map[string]*meshBackends
 
-// TransformOptions carries context a single document cannot provide.
-type TransformOptions struct {
-	Target TargetVersion
-	// MeshBackends resolves TrafficLog/TrafficTrace conf.backend references.
-	// A nil index is valid — the affected conversions warn instead.
-	MeshBackends MeshBackendIndex
-}
-
-// BuildMeshBackendIndex walks inputDir and indexes the logging and tracing
-// backends of every Mesh resource it finds. Errors on individual files are
-// ignored: the index is best-effort context, and every consumer degrades to a
-// warning when a lookup misses.
-func BuildMeshBackendIndex(inputDir string) MeshBackendIndex {
-	index := MeshBackendIndex{}
+// BuildTransformOptions walks inputDir once and builds every cross-document index
+// the transforms need. Errors on individual files are ignored: the indexes are
+// best-effort context, and every consumer degrades to a warning when a lookup
+// misses.
+func BuildTransformOptions(inputDir string, target TargetVersion) TransformOptions {
+	backends := MeshBackendIndex{}
+	classes := GatewayClassIndex{}
 
 	_ = filepath.WalkDir(inputDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
@@ -63,25 +58,28 @@ func BuildMeshBackendIndex(inputDir string) MeshBackendIndex {
 		if readErr != nil {
 			return nil
 		}
-		// Cheap prefilter: every Mesh document declares itself on its own line.
-		// Without it this pre-pass unmarshals every YAML file in the tree.
-		if !meshDocPattern.Match(data) {
+		if !indexedDocPattern.Match(data) {
 			return nil
 		}
 		for _, doc := range splitYAMLDocuments(data) {
-			name, backends := parseMeshBackends(doc)
-			if name == "" || backends == nil {
-				continue
+			if name, b := parseMeshBackends(doc); name != "" && b != nil {
+				backends[name] = b
 			}
-			index[name] = backends
+			if serviceTag, className := parseGatewayClassEntry(doc); serviceTag != "" {
+				classes.add(serviceTag, className)
+			}
 		}
 		return nil
 	})
 
-	if len(index) == 0 {
-		return nil
+	opts := TransformOptions{Target: target}
+	if len(backends) > 0 {
+		opts.MeshBackends = backends
 	}
-	return index
+	if len(classes) > 0 {
+		opts.GatewayClasses = classes
+	}
+	return opts
 }
 
 // parseMeshBackends extracts the mesh name and its observability backends from a

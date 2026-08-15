@@ -417,19 +417,6 @@ Found while auditing `kuma/UPGRADE.md` on master (3.0-dev) during the 2026-08-14
 overhaul. None of these affect a `v2` target; all of them produce output a 3.0 CP rejects
 or ignores.
 
-- **`MeshGateway` → Gateway API `Gateway` is invalid under v3** *(open)*. Kuma 3.0's Gateway
-  API integration is **HTTPRoute-only**: `plugin_gateway.go` sets
-  `requiredGatewayCRDs = {HTTPRoute}` and registers only `HTTPRouteReconciler`, and the
-  `controllers/gatewayapi/` package holds only `http_route_*` files. The sole surviving
-  `GatewayClass` code path is `removeGatewayClassFinalizers`, which strips the
-  `gatewayapi_v1.GatewayClassFinalizerGatewaysExist` finalizer from Kuma-controlled
-  GatewayClasses at startup, logging *"removed GatewayClass finalizer for removed built-in
-  Gateway API support"*. So a `Gateway` carrying `gatewayClassName: gateways.kuma.io/controller`
-  is never reconciled on 3.0. `TransformMeshGateway` still emits one regardless of target.
-  **Not fixed** — unlike the Instance case there is no clean error to raise per-document:
-  the whole built-in-gateway topology has to become a delegated gateway, which is an operator
-  re-architecture. `MeshGatewayRoute`/`MeshHTTPRoute` → `HTTPRoute` remains correct (the
-  HTTPRoute reconciler survives).
 - **`MeshGateway` is no longer a valid `targetRef.kind` for any policy** in 3.0. No scanner
   warns about a policy that targets one.
 - **`Dataplane networking.gateway.type: BUILTIN`** is rejected at admission in 3.0. Not scanned.
@@ -443,6 +430,29 @@ or ignores.
 
 ### Closed
 
+- **`Gateway.spec.gatewayClassName`** — was hardcoded to `gateways.kuma.io/controller`, which is
+  a **controllerName**, not the name of a GatewayClass object. It named nothing the tool creates,
+  so every converted Gateway applied cleanly and was never reconciled — on **v2 as well as v3**.
+  `resolveGatewayClassName` (`gateway.go`) now resolves the real class, target-aware:
+  - **v2** — the GatewayClass is generated from the companion `MeshGatewayInstance` and named
+    after it. The two documents are linked only by the shared `kuma.io/service` tag
+    (`MeshGateway.spec.selectors[].match` / `spec.tags` vs `MeshGatewayInstance.spec.tags`), so
+    `GatewayClassIndex` maps tag → class name, built by the same pre-pass as `MeshBackendIndex`.
+    Ambiguity (one tag, several instances) picks the first and warns.
+  - **v3** — nothing to resolve: 3.0's Gateway API integration is HTTPRoute-only
+    (`plugin_gateway.go` sets `requiredGatewayCRDs = {HTTPRoute}` and registers only
+    `HTTPRouteReconciler`; the sole surviving `GatewayClass` path, `removeGatewayClassFinalizers`,
+    strips finalizers from Kuma-controlled classes at startup). The operator must point the
+    Gateway at whatever implementation they adopt.
+  - Unresolvable on either target → `gatewayClassPlaceholder`
+    (`REPLACE-WITH-YOUR-GATEWAYCLASS`) plus a warning. An unresolvable class leaves the Gateway
+    unreconciled either way, so the placeholder's job is to read as a to-do in
+    `kubectl describe gateway` rather than as a Kuma misconfiguration.
+
+  **`MeshGateway` is still converted under v3** rather than erroring like `MeshGatewayInstance`:
+  the listener block (ports, protocols, hostnames, TLS `certificateRefs`) is valid Gateway API on
+  3.0 and is the whole value of the conversion. Only the class reference was ever 3.0-invalid.
+  `MeshGatewayRoute`/`MeshHTTPRoute` → `HTTPRoute` is unaffected (that reconciler survives).
 - **`MeshGatewayInstance` under v3** — `TransformMeshGatewayInstance(raw, target)` now errors
   under `--to-latest v3` instead of emitting `GatewayClass` + `MeshGatewayConfig`, both of which
   are dead on 3.0. The error names what was removed, points at the delegated-gateway
