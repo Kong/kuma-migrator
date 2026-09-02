@@ -7,6 +7,10 @@ API, and Gateway API CRDs.
 It pulls resources straight from a running control plane, rewrites what can be rewritten safely,
 and reports what cannot — with the reason, so you can judge it rather than trust it blindly.
 
+<p align="center">
+  <img src="docs/assets/migration-overview.svg" alt="Three examples of kuma-migrator's mechanical translations: a Dataplane tag becomes a structured targetRef, a legacy policy kind like Timeout becomes MeshTimeout, and a MeshSubset tag selector becomes a Dataplane/MeshService reference" width="900">
+</p>
+
 ## Why
 
 The Kuma and Kong Mesh policy API changed substantially across 2.0–2.14, and 3.0 removes a number

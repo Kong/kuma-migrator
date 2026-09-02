@@ -1,0 +1,153 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 760" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif">
+  <title>How kuma-migrator rewrites a manifest</title>
+  <style>
+    :root {
+      --bg: #ffffff;
+      --rule: #d0d7de;
+      --title: #1f2328;
+      --muted: #6e7781;
+      --old-border: #d1483b;
+      --old-bg: #fdf2f0;
+      --old-accent: #b3261e;
+      --new-border: #1a7f6b;
+      --new-bg: #eafaf5;
+      --new-accent: #0f6f5c;
+      --code: #24292f;
+      --arrow: #57606a;
+      --arrow-label: #6639ba;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0d1117;
+        --rule: #30363d;
+        --title: #e6edf3;
+        --muted: #8b949e;
+        --old-border: #f85149;
+        --old-bg: #2a1615;
+        --old-accent: #ff7b72;
+        --new-border: #3fb68a;
+        --new-bg: #122620;
+        --new-accent: #56d4a4;
+        --code: #c9d1d9;
+        --arrow: #8b949e;
+        --arrow-label: #b083f0;
+      }
+    }
+    .title { fill: var(--title); font-size: 22px; font-weight: 700; text-anchor: middle; }
+    .subtitle { fill: var(--muted); font-size: 13px; text-anchor: middle; }
+    .row-title { fill: var(--title); font-size: 14px; font-weight: 700; }
+    .badge { font-size: 10px; font-weight: 700; letter-spacing: .04em; text-anchor: end; }
+    .badge-old { fill: var(--old-accent); }
+    .badge-new { fill: var(--new-accent); }
+    .code { font-family: SFMono-Regular,Consolas,'Liberation Mono',Menlo,monospace; font-size: 12.5px; fill: var(--code); }
+    .code-old-hl { fill: var(--old-accent); font-weight: 700; }
+    .code-new-hl { fill: var(--new-accent); font-weight: 700; }
+    .arrow-label { fill: var(--arrow-label); font-size: 12px; font-weight: 700; text-anchor: middle; }
+    .arrow-sub { fill: var(--muted); font-size: 9.5px; text-anchor: middle; }
+    .caption { fill: var(--muted); font-size: 12px; text-anchor: middle; }
+  </style>
+
+  <rect x="0" y="0" width="1000" height="760" fill="var(--bg)"/>
+
+  <text class="title" x="500" y="36">How kuma-migrator rewrites a manifest</text>
+  <text class="subtitle" x="500" y="60">Three mechanical translations, applied to every legacy policy it touches</text>
+  <line x1="30" y1="78" x2="970" y2="78" stroke="var(--rule)" stroke-width="1"/>
+
+  <defs>
+    <marker id="arrowhead" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="var(--arrow)"/>
+    </marker>
+  </defs>
+
+  <!-- Row 1 : box_y=120 h=116 bottom=236 center=178 ; codeX=46/606, indent=20 -->
+  <text class="row-title" x="30" y="108">1 &#183; Service identity &#8212; Dataplane tag &#8594; structured targetRef</text>
+
+  <rect x="30" y="120" width="380" height="116" rx="8" fill="var(--old-bg)" stroke="var(--old-border)" stroke-width="1.5"/>
+  <text class="badge badge-old" x="396" y="138">TAG MATCH</text>
+  <g class="code">
+    <text x="46" y="165">destinations:</text>
+    <text y="182"><tspan x="46">-</tspan><tspan x="66">match:</tspan></text>
+    <text x="86" y="199" class="code-old-hl">kuma.io/service: backend_demo_svc_3001</text>
+  </g>
+
+  <rect x="590" y="120" width="380" height="116" rx="8" fill="var(--new-bg)" stroke="var(--new-border)" stroke-width="1.5"/>
+  <text class="badge badge-new" x="956" y="138">TARGETREF</text>
+  <g class="code">
+    <text x="606" y="157">targetRef:</text>
+    <text x="626" y="174" class="code-new-hl">kind: MeshService</text>
+    <text x="626" y="191">name: backend</text>
+    <text x="626" y="208">namespace: demo</text>
+  </g>
+
+  <line x1="420" y1="178" x2="578" y2="178" stroke="var(--arrow)" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+  <text class="arrow-label" x="500" y="158">decode Dataplane tag</text>
+  <text class="arrow-sub" x="500" y="194">tag &#8594; name + namespace</text>
+
+  <!-- Row 2 : box_y=288 h=184 bottom=472 center=380 -->
+  <text class="row-title" x="30" y="276">2 &#183; Policy kind &#8212; legacy resource &#8594; Mesh* policy</text>
+
+  <rect x="30" y="288" width="380" height="184" rx="8" fill="var(--old-bg)" stroke="var(--old-border)" stroke-width="1.5"/>
+  <text class="badge badge-old" x="396" y="306">LEGACY KIND</text>
+  <g class="code">
+    <text x="46" y="333" class="code-old-hl">type: Timeout</text>
+    <text x="46" y="350">sources:</text>
+    <text y="367"><tspan x="46">-</tspan><tspan x="66">match: {kuma.io/service: '*'}</tspan></text>
+    <text x="46" y="384">destinations:</text>
+    <text y="401"><tspan x="46">-</tspan><tspan x="66">match: {kuma.io/service: backend}</tspan></text>
+    <text x="46" y="418">conf:</text>
+    <text x="66" y="435">connectTimeout: 5s</text>
+  </g>
+
+  <rect x="590" y="288" width="380" height="184" rx="8" fill="var(--new-bg)" stroke="var(--new-border)" stroke-width="1.5"/>
+  <text class="badge badge-new" x="956" y="306">MESH* POLICY</text>
+  <g class="code">
+    <text x="606" y="325" class="code-new-hl">kind: MeshTimeout</text>
+    <text x="606" y="342">spec:</text>
+    <text x="626" y="359">to:</text>
+    <text y="376"><tspan x="626">-</tspan><tspan x="646">targetRef:</tspan></text>
+    <text x="666" y="393">kind: MeshService</text>
+    <text x="666" y="410">name: backend</text>
+    <text x="646" y="427">default:</text>
+    <text x="666" y="444">connectTimeout: 5s</text>
+  </g>
+
+  <line x1="420" y1="380" x2="578" y2="380" stroke="var(--arrow)" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+  <text class="arrow-label" x="500" y="360">rewrite kind + conf</text>
+  <text class="arrow-sub" x="500" y="396">sources/destinations &#8594; to[]</text>
+  <text class="arrow-sub" x="500" y="410">conf &#8594; default</text>
+
+  <!-- Row 3 : box_y=524 h=184 bottom=708 center=616 -->
+  <text class="row-title" x="30" y="512">3 &#183; Selectors &#8212; tag/label match &#8594; typed targetRef refs</text>
+
+  <rect x="30" y="524" width="380" height="184" rx="8" fill="var(--old-bg)" stroke="var(--old-border)" stroke-width="1.5"/>
+  <text class="badge badge-old" x="396" y="542">MESHSUBSET</text>
+  <g class="code">
+    <text x="46" y="569">targetRef:</text>
+    <text x="66" y="586" class="code-old-hl">kind: MeshSubset</text>
+    <text x="66" y="603">tags: {k8s.kuma.io/service-name: redis}</text>
+    <text x="46" y="620">from:</text>
+    <text y="637"><tspan x="46">-</tspan><tspan x="66">targetRef:</tspan></text>
+    <text x="86" y="654">kind: MeshSubset</text>
+    <text x="86" y="671">tags: {kuma.io/service: backend_svc}</text>
+  </g>
+
+  <rect x="590" y="524" width="380" height="184" rx="8" fill="var(--new-bg)" stroke="var(--new-border)" stroke-width="1.5"/>
+  <text class="badge badge-new" x="956" y="542">DATAPLANE / MESHSERVICE</text>
+  <g class="code">
+    <text x="606" y="561">targetRef:</text>
+    <text x="626" y="578" class="code-new-hl">kind: Dataplane</text>
+    <text x="626" y="595">labels: {kuma.io/display-name: redis}</text>
+    <text x="606" y="612">from:</text>
+    <text y="629"><tspan x="606">-</tspan><tspan x="626">targetRef:</tspan></text>
+    <text x="646" y="646">kind: MeshService</text>
+    <text x="646" y="663">name: backend</text>
+    <text x="646" y="680">namespace: demo</text>
+  </g>
+
+  <line x1="420" y1="616" x2="578" y2="616" stroke="var(--arrow)" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+  <text class="arrow-label" x="500" y="596">expand tag selector</text>
+  <text class="arrow-sub" x="500" y="632">MeshSubset tags &#8594; labels</text>
+  <text class="arrow-sub" x="500" y="646">MeshSubset &#8594; MeshService</text>
+
+  <text class="caption" x="500" y="734">kuma-migrator applies these translations mechanically, and reports the rest with the reason it left them alone.</text>
+</svg>
