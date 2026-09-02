@@ -3,6 +3,8 @@ package migrator
 import (
 	"strings"
 	"testing"
+
+	"sigs.k8s.io/yaml"
 )
 
 func TestParseTargetVersion(t *testing.T) {
@@ -516,6 +518,230 @@ spec:
 	for _, w := range warnings {
 		if strings.Contains(w, "spec.origin") {
 			t.Errorf("MeshTrust without spec.origin must not be flagged, got: %v", warnings)
+		}
+	}
+}
+
+// TestScanForDeprecations_MeshOPATargetRefKindMeshService covers the new
+// kind: MeshService narrowing (only Mesh/Dataplane remain valid in 3.0),
+// distinct from the pre-existing name/namespace/mesh field checks.
+func TestScanForDeprecations_MeshOPATargetRefKindMeshService(t *testing.T) {
+	input := `
+apiVersion: kuma.io/v1alpha1
+kind: MeshOPA
+metadata:
+  name: my-opa
+spec:
+  targetRef:
+    kind: MeshService
+    labels:
+      kuma.io/display-name: backend
+  default:
+    appendPolicies: []
+`
+	// v2: forward-looking advisory naming the Dataplane/app replacement — the
+	// fix does not run, so the scanner is what tells the operator anything.
+	_, v2 := ScanForDeprecations([]byte(input), TargetV2)
+	joined := strings.Join(v2, "\n")
+	if !strings.Contains(joined, "MeshService") || !strings.Contains(joined, `labels["app"]`) {
+		t.Errorf("expected a v2 advisory naming MeshService and labels[\"app\"], got: %v", v2)
+	}
+
+	// v3: fixMeshOPATargetRefForV3 runs first inside ScanForDeprecations and
+	// converts kind + relabels before the scanner sees the document, so the
+	// output has no MeshService left and the fix's own warning describes it.
+	out, v3 := ScanForDeprecations([]byte(input), TargetV3)
+	var parsed map[string]interface{}
+	if err := yaml.Unmarshal(out, &parsed); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	targetRef := parsed["spec"].(map[string]interface{})["targetRef"].(map[string]interface{})
+	if targetRef["kind"] != "Dataplane" {
+		t.Errorf("expected targetRef.kind converted to Dataplane under v3, got: %s", out)
+	}
+	labels := targetRef["labels"].(map[string]interface{})
+	if labels["app"] != "backend" {
+		t.Errorf("expected labels[\"app\"] carrying the display name under v3, got: %s", out)
+	}
+	if _, still := labels["kuma.io/display-name"]; still {
+		t.Errorf("expected kuma.io/display-name renamed away under v3, got: %s", out)
+	}
+	if !strings.Contains(strings.Join(v3, "\n"), "converted to kind: Dataplane") {
+		t.Errorf("expected the fix's own auto-corrected warning under v3, got: %v", v3)
+	}
+}
+
+// TestScanForDeprecations_MeshOPALegacyDataSource covers the MeshOPA
+// agentConfig/rego DataSource → SecureDataSource rewrite. Under v3 this fires
+// through the ScanForDeprecations post-pass even for a document that arrives
+// already as kind: MeshOPA (never routed through TransformOPAPolicy) — the
+// passthrough case, distinct from the OPAPolicy conversion tests in
+// opapolicy_test.go which exercise the same fix via TransformOPAPolicy.
+func TestScanForDeprecations_MeshOPALegacyDataSource(t *testing.T) {
+	input := `
+apiVersion: kuma.io/v1alpha1
+kind: MeshOPA
+metadata:
+  name: my-opa
+spec:
+  targetRef:
+    kind: Mesh
+  default:
+    agentConfig:
+      inlineString: "bootstrap: true"
+    appendPolicies:
+      - rego:
+          inlineString: "package envoy.authz"
+      - rego:
+          secret: my-rego-secret
+`
+	// v2: forward-looking advisory only, old shape preserved.
+	out2, v2 := ScanForDeprecations([]byte(input), TargetV2)
+	if !strings.Contains(string(out2), "inlineString:") {
+		t.Errorf("v2 target must not rewrite the DataSource shape, got:\n%s", out2)
+	}
+	joined2 := strings.Join(v2, "\n")
+	for _, want := range []string{"agentConfig", "appendPolicies[0].rego", "appendPolicies[1].rego", "SecureDataSource"} {
+		if !strings.Contains(joined2, want) {
+			t.Errorf("expected v2 advisory to mention %q, got: %v", want, v2)
+		}
+	}
+
+	// v3: auto-converted to the discriminated shape.
+	out3, v3 := ScanForDeprecations([]byte(input), TargetV3)
+	var parsed map[string]interface{}
+	if err := yaml.Unmarshal(out3, &parsed); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	def := parsed["spec"].(map[string]interface{})["default"].(map[string]interface{})
+
+	agentConfig := def["agentConfig"].(map[string]interface{})
+	if agentConfig["type"] != "InsecureInline" {
+		t.Errorf("expected agentConfig converted to InsecureInline, got: %s", out3)
+	}
+	if agentConfig["insecureInline"].(map[string]interface{})["value"] != "bootstrap: true" {
+		t.Errorf("expected agentConfig value preserved, got: %s", out3)
+	}
+
+	policies := def["appendPolicies"].([]interface{})
+	rego0 := policies[0].(map[string]interface{})["rego"].(map[string]interface{})
+	if rego0["type"] != "InsecureInline" || rego0["insecureInline"].(map[string]interface{})["value"] != "package envoy.authz" {
+		t.Errorf("expected appendPolicies[0].rego converted to InsecureInline, got: %s", out3)
+	}
+	rego1 := policies[1].(map[string]interface{})["rego"].(map[string]interface{})
+	if rego1["type"] != "Secret" {
+		t.Errorf("expected appendPolicies[1].rego converted to Secret, got: %s", out3)
+	}
+	secretRef := rego1["secretRef"].(map[string]interface{})
+	if secretRef["kind"] != "Secret" || secretRef["name"] != "my-rego-secret" {
+		t.Errorf("expected secretRef {kind: Secret, name: my-rego-secret}, got: %s", out3)
+	}
+
+	joined3 := strings.Join(v3, "\n")
+	if !strings.Contains(joined3, "auto-corrected") {
+		t.Errorf("expected auto-corrected warnings under v3, got: %v", v3)
+	}
+	// The forward-looking advisory must not ALSO fire once the fix has run.
+	if strings.Contains(joined3, "SecureDataSource type (type + insecureInline.value / secretRef). Rewrite before upgrading") {
+		t.Errorf("v2-style advisory must not fire on an already-fixed v3 document, got: %v", v3)
+	}
+}
+
+// TestScanForDeprecations_DataplaneGatewayBuiltinType covers the removal of
+// the BUILTIN gateway type (kuma#18058) — reserved in the proto on 3.0, so a
+// Dataplane still using it is rejected at parse time.
+func TestScanForDeprecations_DataplaneGatewayBuiltinType(t *testing.T) {
+	input := `type: Dataplane
+mesh: default
+name: gw-01
+networking:
+  address: 192.168.0.1
+  gateway:
+    type: BUILTIN
+    tags:
+      kuma.io/service: edge-gateway
+`
+	_, v2 := ScanForDeprecations([]byte(input), TargetV2)
+	for _, w := range v2 {
+		if strings.Contains(w, "BUILTIN") {
+			t.Errorf("BUILTIN gateway type must not warn under a v2 target (still valid in 2.x): %v", v2)
+		}
+	}
+
+	_, v3 := ScanForDeprecations([]byte(input), TargetV3)
+	joined := strings.Join(v3, "\n")
+	if !strings.Contains(joined, "BUILTIN") || !strings.Contains(joined, "reserved") {
+		t.Errorf("expected a v3 BUILTIN gateway warning mentioning the reserved proto ordinal, got: %v", v3)
+	}
+
+	// A DELEGATED gateway (the only remaining type) must never be flagged.
+	delegated := `type: Dataplane
+mesh: default
+name: gw-01
+networking:
+  address: 192.168.0.1
+  gateway:
+    type: DELEGATED
+    tags:
+      kuma.io/service: edge-gateway
+`
+	_, delegatedWarnings := ScanForDeprecations([]byte(delegated), TargetV3)
+	for _, w := range delegatedWarnings {
+		if strings.Contains(w, "BUILTIN") {
+			t.Errorf("DELEGATED gateway must not be flagged, got: %v", delegatedWarnings)
+		}
+	}
+}
+
+// TestScanForDeprecations_MeshLoadBalancingStrategyCrossZoneTarget covers the
+// 3.0-dev validator restriction (kuma#18210) limiting crossZone to
+// MeshMultiZoneService targets.
+func TestScanForDeprecations_MeshLoadBalancingStrategyCrossZoneTarget(t *testing.T) {
+	wrongTarget := `
+apiVersion: kuma.io/v1alpha1
+kind: MeshLoadBalancingStrategy
+metadata:
+  name: mlbs-1
+spec:
+  to:
+    - targetRef:
+        kind: MeshService
+        name: backend
+      default:
+        localityAwareness:
+          crossZone: {}
+`
+	_, v2 := ScanForDeprecations([]byte(wrongTarget), TargetV2)
+	for _, w := range v2 {
+		if strings.Contains(w, "crossZone") {
+			t.Errorf("crossZone-on-wrong-target must not warn under v2 (not yet in the 2.14 line): %v", v2)
+		}
+	}
+
+	_, v3 := ScanForDeprecations([]byte(wrongTarget), TargetV3)
+	joined := strings.Join(v3, "\n")
+	if !strings.Contains(joined, "crossZone") || !strings.Contains(joined, "MeshMultiZoneService") {
+		t.Errorf("expected a v3 crossZone/MeshMultiZoneService warning, got: %v", v3)
+	}
+
+	rightTarget := `
+apiVersion: kuma.io/v1alpha1
+kind: MeshLoadBalancingStrategy
+metadata:
+  name: mlbs-1
+spec:
+  to:
+    - targetRef:
+        kind: MeshMultiZoneService
+        name: backend
+      default:
+        localityAwareness:
+          crossZone: {}
+`
+	_, clean := ScanForDeprecations([]byte(rightTarget), TargetV3)
+	for _, w := range clean {
+		if strings.Contains(w, "crossZone") {
+			t.Errorf("crossZone on a MeshMultiZoneService target must not be flagged, got: %v", clean)
 		}
 	}
 }

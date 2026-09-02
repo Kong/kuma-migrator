@@ -37,7 +37,7 @@ spec:
                 port: 8080
                 weight: 100
 `
-	docs, warnings, err := TransformMeshHTTPRoute([]byte(input))
+	docs, warnings, err := TransformMeshHTTPRoute([]byte(input), TargetV2)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -119,7 +119,7 @@ spec:
                 port: 8080
                 weight: 10
 `
-	docs, warnings, err := TransformMeshHTTPRoute([]byte(input))
+	docs, warnings, err := TransformMeshHTTPRoute([]byte(input), TargetV2)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -198,7 +198,7 @@ spec:
                 name: backend
                 port: 8080
 `
-	docs, _, err := TransformMeshHTTPRoute([]byte(input))
+	docs, _, err := TransformMeshHTTPRoute([]byte(input), TargetV2)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -251,7 +251,7 @@ spec:
                 name: backend
                 port: 8080
 `
-	docs, _, err := TransformMeshHTTPRoute([]byte(input))
+	docs, _, err := TransformMeshHTTPRoute([]byte(input), TargetV2)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -310,7 +310,7 @@ spec:
                 name: backend
                 port: 8080
 `
-	docs, warnings, err := TransformMeshHTTPRoute([]byte(input))
+	docs, warnings, err := TransformMeshHTTPRoute([]byte(input), TargetV2)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -369,7 +369,7 @@ spec:
                 name: backend
                 port: 8080
 `
-	docs, warnings, err := TransformMeshHTTPRoute([]byte(input))
+	docs, warnings, err := TransformMeshHTTPRoute([]byte(input), TargetV2)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -413,7 +413,7 @@ spec:
                 name: backend
                 port: 8080
 `
-	docs, warnings, err := TransformMeshHTTPRoute([]byte(input))
+	docs, warnings, err := TransformMeshHTTPRoute([]byte(input), TargetV2)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -567,5 +567,103 @@ spec:
 	// Two to[] entries with one rule each → two rules.
 	if len(rules) != 2 {
 		t.Fatalf("expected 2 rules from 2 to[] entries, got %d", len(rules))
+	}
+}
+
+// TestTransformMeshHTTPRoute_NoCatchAll covers the kuma#18268 behaviour
+// change: a MeshHTTPRoute with no catch-all rule now blocks (rather than
+// falls through on) every request that doesn't match one of its listed
+// rules, on 3.0. This is easy to hit by accident when the route exists only
+// to anchor another policy via a narrow match.
+func TestTransformMeshHTTPRoute_NoCatchAll(t *testing.T) {
+	input := `
+apiVersion: kuma.io/v1alpha1
+kind: MeshHTTPRoute
+metadata:
+  name: my-route
+spec:
+  targetRef:
+    kind: MeshService
+    name: backend
+  to:
+    - targetRef:
+        kind: Mesh
+      rules:
+        - matches:
+            - path:
+                type: PathPrefix
+                value: /api
+          default:
+            backendRefs:
+              - kind: MeshService
+                name: backend
+                port: 8080
+`
+	// v2: no advisory — this is a 3.0-only behaviour change.
+	_, v2, err := TransformMeshHTTPRoute([]byte(input), TargetV2)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, w := range v2 {
+		if strings.Contains(w, "catch-all") {
+			t.Errorf("catch-all advisory must not fire under v2, got: %v", v2)
+		}
+	}
+
+	// v3: advisory fires — no rule here matches everything.
+	_, v3, err := TransformMeshHTTPRoute([]byte(input), TargetV3)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	found := false
+	for _, w := range v3 {
+		if strings.Contains(w, "catch-all") && strings.Contains(w, "kuma#18268") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected a v3 catch-all advisory citing kuma#18268, got: %v", v3)
+	}
+}
+
+// TestTransformMeshHTTPRoute_WithCatchAll is the negative case: a route that
+// already has a catch-all rule (empty matches[]) must not be flagged.
+func TestTransformMeshHTTPRoute_WithCatchAll(t *testing.T) {
+	input := `
+apiVersion: kuma.io/v1alpha1
+kind: MeshHTTPRoute
+metadata:
+  name: my-route
+spec:
+  targetRef:
+    kind: MeshService
+    name: backend
+  to:
+    - targetRef:
+        kind: Mesh
+      rules:
+        - matches:
+            - path:
+                type: PathPrefix
+                value: /api
+          default:
+            backendRefs:
+              - kind: MeshService
+                name: backend
+                port: 8080
+        - default:
+            backendRefs:
+              - kind: MeshService
+                name: backend
+                port: 8080
+`
+	_, warnings, err := TransformMeshHTTPRoute([]byte(input), TargetV3)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, w := range warnings {
+		if strings.Contains(w, "catch-all") {
+			t.Errorf("a route with a catch-all rule must not be flagged, got: %v", warnings)
+		}
 	}
 }

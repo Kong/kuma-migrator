@@ -82,7 +82,7 @@ type oldRouteTargetRef struct {
 // The MeshHTTPRoute to[] structure is flattened: rules from all to[] entries
 // become rules in a single HTTPRoute. backendRefs within each rule are converted
 // from MeshService/MeshServiceSubset references to Kubernetes Service references.
-func TransformMeshHTTPRoute(raw []byte) ([][]byte, []string, error) {
+func TransformMeshHTTPRoute(raw []byte, target TargetVersion) ([][]byte, []string, error) {
 	var route oldMeshHTTPRoute
 	if err := yaml.Unmarshal(raw, &route); err != nil {
 		return nil, nil, fmt.Errorf("unmarshal MeshHTTPRoute: %w", err)
@@ -97,8 +97,12 @@ func TransformMeshHTTPRoute(raw []byte) ([][]byte, []string, error) {
 
 	// Flatten to[].rules[] into a single rules[] array.
 	var rules []interface{}
+	hasCatchAll := false
 	for i, toEntry := range route.Spec.To {
 		for j, rule := range toEntry.Rules {
+			if httpRuleIsCatchAll(rule.Matches) {
+				hasCatchAll = true
+			}
 			httpRule := map[string]interface{}{}
 
 			// Matches (already use correct field names — just check for unsupported types).
@@ -136,6 +140,17 @@ func TransformMeshHTTPRoute(raw []byte) ([][]byte, []string, error) {
 
 			rules = append(rules, httpRule)
 		}
+	}
+
+	if target.IsV3() && len(rules) > 0 && !hasCatchAll {
+		warnings = append(warnings, fmt.Sprintf(
+			"HTTPRoute %q: none of its rules is a catch-all (empty matches[], or a PathPrefix \"/\" match) "+
+				"— on Kuma 3.0, a MeshHTTPRoute with no catch-all rule now blocks every request that "+
+				"doesn't match one of the listed rules on this destination's HTTP ports, instead of "+
+				"falling through (kuma#18268). This is easy to hit by accident when a MeshHTTPRoute exists "+
+				"only to anchor another policy (e.g. MeshTimeout/MeshRetry/MeshAccessLog) via a narrow "+
+				"match. Add a catch-all rule if traffic outside the listed matches should still reach "+
+				"the backend.", name))
 	}
 
 	meta := map[string]interface{}{
@@ -339,6 +354,38 @@ func sectionNameFromTags(tags map[string]string) string {
 		}
 	}
 	return ""
+}
+
+// httpRuleIsCatchAll reports whether a MeshHTTPRoute rule matches every
+// request reaching this destination: no matches at all (Kuma's convention for
+// "match everything", mirroring Gateway API), or a single match that is just a
+// PathPrefix "/" with no other narrowing condition (headers, method,
+// queryParams, …).
+func httpRuleIsCatchAll(matches []json.RawMessage) bool {
+	if len(matches) == 0 {
+		return true
+	}
+	for _, raw := range matches {
+		var m map[string]interface{}
+		if err := json.Unmarshal(raw, &m); err != nil {
+			continue
+		}
+		path, ok := m["path"].(map[string]interface{})
+		if !ok || path["type"] != "PathPrefix" || path["value"] != "/" {
+			continue
+		}
+		narrowed := false
+		for k := range m {
+			if k != "path" {
+				narrowed = true
+				break
+			}
+		}
+		if !narrowed {
+			return true
+		}
+	}
+	return false
 }
 
 // convertHTTPMatches converts MeshHTTPRoute matches, warning about unsupported

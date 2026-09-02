@@ -1,6 +1,7 @@
 package migrator
 
 import (
+	"encoding/base64"
 	"fmt"
 
 	"sigs.k8s.io/yaml"
@@ -65,12 +66,14 @@ func TransformOPAPolicy(raw []byte, target TargetVersion) ([][]byte, []string, e
 	name := extractNameFromObj(obj)
 
 	if kind == "MeshOPA" {
-		// Already converted. Under v3 the targetRef still needs rewriting.
+		// Already converted. Under v3 the targetRef and data sources still need rewriting.
 		if !target.IsV3() {
 			return [][]byte{raw}, nil, nil
 		}
-		changed, ws := fixMeshOPATargetRefForV3(obj, name)
-		if !changed {
+		changedRef, wsRef := fixMeshOPATargetRefForV3(obj, name)
+		changedDS, wsDS := fixMeshOPADataSourcesForV3(obj, name)
+		ws := append(wsRef, wsDS...)
+		if !changedRef && !changedDS {
 			return [][]byte{raw}, ws, nil
 		}
 		out, err := yaml.Marshal(obj)
@@ -217,6 +220,8 @@ func applyOPASelectors(obj, src map[string]interface{}, name string, target Targ
 		if target.IsV3() {
 			_, ws := fixMeshOPATargetRefForV3(obj, name)
 			warnings = append(warnings, ws...)
+			_, wsDS := fixMeshOPADataSourcesForV3(obj, name)
+			warnings = append(warnings, wsDS...)
 		}
 		out, err := yaml.Marshal(obj)
 		if err != nil {
@@ -283,6 +288,8 @@ func applyOPASelectors(obj, src map[string]interface{}, name string, target Targ
 		if target.IsV3() {
 			_, ws := fixMeshOPATargetRefForV3(doc, docName)
 			warnings = append(warnings, ws...)
+			_, wsDS := fixMeshOPADataSourcesForV3(doc, docName)
+			warnings = append(warnings, wsDS...)
 		}
 
 		b, err := yaml.Marshal(doc)
@@ -347,7 +354,8 @@ func deepCopyValue(v interface{}) interface{} {
 }
 
 // fixMeshOPATargetRefForV3 rewrites a MeshOPA targetRef for the 3.0 API, which
-// removes spec.targetRef.{name,namespace,mesh}.
+// removes spec.targetRef.{name,namespace,mesh} and narrows spec.targetRef.kind
+// to Mesh/Dataplane only (MeshService is no longer valid).
 //
 // `name` is converted to labels["kuma.io/display-name"] rather than dropped.
 // That distinction is the whole point: simply deleting `name` is what produces
@@ -359,6 +367,12 @@ func deepCopyValue(v interface{}) interface{} {
 // `namespace` and `mesh` are dropped: the API server prunes namespace on the next
 // write on Kubernetes, it is ignored on load in Universal, and `mesh` was only
 // ever reserved for future use.
+//
+// `kind: MeshService` is converted to `kind: Dataplane`, per the exact rewrite
+// UPGRADE_km.md documents for this case (kind: MeshService + labels:
+// {kuma.io/display-name: ...} → kind: Dataplane + labels: {app: ...}) — the
+// label key convention changes along with the kind, so it is renamed too, not
+// just carried over.
 //
 // Returns whether the document was modified.
 func fixMeshOPATargetRefForV3(obj map[string]interface{}, name string) (bool, []string) {
@@ -374,29 +388,50 @@ func fixMeshOPATargetRefForV3(obj map[string]interface{}, name string) (bool, []
 	var warnings []string
 	changed := false
 
+	// Convert the kind FIRST, before the name→label move below. Doing it first
+	// means that move writes into (and conflict-checks against) the label key
+	// that matches the FINAL kind — labels["app"] for Dataplane rather than
+	// labels["kuma.io/display-name"] for MeshService — so a later warning about
+	// a conflicting label names the key that is actually in the output.
+	wasMeshService := false
+	displayLabelKey := "kuma.io/display-name" // MeshService selector convention
+	if trKind, _ := targetRef["kind"].(string); trKind == "MeshService" {
+		wasMeshService = true
+		displayLabelKey = "app" // Dataplane selector convention
+		targetRef["kind"] = "Dataplane"
+		changed = true
+		if labels, ok := targetRef["labels"].(map[string]interface{}); ok {
+			if dn, ok := labels["kuma.io/display-name"].(string); ok && dn != "" {
+				if _, exists := labels["app"]; !exists {
+					labels["app"] = dn
+					delete(labels, "kuma.io/display-name")
+				}
+			}
+		}
+	}
+
 	if tName, ok := targetRef["name"].(string); ok && tName != "" {
 		labels, _ := targetRef["labels"].(map[string]interface{})
 		if labels == nil {
 			labels = map[string]interface{}{}
 		}
-		if existing, ok := labels["kuma.io/display-name"].(string); ok && existing != "" && existing != tName {
+		if existing, ok := labels[displayLabelKey].(string); ok && existing != "" && existing != tName {
 			// Do not silently overwrite a conflicting selector.
 			warnings = append(warnings, fmt.Sprintf(
-				"MeshOPA %q: spec.targetRef.name=%q conflicts with the existing "+
-					"labels[\"kuma.io/display-name\"]=%q. 3.0 removes targetRef.name; the label was "+
-					"left as-is and name was NOT migrated — resolve this by hand.",
-				name, tName, existing))
+				"MeshOPA %q: spec.targetRef.name=%q conflicts with the existing labels[%q]=%q. 3.0 "+
+					"removes targetRef.name; the label was left as-is and name was NOT migrated — "+
+					"resolve this by hand.",
+				name, tName, displayLabelKey, existing))
 		} else {
-			labels["kuma.io/display-name"] = tName
+			labels[displayLabelKey] = tName
 			targetRef["labels"] = labels
 			delete(targetRef, "name")
 			changed = true
 			warnings = append(warnings, fmt.Sprintf(
-				"MeshOPA %q: spec.targetRef.name=%q was moved to "+
-					"labels[\"kuma.io/display-name\"] (3.0 removes targetRef.name). This preserves the "+
-					"original scope — dropping the field instead would widen the policy to every "+
-					"service matching its kind.",
-				name, tName))
+				"MeshOPA %q: spec.targetRef.name=%q was moved to labels[%q] (3.0 removes "+
+					"targetRef.name). This preserves the original scope — dropping the field instead "+
+					"would widen the policy to every service matching its kind.",
+				name, tName, displayLabelKey))
 		}
 	}
 
@@ -408,6 +443,145 @@ func fixMeshOPATargetRefForV3(obj map[string]interface{}, name string) (bool, []
 				"MeshOPA %q: spec.targetRef.%s was removed (3.0 removes it; it is pruned by the "+
 					"API server on Kubernetes and ignored on load in Universal).",
 				name, f))
+		}
+	}
+
+	if wasMeshService {
+		warnings = append(warnings, fmt.Sprintf(
+			"MeshOPA %q: spec.targetRef.kind MeshService is removed in 3.0 (only Mesh and Dataplane "+
+				"remain valid) — converted to kind: Dataplane, and any labels[\"kuma.io/display-name\"] "+
+				"selector was renamed to labels[\"app\"] (the Dataplane label convention). \"app\" is a "+
+				"common but not guaranteed Kubernetes pod label — verify it actually matches the target "+
+				"workload.",
+			name))
+	}
+
+	return changed, warnings
+}
+
+// legacyOPADataSourceFields are the pre-3.0 flat DataSource variants on
+// MeshOPA's agentConfig and appendPolicies[].rego fields.
+var legacyOPADataSourceFields = []string{"secret", "inline", "inlineString"}
+
+// hasLegacyOPADataSourceShape reports whether ds still uses the pre-3.0 flat
+// DataSource shape (a bare secret/inline/inlineString key) rather than the
+// discriminated SecureDataSource shape (a "type" key).
+func hasLegacyOPADataSourceShape(ds map[string]interface{}) bool {
+	if ds == nil {
+		return false
+	}
+	if _, hasType := ds["type"]; hasType {
+		return false
+	}
+	for _, k := range legacyOPADataSourceFields {
+		if v, ok := ds[k]; ok && v != nil && v != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// convertOPADataSourceToSecure rewrites a legacy flat DataSource map (secret /
+// inline / inlineString) to the discriminated SecureDataSource shape 3.0
+// requires (type + insecureInline.value / secretRef.{kind,name}). Returns the
+// replacement map, or nil with a non-empty note when the field should be left
+// as-is (already converted, empty, or malformed).
+//
+// inline is base64 and is decoded here, unlike the MeshExternalService TLS
+// DataSource case (warnMeshExternalServiceDataSource) which leaves inline
+// decoding to the operator: that field holds certificate/key material, where
+// re-emitting decoded bytes as plain-text YAML is a real exposure decision.
+// Rego source and OPA agent config are not credential material — inlineString,
+// the plain-text sibling of inline, is already accepted unencrypted in the
+// same field today — so decoding here introduces no new exposure.
+func convertOPADataSourceToSecure(ds map[string]interface{}) (map[string]interface{}, string) {
+	if !hasLegacyOPADataSourceShape(ds) {
+		return nil, ""
+	}
+	if secret, ok := ds["secret"].(string); ok && secret != "" {
+		return map[string]interface{}{
+			"type":      "Secret",
+			"secretRef": map[string]interface{}{"kind": "Secret", "name": secret},
+		}, ""
+	}
+	if inlineStr, ok := ds["inlineString"].(string); ok && inlineStr != "" {
+		return map[string]interface{}{
+			"type":           "InsecureInline",
+			"insecureInline": map[string]interface{}{"value": inlineStr},
+		}, ""
+	}
+	if inlineB64, ok := ds["inline"].(string); ok && inlineB64 != "" {
+		decoded, err := base64.StdEncoding.DecodeString(inlineB64)
+		if err != nil {
+			return nil, fmt.Sprintf("inline value is not valid base64 (%v) — left as-is; fix by hand", err)
+		}
+		return map[string]interface{}{
+			"type":           "InsecureInline",
+			"insecureInline": map[string]interface{}{"value": string(decoded)},
+		}, ""
+	}
+	return nil, ""
+}
+
+// fixMeshOPADataSourcesForV3 rewrites a MeshOPA's spec.default.agentConfig and
+// every spec.default.appendPolicies[].rego from the legacy flat DataSource
+// shape to the discriminated SecureDataSource type 3.0 requires. A MeshOPA
+// still using the old shape is rejected at write time on 3.0 — the missing
+// `type` discriminator is a validation violation (UPGRADE_km.md: "MeshOPA data
+// sources use the SecureDataSource shape").
+//
+// Returns whether the document was modified.
+func fixMeshOPADataSourcesForV3(obj map[string]interface{}, name string) (bool, []string) {
+	spec, _ := obj["spec"].(map[string]interface{})
+	if spec == nil {
+		return false, nil
+	}
+	def, _ := spec["default"].(map[string]interface{})
+	if def == nil {
+		return false, nil
+	}
+
+	var warnings []string
+	changed := false
+
+	if agentConfig, ok := def["agentConfig"].(map[string]interface{}); ok {
+		secure, errNote := convertOPADataSourceToSecure(agentConfig)
+		if secure != nil {
+			def["agentConfig"] = secure
+			changed = true
+			warnings = append(warnings, fmt.Sprintf(
+				"MeshOPA %q: spec.default.agentConfig was rewritten from the legacy flat DataSource "+
+					"shape to SecureDataSource (3.0 removes the old shape; a MeshOPA still using it is "+
+					"rejected at write time) — auto-corrected.",
+				name))
+		} else if errNote != "" {
+			warnings = append(warnings, fmt.Sprintf("MeshOPA %q: spec.default.agentConfig: %s.", name, errNote))
+		}
+	}
+
+	if policies, ok := def["appendPolicies"].([]interface{}); ok {
+		for i, p := range policies {
+			pm, ok := p.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			rego, ok := pm["rego"].(map[string]interface{})
+			if !ok {
+				continue
+			}
+			secure, errNote := convertOPADataSourceToSecure(rego)
+			if secure != nil {
+				pm["rego"] = secure
+				changed = true
+				warnings = append(warnings, fmt.Sprintf(
+					"MeshOPA %q: spec.default.appendPolicies[%d].rego was rewritten from the legacy flat "+
+						"DataSource shape to SecureDataSource (3.0 removes the old shape; a MeshOPA still "+
+						"using it is rejected at write time) — auto-corrected.",
+					name, i))
+			} else if errNote != "" {
+				warnings = append(warnings, fmt.Sprintf(
+					"MeshOPA %q: spec.default.appendPolicies[%d].rego: %s.", name, i, errNote))
+			}
 		}
 	}
 

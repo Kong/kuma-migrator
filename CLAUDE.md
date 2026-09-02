@@ -419,7 +419,6 @@ or ignores.
 
 - **`MeshGateway` is no longer a valid `targetRef.kind` for any policy** in 3.0. No scanner
   warns about a policy that targets one.
-- **`Dataplane networking.gateway.type: BUILTIN`** is rejected at admission in 3.0. Not scanned.
 - **`ExternalService`** is removed in 3.0 (CRD, API and webhook). Already converted by
   `ScenarioExternalService`, so this only matters for a `--to-latest v3` advisory on inputs
   the migrator leaves alone.
@@ -439,11 +438,11 @@ or ignores.
     (`MeshGateway.spec.selectors[].match` / `spec.tags` vs `MeshGatewayInstance.spec.tags`), so
     `GatewayClassIndex` maps tag → class name, built by the same pre-pass as `MeshBackendIndex`.
     Ambiguity (one tag, several instances) picks the first and warns.
-  - **v3** — nothing to resolve: 3.0's Gateway API integration is HTTPRoute-only
-    (`plugin_gateway.go` sets `requiredGatewayCRDs = {HTTPRoute}` and registers only
-    `HTTPRouteReconciler`; the sole surviving `GatewayClass` path, `removeGatewayClassFinalizers`,
-    strips finalizers from Kuma-controlled classes at startup). The operator must point the
-    Gateway at whatever implementation they adopt.
+  - **v3** — nothing to resolve: 3.0's Gateway API integration is reduced to `HTTPRoute` and,
+    since kuma#18280 (merged 2026-09-01), `GRPCRoute` (`plugin_gateway.go` registers an
+    `HTTPRouteReconciler` plus a `GRPCRouteReconciler`; the sole surviving `GatewayClass` path,
+    `removeGatewayClassFinalizers`, strips finalizers from Kuma-controlled classes at startup).
+    The operator must point the Gateway at whatever implementation they adopt.
   - Unresolvable on either target → `gatewayClassPlaceholder`
     (`REPLACE-WITH-YOUR-GATEWAYCLASS`) plus a warning. An unresolvable class leaves the Gateway
     unreconciled either way, so the placeholder's job is to read as a to-do in
@@ -461,6 +460,32 @@ or ignores.
   `carriedGatewayInstanceSettings`, and says to re-run with `--to-latest v2` for the old output.
   A pod spec and container image cannot be synthesised from a MeshGatewayInstance, so this is
   reported rather than half-generated. **v2 behaviour is unchanged.**
+- **`Dataplane networking.gateway.type: BUILTIN`** — was rejected only at admission before;
+  kuma#18058 (merged 2026-08-18) made the `BUILTIN` ordinal `reserved` in the proto, so it is
+  now rejected at parse time too. `warnDataplaneGatewayBuiltinType` in `deprecation.go` scans
+  for it under `--to-latest v3` (silent under v2 — `DELEGATED` and `BUILTIN` are both valid in
+  the 2.x line).
+- **Kong Mesh `MeshOPA` `spec.targetRef.kind: MeshService`** — no longer valid in 3.0 (only
+  `Mesh`/`Dataplane` remain). Found auditing `kong-mesh/UPGRADE_km.md` on 2026-09-02.
+  `fixMeshOPATargetRefForV3` (`opapolicy.go`) now converts `kind: MeshService` → `kind:
+  Dataplane` **before** its existing `name`→label move, so that move (and any conflict it
+  reports) targets the label key that matches the *final* kind: `labels["app"]` (Dataplane's
+  convention) rather than `labels["kuma.io/display-name"]` (MeshService's) — getting this
+  order backwards was the actual bug this closes. `warnMeshOPATargetRefFields` carries the
+  matching v2 forward-looking advisory.
+- **Kong Mesh `MeshOPA` `spec.default.agentConfig` / `appendPolicies[].rego` legacy
+  `DataSource`** — 3.0 replaces the flat `{secret|inline|inlineString}` shape with the
+  discriminated `SecureDataSource` (`type` + `insecureInline.value` / `secretRef.{kind,name}`);
+  a `MeshOPA` still in the old shape is rejected at write time (`UPGRADE_km.md`: "MeshOPA data
+  sources use the SecureDataSource shape"). `fixMeshOPADataSourcesForV3` (`opapolicy.go`)
+  auto-converts under `--to-latest v3` — unlike the `MeshExternalService` TLS `DataSource` case
+  (which stays warn-only because it holds credential material), rego source and OPA agent
+  config are not credentials, so decoding the base64 `inline` variant here introduces no new
+  exposure. `warnMeshOPALegacyDataSource` carries the matching v2 advisory. Both fixes are
+  wired into `ScanForDeprecations`'s `MeshOPA` case (not just `TransformOPAPolicy`), which
+  closes a passthrough gap: a document arriving already as `kind: MeshOPA` (never routed
+  through `TransformOPAPolicy`, since `DetectScenario` only maps `kind: OPAPolicy` there) was
+  previously warned about but never actually fixed under v3.
 
 ## Deprecation Warnings (all implemented via `ScanForDeprecations`)
 
@@ -499,9 +524,14 @@ or ignores.
   **Do not prefix-match `prometheus.metrics.kuma.io/`**: the `aggregate-<name>-(port|path|enabled|address)` family is *not* deprecated, so a prefix match flags working manifests.
 - `Dataplane networking.inbound[].tags` → warn **under v3 only**, removed in 3.0 and dropped **silently** (proto `reserved` + `AllowUnknownFields`), so the manifest applies cleanly and simply loses the tags; anything selecting on them stops matching with nothing logged. `warnDataplaneInboundTags`.
 - `MeshExternalService spec.tls.verification.{caCert,clientCert,clientKey}.{inline,inlineString,secret}` → warn, 3.0 replaces `DataSource` with `SecureDataSource` (`type` + `insecureInline.value` / `secretRef`). **Not auto-converted even under v3**: `inline` was base64 and `insecureInline.value` is plain text, so rewriting means decoding credential material and re-emitting it in the clear — an operator decision. `warnMeshExternalServiceDataSource`.
-- `MeshOPA spec.targetRef.{name,namespace,mesh}` → removed in 3.0. **Auto-converted under v3**: `name` → `labels["kuma.io/display-name"]` (preserving scope), `namespace`/`mesh` dropped. Dropping `name` instead is what causes 3.0's silent scope-widening, where the rego starts evaluating requests it never saw. Refuses to overwrite a conflicting existing `display-name` label. `fixMeshOPATargetRefForV3` in `opapolicy.go`, `warnMeshOPATargetRefFields` in `deprecation.go`.
+- `MeshOPA spec.targetRef.{name,namespace,mesh}` → removed in 3.0. **Auto-converted under v3**: `name` → a display-name label (preserving scope), `namespace`/`mesh` dropped. Dropping `name` instead is what causes 3.0's silent scope-widening, where the rego starts evaluating requests it never saw. Refuses to overwrite a conflicting existing display-name label. `fixMeshOPATargetRefForV3` in `opapolicy.go`, `warnMeshOPATargetRefFields` in `deprecation.go`.
+- `MeshOPA spec.targetRef.kind: MeshService` → no longer valid in 3.0 (only `Mesh`/`Dataplane`). **Auto-converted under v3**: `kind` → `Dataplane`, and this runs *before* the `name`/`namespace`/`mesh` fixes above so the display-name label lands under the correct key for the final kind — `labels["app"]` (Dataplane's convention), not `labels["kuma.io/display-name"]` (MeshService's). Same functions as above.
+- `MeshOPA spec.default.agentConfig` / `spec.default.appendPolicies[].rego` legacy flat `DataSource` (`secret`/`inline`/`inlineString`) → 3.0 requires the discriminated `SecureDataSource` (`type` + `insecureInline.value` / `secretRef.{kind,name}`); the old shape is rejected at write time. **Auto-converted under v3** (`fixMeshOPADataSourcesForV3` in `opapolicy.go`) — unlike `MeshExternalService`'s TLS `DataSource` (left to the operator because it's credential material), rego/agent-config text is not a credential, so decoding the base64 `inline` variant is safe to do automatically. `warnMeshOPALegacyDataSource` carries the v2 advisory. Both MeshOPA v3 fixes are wired into `ScanForDeprecations`'s `MeshOPA` case as well as `TransformOPAPolicy`, so a document that arrives already as `kind: MeshOPA` (bypassing `TransformOPAPolicy` entirely, since `DetectScenario` only routes `kind: OPAPolicy` there) still gets fixed, not just warned about.
 - `MeshGlobalRateLimit` → warn, removed in 3.0 with no in-mesh replacement. Leftover objects go **inert** rather than being rejected and Helm does not delete the CRD, so the policy stays listed while enforcing nothing. `warnMeshGlobalRateLimitRemoved`.
 - inline `openTelemetry.endpoint` warning now also states the `backendRef` constraints (selects by `labels` only — `name` unsupported; mutually exclusive with inline `endpoint`; MOTB is `kuma-system`-only; `endpoint.path` must be empty with `protocol: grpc`).
+- `Dataplane networking.gateway.type: BUILTIN` → warn **under v3 only**. Was rejected only at admission before; kuma#18058 (2026-08-18) made the ordinal `reserved` in the proto, so it is now rejected at parse time too. `DELEGATED`/`BUILTIN` are both valid in 2.x, so no v2 advisory. `warnDataplaneGatewayBuiltinType`.
+- `MeshLoadBalancingStrategy to[].default.localityAwareness.crossZone` set on a `to[]` entry whose `targetRef.kind` is not `MeshMultiZoneService` → warn **under v3 only**. New 3.0-dev validator restriction (kuma#18210, 2026-08-26; not yet in the 2.14 line). `warnMeshLoadBalancingStrategyCrossZoneTarget`.
+- `MeshHTTPRoute` with no catch-all rule (empty `matches[]`, or an unconditional `PathPrefix: "/"` match) → advisory **under v3 only**, surfaced on the converted `HTTPRoute` output. kuma#18268 (2026-09-01) changed unmatched requests from falling through to being blocked on that destination's HTTP ports — easy to hit by accident when a `MeshHTTPRoute` exists only to anchor another policy (`MeshTimeout`/`MeshRetry`/`MeshAccessLog`) via a narrow match. Checked in `TransformMeshHTTPRoute` (`route.go`, `httpRuleIsCatchAll`), not `ScanForDeprecations` — `DetectScenario` always converts `kind: MeshHTTPRoute` away to `kind: HTTPRoute`, so a `ScanForDeprecations` case keyed on `MeshHTTPRoute` would never see a document in the pipeline.
 
 `ScanForDeprecations` normalises `kind` from `obj["type"]` when `obj["kind"]` is empty, so
 Universal-format resources (including `Dataplane`) are handled correctly.

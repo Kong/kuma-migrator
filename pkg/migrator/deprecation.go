@@ -43,6 +43,13 @@ import (
 //     → spec.to[].targetRef (v2.10/2.11)
 //   - Mesh/MeshService/MeshExternalService/MeshMultiZoneService names that violate RFC 1035 /
 //     exceed 63 chars (warning in 2.14, hard error in 3.0)
+//   - Dataplane networking.gateway.type: BUILTIN, reserved/removed in 3.0 (kuma#18058)
+//   - MeshLoadBalancingStrategy to[].default.localityAwareness.crossZone restricted to
+//     MeshMultiZoneService targets (3.0, kuma#18210)
+//   - Kong Mesh MeshOPA spec.targetRef.kind: MeshService, no longer valid in 3.0 (auto-fix under
+//     v3: kind → Dataplane, labels["kuma.io/display-name"] → labels["app"])
+//   - Kong Mesh MeshOPA spec.default.agentConfig / appendPolicies[].rego legacy flat DataSource
+//     shape → SecureDataSource (auto-fix under v3)
 //
 // Both Kubernetes format (kind/metadata) and Universal format (type/name) are supported.
 func ScanForDeprecations(raw []byte, target TargetVersion) (out []byte, warnings []string) {
@@ -90,6 +97,7 @@ func ScanForDeprecations(raw []byte, target TargetVersion) (out []byte, warnings
 	case "MeshLoadBalancingStrategy":
 		warnings = append(warnings, warnSourceIPHashPolicy(obj, name)...)
 		fix(fixHashPoliciesPath(obj, name))
+		warnings = append(warnings, warnMeshLoadBalancingStrategyCrossZoneTarget(obj, name, target)...)
 	case "MeshService":
 		fix(fixMeshServicePortProtocol(obj, name))
 	case "Mesh":
@@ -100,6 +108,7 @@ func ScanForDeprecations(raw []byte, target TargetVersion) (out []byte, warnings
 		warnings = append(warnings, warnDataplaneRedirectPortInboundV6(obj, name)...)
 		warnings = append(warnings, warnDataplaneReachableServices(obj, name)...)
 		warnings = append(warnings, warnDataplaneInboundTags(obj, name, target)...)
+		warnings = append(warnings, warnDataplaneGatewayBuiltinType(obj, name, target)...)
 	case "MeshPassthrough":
 		warnings = append(warnings, warnMeshPassthroughDomains(obj, name)...)
 	case "HostnameGenerator":
@@ -107,7 +116,12 @@ func ScanForDeprecations(raw []byte, target TargetVersion) (out []byte, warnings
 	case "MeshExternalService":
 		warnings = append(warnings, warnMeshExternalServiceDataSource(obj, name, target)...)
 	case "MeshOPA":
+		if target.IsV3() {
+			fix(fixMeshOPATargetRefForV3(obj, name))
+			fix(fixMeshOPADataSourcesForV3(obj, name))
+		}
 		warnings = append(warnings, warnMeshOPATargetRefFields(obj, name, target)...)
+		warnings = append(warnings, warnMeshOPALegacyDataSource(obj, name, target)...)
 	case "MeshGlobalRateLimit":
 		warnings = append(warnings, warnMeshGlobalRateLimitRemoved(obj, name, target)...)
 	}
@@ -1156,6 +1170,104 @@ func warnDataplaneInboundTags(obj map[string]interface{}, name string, target Ta
 		name, tagged)}
 }
 
+// ---- Dataplane networking.gateway.type: BUILTIN (removed 3.0) ---------------
+
+// warnDataplaneGatewayBuiltinType warns when a Dataplane declares a BUILTIN
+// gateway. Kuma 3.0 removes the built-in gateway API in full: the BUILTIN
+// GatewayType ordinal is `reserved` in the proto (kuma#18058), so a Dataplane
+// still setting it is rejected at parse time, not merely at admission.
+//
+// Fires only under TargetV3: DELEGATED and BUILTIN are both valid in the 2.x
+// line, so a forward-looking advisory under TargetV2 would fire on every
+// built-in-gateway Dataplane in the input with nothing to act on yet — the
+// migrator's Gateway/MeshGatewayInstance scenarios are the actual migration
+// path for the gateway itself; this only flags the Dataplane side of it.
+func warnDataplaneGatewayBuiltinType(obj map[string]interface{}, name string, target TargetVersion) []string {
+	if !target.IsV3() {
+		return nil
+	}
+	networking, _ := obj["networking"].(map[string]interface{})
+	if networking == nil {
+		if spec, ok := obj["spec"].(map[string]interface{}); ok {
+			networking, _ = spec["networking"].(map[string]interface{})
+		}
+	}
+	if networking == nil {
+		return nil
+	}
+	gateway, _ := networking["gateway"].(map[string]interface{})
+	if gateway == nil {
+		return nil
+	}
+	if gwType, _ := gateway["type"].(string); gwType != "BUILTIN" {
+		return nil
+	}
+	return []string{fmt.Sprintf(
+		"Dataplane %q: networking.gateway.type BUILTIN is removed in 3.0 — the GatewayType ordinal is "+
+			"reserved in the proto, so this is rejected at parse time, not just admission. Migrate the "+
+			"built-in gateway to a delegated gateway (a Deployment/Service you own, with the pod "+
+			"labelled kuma.io/gateway: enabled) before upgrading — see the MeshGatewayInstance advisory "+
+			"for the settings to carry over.",
+		name)}
+}
+
+// ---- MeshLoadBalancingStrategy crossZone target restriction (3.0) -----------
+
+// warnMeshLoadBalancingStrategyCrossZoneTarget warns when a to[] entry sets
+// localityAwareness.crossZone but targets something other than
+// MeshMultiZoneService. Kuma 3.0 rejects this at create/update (kuma#18210;
+// validator message: "crossZone is only supported when targetRef.kind is
+// MeshMultiZoneService") — crossZone only makes sense for a service that
+// actually spans zones.
+//
+// Fires only under TargetV3: this restriction landed on 3.0-dev master and is
+// not in the 2.14 line, so a 2.x manifest using crossZone on another target
+// kind is not (yet) rejected.
+func warnMeshLoadBalancingStrategyCrossZoneTarget(obj map[string]interface{}, name string, target TargetVersion) []string {
+	if !target.IsV3() {
+		return nil
+	}
+	spec, ok := obj["spec"].(map[string]interface{})
+	if !ok {
+		return nil
+	}
+	to, ok := spec["to"].([]interface{})
+	if !ok {
+		return nil
+	}
+
+	var warnings []string
+	for i, entry := range to {
+		e, ok := entry.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		def, ok := e["default"].(map[string]interface{})
+		if !ok {
+			continue
+		}
+		la, ok := def["localityAwareness"].(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if _, hasCrossZone := la["crossZone"]; !hasCrossZone {
+			continue
+		}
+		tr, _ := e["targetRef"].(map[string]interface{})
+		trKind, _ := tr["kind"].(string)
+		if trKind == "MeshMultiZoneService" {
+			continue
+		}
+		warnings = append(warnings, fmt.Sprintf(
+			"MeshLoadBalancingStrategy %q: to[%d].default.localityAwareness.crossZone is set but "+
+				"to[%d].targetRef.kind is %q, not MeshMultiZoneService — Kuma 3.0 rejects this at "+
+				"create/update (crossZone is only supported when the target is a MeshMultiZoneService). "+
+				"Remove crossZone, or retarget this entry at a MeshMultiZoneService.",
+			name, i, i, trKind))
+	}
+	return warnings
+}
+
 // ---- MeshExternalService TLS DataSource → SecureDataSource (3.0) -------------
 
 // legacyDataSourceKeys are the pre-3.0 DataSource variants on a
@@ -1218,14 +1330,23 @@ func warnMeshExternalServiceDataSource(obj map[string]interface{}, name string, 
 	return warnings
 }
 
-// ---- Kong Mesh MeshOPA targetRef name/namespace/mesh (removed 3.0) ----------
+// ---- Kong Mesh MeshOPA targetRef name/namespace/mesh/kind (removed 3.0) ----
 
 // warnMeshOPATargetRefFields warns when a Kong Mesh MeshOPA policy scopes its
-// targetRef with name/namespace/mesh, all of which 3.0 removes.
+// targetRef with name/namespace/mesh (all removed in 3.0), or uses
+// kind: MeshService (no longer a valid MeshOPA targetRef kind in 3.0).
 //
-// The failure mode is scope-widening rather than an error: a MeshOPA that used
-// `name` to bind its rego to a single service silently starts applying to every
-// service matching `kind`, changing which requests are evaluated.
+// Under a v3 target this scanner runs AFTER ScanForDeprecations has already
+// called fixMeshOPATargetRefForV3, so on a document that fix touched, every
+// check below finds nothing left to report — the fix's own warning already
+// describes what changed. This only fires in earnest under v2 (forward-looking
+// advisory; the fix does not run) or when the fix declined to touch a
+// conflicting label (still present under v3 too).
+//
+// The failure mode for `name` is scope-widening rather than an error: a MeshOPA
+// that used `name` to bind its rego to a single service silently starts
+// applying to every service matching `kind`, changing which requests are
+// evaluated.
 func warnMeshOPATargetRefFields(obj map[string]interface{}, name string, target TargetVersion) []string {
 	spec, _ := obj["spec"].(map[string]interface{})
 	if spec == nil {
@@ -1236,31 +1357,105 @@ func warnMeshOPATargetRefFields(obj map[string]interface{}, name string, target 
 		return nil
 	}
 
+	var warnings []string
+
 	var present []string
 	for _, f := range []string{"name", "namespace", "mesh"} {
 		if v, ok := targetRef[f]; ok && v != nil && v != "" {
 			present = append(present, f)
 		}
 	}
-	if len(present) == 0 {
+	if len(present) > 0 {
+		msg := fmt.Sprintf(
+			"MeshOPA %q: spec.targetRef.{%s} %s use spec.targetRef.labels[\"kuma.io/display-name\"] instead.",
+			name, strings.Join(present, ","),
+			target.removalNote("3.0 removes these targetRef fields —"))
+
+		// Only `name` carries the scope-widening hazard; namespace/mesh are pruned.
+		for _, f := range present {
+			if f == "name" {
+				msg += " This one is not a clean failure: without `name` the policy widens to every " +
+					"service matching `kind`, so the rego starts evaluating requests it never saw before. " +
+					"Verify the label selector reproduces the original scope exactly."
+				break
+			}
+		}
+		warnings = append(warnings, msg)
+	}
+
+	if trKind, _ := targetRef["kind"].(string); trKind == "MeshService" {
+		if target.IsV3() {
+			warnings = append(warnings, fmt.Sprintf(
+				"MeshOPA %q: spec.targetRef.kind MeshService is removed in 3.0 — only Mesh and Dataplane "+
+					"remain valid targetRef kinds. Use kind: Dataplane with labels[\"app\"] instead.",
+				name))
+		} else {
+			warnings = append(warnings, fmt.Sprintf(
+				"MeshOPA %q: spec.targetRef.kind MeshService works in 2.14, but Kuma 3.0 narrows "+
+					"MeshOPA's targetRef to Mesh and Dataplane only. Plan the move to kind: Dataplane "+
+					"with labels[\"app\"] before upgrading.",
+				name))
+		}
+	}
+
+	return warnings
+}
+
+// ---- Kong Mesh MeshOPA DataSource → SecureDataSource (removed 3.0) --------
+
+// warnMeshOPALegacyDataSource warns when a MeshOPA's spec.default.agentConfig
+// or any spec.default.appendPolicies[].rego still uses the legacy flat
+// DataSource shape (secret/inline/inlineString), which 3.0 replaces with the
+// discriminated SecureDataSource type (UPGRADE_km.md: "MeshOPA data sources
+// use the SecureDataSource shape"). A MeshOPA in the old shape is rejected at
+// write time on 3.0 — the missing `type` discriminator is a validation
+// violation.
+//
+// Under v3 this runs after ScanForDeprecations has already called
+// fixMeshOPADataSourcesForV3, so it only fires in earnest under v2, where the
+// rewrite is forward-looking rather than performed.
+func warnMeshOPALegacyDataSource(obj map[string]interface{}, name string, target TargetVersion) []string {
+	spec, _ := obj["spec"].(map[string]interface{})
+	if spec == nil {
+		return nil
+	}
+	def, _ := spec["default"].(map[string]interface{})
+	if def == nil {
 		return nil
 	}
 
-	msg := fmt.Sprintf(
-		"MeshOPA %q: spec.targetRef.{%s} %s use spec.targetRef.labels[\"kuma.io/display-name\"] instead.",
-		name, strings.Join(present, ","),
-		target.removalNote("3.0 removes these targetRef fields —"))
-
-	// Only `name` carries the scope-widening hazard; namespace/mesh are pruned.
-	for _, f := range present {
-		if f == "name" {
-			msg += " This one is not a clean failure: without `name` the policy widens to every " +
-				"service matching `kind`, so the rego starts evaluating requests it never saw before. " +
-				"Verify the label selector reproduces the original scope exactly."
-			break
+	var fields []string
+	if agentConfig, ok := def["agentConfig"].(map[string]interface{}); ok && hasLegacyOPADataSourceShape(agentConfig) {
+		fields = append(fields, "agentConfig")
+	}
+	if policies, ok := def["appendPolicies"].([]interface{}); ok {
+		for i, p := range policies {
+			pm, ok := p.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			if rego, ok := pm["rego"].(map[string]interface{}); ok && hasLegacyOPADataSourceShape(rego) {
+				fields = append(fields, fmt.Sprintf("appendPolicies[%d].rego", i))
+			}
 		}
 	}
-	return []string{msg}
+	if len(fields) == 0 {
+		return nil
+	}
+
+	if target.IsV3() {
+		return []string{fmt.Sprintf(
+			"MeshOPA %q: spec.default.%s still use the legacy flat DataSource shape "+
+				"(secret/inline/inlineString), which 3.0 removed in favour of the discriminated "+
+				"SecureDataSource type (type + insecureInline.value / secretRef). A MeshOPA in the old "+
+				"shape is rejected at write time.",
+			name, strings.Join(fields, ", spec.default."))}
+	}
+	return []string{fmt.Sprintf(
+		"MeshOPA %q: spec.default.%s use the legacy flat DataSource shape (secret/inline/inlineString), "+
+			"which works in 2.14 but is removed in 3.0 in favour of the discriminated SecureDataSource "+
+			"type (type + insecureInline.value / secretRef). Rewrite before upgrading to 3.0.",
+		name, strings.Join(fields, ", spec.default."))}
 }
 
 // ---- Kong Mesh MeshGlobalRateLimit (removed 3.0) ----------------------------

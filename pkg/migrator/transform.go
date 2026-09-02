@@ -138,7 +138,7 @@ func TransformDocumentWithOptions(raw []byte, opts TransformOptions) ([][]byte, 
 
 	case ScenarioHTTPRoute:
 		var err error
-		docs, warnings, err = TransformMeshHTTPRoute(raw)
+		docs, warnings, err = TransformMeshHTTPRoute(raw, target)
 		if err != nil {
 			return nil, nil, scenario, err
 		}

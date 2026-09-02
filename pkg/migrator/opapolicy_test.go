@@ -177,10 +177,12 @@ spec:
 	}
 }
 
-// TestTransformOPAPolicy_V3TargetRef checks the 3.0 targetRef rewrite. The
-// important behaviour is that targetRef.name is CARRIED into the display-name
-// label rather than dropped: dropping it is what silently widens the policy to
-// every service matching its kind.
+// TestTransformOPAPolicy_V3TargetRef checks the 3.0 targetRef rewrite. Two
+// things happen together: targetRef.name is CARRIED into a label rather than
+// dropped (dropping it is what silently widens the policy to every service
+// matching its kind), and kind: MeshService — no longer valid for MeshOPA in
+// 3.0 — becomes kind: Dataplane, which also changes the label key from
+// kuma.io/display-name to app (the Dataplane selector convention).
 func TestTransformOPAPolicy_V3TargetRef(t *testing.T) {
 	input := `
 apiVersion: kuma.io/v1alpha1
@@ -205,18 +207,29 @@ spec:
 	if !strings.Contains(string(docs[0]), "name: backend") {
 		t.Errorf("v2 target should preserve targetRef.name, got:\n%s", docs[0])
 	}
+	if !strings.Contains(string(docs[0]), "kind: MeshService") {
+		t.Errorf("v2 target should preserve targetRef.kind, got:\n%s", docs[0])
+	}
 
-	// v3: name → labels["kuma.io/display-name"], namespace and mesh dropped.
+	// v3: kind MeshService → Dataplane, name → labels["app"], namespace and mesh dropped.
 	docs, warnings, err := TransformOPAPolicy([]byte(input), TargetV3)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	out := string(docs[0])
-	if !strings.Contains(out, "kuma.io/display-name: backend") {
-		t.Errorf("expected display-name label carrying the original name, got:\n%s", out)
+	if !strings.Contains(out, "kind: Dataplane") {
+		t.Errorf("expected targetRef.kind to become Dataplane, got:\n%s", out)
 	}
-	// Match the bare targetRef key, not the display-name label that now carries
-	// the same value.
+	if strings.Contains(out, "kind: MeshService") {
+		t.Errorf("expected targetRef.kind MeshService to be gone, got:\n%s", out)
+	}
+	if !strings.Contains(out, "app: backend") {
+		t.Errorf("expected the app label carrying the original name, got:\n%s", out)
+	}
+	if strings.Contains(out, "kuma.io/display-name") {
+		t.Errorf("expected no kuma.io/display-name label (MeshService's convention, not Dataplane's), got:\n%s", out)
+	}
+	// Match the bare targetRef key, not the app label that now carries the same value.
 	if strings.Contains(out, "\n    name: backend") {
 		t.Errorf("expected targetRef.name to be removed, got:\n%s", out)
 	}
@@ -230,7 +243,10 @@ spec:
 }
 
 // TestTransformOPAPolicy_V3TargetRef_ConflictingLabel verifies we refuse to
-// overwrite an existing, different display-name selector.
+// overwrite an existing, different display-name selector — and that the kind
+// conversion (MeshService → Dataplane) happens first, so the conflict is
+// checked and reported against the label key ("app") that actually ends up
+// in the output, not the MeshService-era key it replaces.
 func TestTransformOPAPolicy_V3TargetRef_ConflictingLabel(t *testing.T) {
 	input := `
 apiVersion: kuma.io/v1alpha1
@@ -251,11 +267,21 @@ spec:
 		t.Fatalf("unexpected error: %v", err)
 	}
 	out := string(docs[0])
-	if !strings.Contains(out, "kuma.io/display-name: frontend") {
-		t.Errorf("existing label must be preserved, got:\n%s", out)
+	if !strings.Contains(out, "kind: Dataplane") {
+		t.Errorf("expected targetRef.kind to become Dataplane, got:\n%s", out)
 	}
-	if !strings.Contains(strings.Join(warnings, "\n"), "resolve this by hand") {
+	if !strings.Contains(out, "app: frontend") {
+		t.Errorf("existing label must be preserved (renamed to app), got:\n%s", out)
+	}
+	if strings.Contains(out, "kuma.io/display-name") {
+		t.Errorf("expected no leftover kuma.io/display-name label, got:\n%s", out)
+	}
+	joined := strings.Join(warnings, "\n")
+	if !strings.Contains(joined, "resolve this by hand") {
 		t.Errorf("expected a conflict warning, got: %v", warnings)
+	}
+	if !strings.Contains(joined, `labels["app"]="frontend"`) {
+		t.Errorf("expected the conflict warning to name the post-conversion label key (app), got: %v", warnings)
 	}
 }
 

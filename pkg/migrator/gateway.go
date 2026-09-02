@@ -239,8 +239,8 @@ func TransformMeshGateway(raw []byte, opts TransformOptions) ([][]byte, []string
 // GatewayClass (cluster-scoped) plus a Kuma MeshGatewayConfig (namespaced).
 //
 // That output is 2.x-only. Kuma 3.0 removes the built-in gateway API entirely and
-// its Gateway API integration is reduced to HTTPRoute — see
-// meshGatewayInstanceRemovedInV3.
+// its Gateway API integration is reduced to HTTPRoute (and, since kuma#18280,
+// GRPCRoute) — see meshGatewayInstanceRemovedInV3.
 func TransformMeshGatewayInstance(raw []byte, target TargetVersion) ([][]byte, []string, error) {
 	var inst oldMeshGatewayInstance
 	if err := yaml.Unmarshal(raw, &inst); err != nil {
@@ -323,13 +323,14 @@ func TransformMeshGatewayInstance(raw []byte, target TargetVersion) ([][]byte, [
 // shared kuma.io/service tag.
 //
 // Under v3 there is nothing to resolve: Kuma 3.0's Gateway API integration is
-// HTTPRoute-only, so no Kuma GatewayClass exists and the operator has to point
+// reduced to HTTPRoute and GRPCRoute (kuma#18280 added the latter reconciler
+// on 2026-09-01), so no Kuma GatewayClass exists and the operator has to point
 // the Gateway at whatever gateway implementation they adopt.
 func resolveGatewayClassName(gw oldMeshGateway, name string, opts TransformOptions) (string, []string) {
 	if opts.Target.IsV3() {
 		return gatewayClassPlaceholder, []string{fmt.Sprintf(
 			"Gateway %q: Kuma 3.0 removes the built-in gateway API and reduces its Gateway API "+
-				"integration to HTTPRoute — no Gateway or GatewayClass reconciler remains, so no Kuma "+
+				"integration to HTTPRoute/GRPCRoute — no Gateway or GatewayClass reconciler remains, so no Kuma "+
 				"GatewayClass exists to reference. The listener block below is valid Gateway API and "+
 				"carries over as-is; set spec.gatewayClassName to the GatewayClass of the gateway "+
 				"implementation you adopt, and rejoin the workload to the mesh as a delegated gateway "+
@@ -400,9 +401,10 @@ func gatewayServiceTags(gw oldMeshGateway) []string {
 // MeshGatewayRoute, MeshGatewayInstance *and* MeshGatewayConfig, including the
 // meshgatewayconfigs.kuma.io CRD. Both halves of the 2.x output are therefore
 // dead on 3.0 — the parametersRef target no longer exists, and the Gateway API
-// integration is reduced to HTTPRoute (plugin_gateway.go registers only the
-// HTTPRoute reconciler; the sole remaining GatewayClass code path strips
-// finalizers from Kuma-controlled GatewayClasses left behind by the removal).
+// integration is reduced to HTTPRoute and GRPCRoute (plugin_gateway.go registers
+// the HTTPRoute reconciler plus, since kuma#18280, a GRPCRoute reconciler; the
+// sole remaining GatewayClass code path strips finalizers from Kuma-controlled
+// GatewayClasses left behind by the removal).
 //
 // The replacement is a delegated gateway: a Deployment and Service you own, with
 // the pod labelled kuma.io/gateway: enabled so Kuma injects a sidecar. That
