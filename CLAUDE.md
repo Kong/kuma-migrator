@@ -583,6 +583,20 @@ are `controller-gen` annotation bumps only. Verified against the frozen per-vers
 Homebrew tap: **`bcollard/homebrew-kuma-migrator`** (GitHub: `bcollard/homebrew-kuma-migrator`).
 Do **not** publish to `Kong/homebrew-kuma-migrator`.
 
+`.github/workflows/release.yml` runs GoReleaser once (`release --clean`), which builds every
+platform archive, writes `dist/checksums.txt`, creates the GitHub release, uploads the archives,
+and pushes the Homebrew cask to the tap above — all in that single step. Right after, the
+workflow attests `dist/checksums.txt` (`actions/attest-build-provenance`, `subject-checksums`)
+and uploads the resulting bundle to the same release. This runs *after* publish rather than
+before it: GoReleaser has no supported way to build once and pause before publishing (re-running
+it would re-embed a fresh `-X main.date`, changing every archive's bytes), so there is no way to
+attest strictly before the archives become downloadable without accepting that rebuild-drift.
+`dist/` still holds byte-identical copies after the run (`--clean` wipes stale output *before*
+building, not after), so the attested digests are guaranteed to match what's already in
+`checksums.txt` and already embedded in the cask's `sha256` fields — verified by hand against a
+real release (v0.6.1) before adding this. Verify any release artifact with `gh attestation verify
+<archive> --repo Kong/kuma-migrator`; documented for users in `docs/installation.md`.
+
 ## Coding Standards
 
 * Write clean, modular Go code separating CLI commands (`cmd/`) from business logic (`pkg/`).

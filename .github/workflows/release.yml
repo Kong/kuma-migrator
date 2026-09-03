@@ -12,7 +12,9 @@ jobs:
   release:
     runs-on: ubuntu-latest
     permissions:
-      contents: write  # needed to create the GitHub release and upload assets
+      contents: write      # create the GitHub release, upload assets, attach the attestation bundle
+      id-token: write      # sign the provenance attestation
+      attestations: write  # record it
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -37,3 +39,30 @@ jobs:
           # pushed to bcollard/homebrew-kuma-migrator, which still needs a cross-repo PAT.
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+
+      # GoReleaser builds, checksums, creates the GitHub release, uploads every
+      # archive, AND pushes the Homebrew cask in the single step above — it has
+      # no supported way to pause between building and publishing without either
+      # re-invoking it (which would re-embed a new -X main.date, changing every
+      # archive's bytes and checksum) or accepting an unsupported two-phase flow.
+      # So this attests immediately AFTER, not before, publish. `--clean` only
+      # wipes a stale dist/ before the run, not after it finishes, so dist/ here
+      # is still exactly what GoReleaser just built and uploaded — nothing is
+      # rebuilt, so the digests below are identical to the ones already in the
+      # release's checksums.txt and already embedded in the Homebrew cask's
+      # `sha256` fields. The gap this leaves is only the few seconds between
+      # publish and this step landing, not a hash mismatch.
+      - name: Attest build provenance
+        id: attest
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-checksums: dist/checksums.txt
+
+      # Attach the attestation bundle to the release itself so it is
+      # discoverable next to the binaries, not just in the repo's attestation
+      # ledger. Verifiable afterwards with:
+      #   gh attestation verify <downloaded-archive> --repo Kong/kuma-migrator
+      - name: Attach attestation bundle to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ github.ref_name }}" "${{ steps.attest.outputs.bundle-path }}"

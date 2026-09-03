@@ -64,3 +64,19 @@ cd kuma-migrator
 make build
 # binary at ./dist/kuma-migrator
 ```
+
+## Verifying a release
+
+Every release archive (and the `homebrew_casks` formula built from it) carries a
+[build provenance attestation](https://github.com/Kong/kuma-migrator/attestations) — a
+cryptographic record binding it to the exact commit and GitHub Actions run that built it. You do
+not have to trust that a downloaded archive matches this repository; you can check:
+
+```bash
+VERSION=$(gh release view --repo Kong/kuma-migrator --json tagName --jq '.tagName' | tr -d 'v')
+curl -LO "https://github.com/Kong/kuma-migrator/releases/latest/download/kuma-migrator_${VERSION}_linux_amd64.tar.gz"
+gh attestation verify "kuma-migrator_${VERSION}_linux_amd64.tar.gz" --repo Kong/kuma-migrator
+```
+
+This requires the [GitHub CLI](https://cli.github.com/) — `gh attestation verify` is a built-in
+subcommand, no extra plugin needed.
