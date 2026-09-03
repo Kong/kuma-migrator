@@ -1,5 +1,7 @@
 # kuma-migrator
 
+**[kong.github.io/kuma-migrator](https://kong.github.io/kuma-migrator/)**
+
 A CLI that migrates Kuma and Kong Mesh policy manifests across the API changes in the 2.x line
 and into 3.0 — from legacy `sources`/`destinations` policies through to `MeshService`, the Rules
 API, and Gateway API CRDs.

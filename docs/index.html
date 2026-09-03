@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<title>kuma-migrator – migrate Kuma and Kong Mesh policies to 2.14 / 3.0</title>
+<meta name="description" content="A CLI that migrates Kuma and Kong Mesh policy manifests across the API changes in the 2.x line and into 3.0 — from legacy sources/destinations policies through to MeshService, the Rules API, and Gateway API CRDs.">
+<link rel="canonical" href="https://kong.github.io/kuma-migrator/">
+<link rel="icon" href="img/favicon.svg" type="image/svg+xml">
+
+<meta property="og:type" content="website">
+<meta property="og:title" content="kuma-migrator – migrate Kuma and Kong Mesh policies to 2.14 / 3.0">
+<meta property="og:description" content="Rewrites what can be rewritten safely, and reports what cannot — with the reason, so you can judge it rather than trust it blindly.">
+<meta property="og:url" content="https://kong.github.io/kuma-migrator/">
+<meta property="og:image" content="https://kong.github.io/kuma-migrator/assets/migration-overview.svg">
+<meta name="twitter:card" content="summary_large_image">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "kuma-migrator",
+  "applicationCategory": "DeveloperApplication",
+  "applicationSubCategory": "Command-line tool",
+  "operatingSystem": "macOS, Linux, Windows",
+  "url": "https://kong.github.io/kuma-migrator/",
+  "downloadUrl": "https://github.com/Kong/kuma-migrator/releases/latest",
+  "description": "A CLI that migrates Kuma and Kong Mesh policy manifests across the API changes in the 2.x line and into 3.0 — from legacy sources/destinations policies through to MeshService, the Rules API, and Gateway API CRDs.",
+  "license": "https://www.apache.org/licenses/LICENSE-2.0",
+  "codeRepository": "https://github.com/Kong/kuma-migrator",
+  "featureList": [
+    "Extracts resources directly from a running Kuma or Kong Mesh control plane",
+    "Converts legacy sources/destinations policies to the targetRef/to/from/rules API",
+    "Converts MeshSubset and legacy MeshService names to Dataplane/MeshService",
+    "Converts Kong Mesh OPAPolicy to MeshOPA",
+    "Converts MeshGateway and route CRDs to Gateway API",
+    "Scans every output document for deprecated and removed fields across 2.x and 3.0",
+    "Writes a Markdown report of every change made or recommended",
+    "Release artifacts carry a SLSA build provenance attestation"
+  ],
+  "isAccessibleForFree": true,
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+  "publisher": { "@type": "Organization", "name": "Kong", "url": "https://konghq.com" }
+}
+</script>
+
+<!--
+  Everything below is inline or a same-origin SVG. No fonts, stylesheets or
+  scripts are fetched from anywhere else.
+-->
+<style>
+  :root {
+    --bg:        #ffffff;
+    --bg-alt:    #f6f8fa;
+    --ink:       #1f2328;
+    --muted:     #6e7781;
+    --line:      #d0d7de;
+    --code-bg:   rgba(31, 35, 40, .06);
+    --accent:    #6639ba;
+    --accent-d:  #4f2a94;
+    --old:       #b3261e;
+    --new:       #0f6f5c;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg:       #0d1117;
+      --bg-alt:   #161b22;
+      --ink:      #e6edf3;
+      --muted:    #8b949e;
+      --line:     #30363d;
+      --code-bg:  rgba(230, 237, 243, .08);
+      --accent:   #b083f0;
+      --accent-d: #cba8f7;
+      --old:      #ff7b72;
+      --new:      #56d4a4;
+    }
+  }
+
+  * { box-sizing: border-box }
+
+  body {
+    margin: 0;
+    font: 16px/1.65 system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, Cantarell, "Noto Sans", sans-serif;
+    color: var(--ink);
+    background: var(--bg);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 62rem; margin: 0 auto; padding: 0 1.25rem }
+
+  a { color: var(--accent); text-underline-offset: 2px }
+  a:hover { color: var(--accent-d) }
+
+  code, pre {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
+  code {
+    font-size: .875em;
+    background: var(--code-bg);
+    padding: .15em .4em;
+    border-radius: 4px;
+  }
+  pre {
+    background: var(--code-bg);
+    border-radius: 8px;
+    padding: 1rem 1.1rem;
+    overflow-x: auto;
+    font-size: .84rem;
+    line-height: 1.6;
+    border: 1px solid var(--line);
+  }
+  pre code { background: none; padding: 0; font-size: inherit }
+
+  /* ---- hero ---- */
+  .hero {
+    text-align: center;
+    padding: 4rem 0 3.5rem;
+    border-bottom: 1px solid var(--line);
+  }
+  .hero img.mark { width: 72px; height: 72px; border-radius: 16px }
+  .hero h1 {
+    font-size: clamp(2.1rem, 5vw, 3rem);
+    margin: 1.1rem 0 .5rem;
+    letter-spacing: -.02em;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
+  .tagline {
+    font-size: clamp(1.05rem, 2.2vw, 1.3rem);
+    color: var(--muted);
+    max-width: 38rem;
+    margin: 0 auto 2rem;
+  }
+  .cta { display: flex; gap: .75rem; justify-content: center; flex-wrap: wrap }
+  .btn {
+    display: inline-block;
+    padding: .7rem 1.35rem;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: .95rem;
+    text-decoration: none;
+    border: 1px solid var(--accent);
+  }
+  .btn-primary { background: var(--accent); color: #fff }
+  .btn-primary:hover { background: var(--accent-d); border-color: var(--accent-d); color: #fff }
+  .btn-ghost { color: var(--accent); background: transparent }
+  .note { font-size: .85rem; color: var(--muted); margin-top: 1rem }
+
+  /* ---- sections ---- */
+  section { padding: 3.25rem 0; border-bottom: 1px solid var(--line) }
+  section.alt { background: var(--bg-alt) }
+  h2 { font-size: 1.55rem; margin: 0 0 .5rem; letter-spacing: -.01em }
+  h3 { font-size: 1.05rem; margin: 1.75rem 0 .35rem }
+  .lede { color: var(--muted); margin: 0 0 1.75rem; max-width: 46rem }
+  p { max-width: 46rem }
+
+  figure { margin: 1.75rem 0 0 }
+  figure img {
+    width: 100%;
+    height: auto;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    display: block;
+    background: var(--bg);
+  }
+  figcaption { font-size: .85rem; color: var(--muted); margin-top: .6rem }
+
+  table.scenarios { width: 100%; border-collapse: collapse; margin-top: 1.5rem; font-size: .92rem }
+  table.scenarios th, table.scenarios td {
+    text-align: left;
+    padding: .6rem .8rem;
+    border-bottom: 1px solid var(--line);
+    vertical-align: top;
+  }
+  table.scenarios th { color: var(--muted); font-weight: 600; font-size: .8rem; text-transform: uppercase; letter-spacing: .03em }
+  table.scenarios td:first-child { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace; font-weight: 600; white-space: nowrap }
+
+  .callout {
+    border-left: 3px solid var(--accent);
+    background: var(--code-bg);
+    padding: .9rem 1.1rem;
+    border-radius: 0 6px 6px 0;
+    margin: 1.5rem 0;
+    max-width: 46rem;
+  }
+  .callout p { margin: 0; max-width: none }
+  .callout p + p { margin-top: .6rem }
+  .callout.good { border-left-color: var(--new) }
+
+  .badge-row { display: flex; gap: .5rem; justify-content: center; flex-wrap: wrap; margin-top: 1rem }
+  .badge {
+    display: inline-flex; align-items: center; gap: .35rem;
+    font-size: .78rem; color: var(--muted);
+    border: 1px solid var(--line); border-radius: 999px;
+    padding: .3rem .75rem;
+  }
+  .badge strong { color: var(--ink) }
+
+  footer {
+    padding: 2.5rem 0 3.5rem;
+    font-size: .9rem;
+    color: var(--muted);
+    text-align: center;
+  }
+  footer a { color: var(--muted) }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <img class="mark" src="img/favicon.svg" width="72" height="72" alt="">
+    <h1>kuma-migrator</h1>
+    <p class="tagline">
+      Migrates Kuma and Kong Mesh policy manifests across the API changes in the 2.x line and
+      into 3.0 — rewrites what can be rewritten safely, and reports what cannot, with the reason.
+    </p>
+    <div class="cta">
+      <a class="btn btn-primary" href="https://github.com/Kong/kuma-migrator#install">Install</a>
+      <a class="btn btn-ghost" href="https://github.com/Kong/kuma-migrator">Source on GitHub</a>
+    </div>
+    <div class="badge-row">
+      <span class="badge">📦 <strong>Homebrew</strong> · Linux · macOS · Windows</span>
+      <span class="badge">🔓 <strong>Apache-2.0</strong></span>
+      <span class="badge">🔏 <strong>Attested</strong> release binaries</span>
+    </div>
+  </div>
+</header>
+
+<section>
+  <div class="wrap">
+    <h2>Why</h2>
+    <p class="lede">The policy API changed substantially across 2.0–2.14, and some of the 3.0 removals are silent.</p>
+    <p>
+      The Kuma and Kong Mesh policy API changed substantially across 2.0–2.14, and 3.0 removes a
+      number of fields that 2.14 still accepts. Some of those removals are silent: the manifest
+      applies cleanly and simply stops doing what it used to.
+    </p>
+    <p>
+      <code>kuma-migrator</code> automates the mechanical parts, flags the parts that need a
+      human, and writes a Markdown report of every change it made or would make.
+    </p>
+  </div>
+</section>
+
+<section class="alt">
+  <div class="wrap">
+    <h2>How it works</h2>
+    <p class="lede">Four commands. Extract from a live control plane, preview, migrate, apply.</p>
+
+    <figure>
+      <img src="img/pipeline.svg" alt="Pipeline diagram: extract pulls resources from a running control plane, plan previews every change with no YAML written, migrate writes the migrated manifests and report, apply runs kubectl in the report's order.">
+    </figure>
+
+<pre><code># 1. Pull resources from your control plane (Global CP first)
+kuma-migrator extract --kube-context prod-global --output-dir ./raw-policies
+
+# 2. Preview every change — writes migration-plan.md, no YAML
+kuma-migrator plan --input-dir ./raw-policies --output-dir ./migrated
+
+# 3. Write the migrated manifests + migration-report.md
+kuma-migrator migrate --input-dir ./raw-policies --output-dir ./migrated
+
+# 4. Apply them, in the order the report gives you
+kubectl apply -f ./migrated/prod-cp-global-ctx/mesh-default/resiliency/</code></pre>
+
+    <p class="note">
+      Read the plan before migrating, and the report before applying — the apply order matters,
+      and <code>Mesh</code> resources go last because they switch on
+      <code>meshServices.mode: Exclusive</code>.
+    </p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Three mechanical translations</h2>
+    <p class="lede">Applied to every legacy policy the tool touches.</p>
+
+    <figure>
+      <img src="assets/migration-overview.svg" alt="Three examples of kuma-migrator's mechanical translations: a Dataplane tag becomes a structured targetRef, a legacy policy kind like Timeout becomes MeshTimeout, and a MeshSubset tag selector becomes a Dataplane/MeshService reference.">
+      <figcaption>
+        A Dataplane tag decoded into a structured <code>targetRef</code>, a legacy policy kind
+        rewritten to its <code>Mesh*</code> successor, and a tag/label selector expanded into a
+        typed reference — the same mechanism behind every conversion below.
+      </figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="alt">
+  <div class="wrap">
+    <h2>What it handles</h2>
+    <p class="lede">Alongside these, every output document is scanned for deprecated and removed fields across the 2.x line and 3.0.</p>
+
+    <table class="scenarios">
+      <thead>
+        <tr><th>Scenario</th><th>Migration</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Legacy</td><td><code>sources</code>/<code>destinations</code>/<code>selectors</code> policies → <code>targetRef</code>/<code>to</code>/<code>from</code>/<code>rules</code>, with the <code>conf</code> body rewritten to the successor's schema</td></tr>
+        <tr><td>Subset</td><td><code>MeshSubset</code> with service tags → <code>Dataplane</code>/<code>MeshService</code></td></tr>
+        <tr><td>Rules</td><td>Deprecated <code>from[]</code> → <code>rules[]</code> (Kuma 2.10+)</td></tr>
+        <tr><td>Mesh</td><td><code>Mesh</code> CRD observability → standalone <code>MeshMetric</code>/<code>MeshTrace</code>/<code>MeshAccessLog</code></td></tr>
+        <tr><td>ExternalService</td><td><code>ExternalService</code> → <code>MeshExternalService</code></td></tr>
+        <tr><td>GW</td><td><code>MeshGateway</code> and route CRDs → Gateway API</td></tr>
+        <tr><td>OPAPolicy</td><td>Kong Mesh <code>OPAPolicy</code> → <code>MeshOPA</code></td></tr>
+      </tbody>
+    </table>
+
+    <p>
+      Full list: <a href="https://github.com/Kong/kuma-migrator/blob/main/docs/migration-paths.md">migration paths and deprecation warnings</a>.
+    </p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Choosing a target: <code>--to-latest v2|v3</code></h2>
+    <p class="lede">One output cannot serve both lines.</p>
+    <p>
+      <code>plan</code> and <code>migrate</code> take <code>--to-latest v2</code> (default, latest
+      2.x) or <code>v3</code>. 3.0 removes fields 2.14 still requires, and some 3.0 replacements
+      (<code>MeshOpenTelemetryBackend</code>, <code>SecureDataSource</code>) do not exist before
+      2.14.
+    </p>
+    <div class="callout">
+      <p>
+        <strong><code>v2</code></strong> keeps the output applicable to a 2.x control plane and
+        reports 3.0 removals as forward-looking advisories.
+      </p>
+      <p>
+        <strong><code>v3</code></strong> rewrites what it safely can and flags the rest — a v3
+        report carries a banner warning that the output must not be applied to a 2.x CP.
+      </p>
+    </div>
+    <p>
+      See <a href="https://github.com/Kong/kuma-migrator/blob/main/docs/target-version.md">choosing a target version</a>.
+    </p>
+  </div>
+</section>
+
+<section class="alt">
+  <div class="wrap">
+    <h2>Verify what you install</h2>
+    <p class="lede">Every release archive carries a build provenance attestation.</p>
+    <p>
+      You do not have to trust that a downloaded archive matches this repository — you can check.
+      Each release binds its archives to the exact commit and GitHub Actions run that built them,
+      cryptographically, via
+      <a href="https://github.com/Kong/kuma-migrator/attestations">GitHub build provenance attestation</a>.
+    </p>
+<pre><code>VERSION=$(gh release view --repo Kong/kuma-migrator --json tagName --jq '.tagName' | tr -d 'v')
+curl -LO "https://github.com/Kong/kuma-migrator/releases/latest/download/kuma-migrator_${VERSION}_linux_amd64.tar.gz"
+gh attestation verify "kuma-migrator_${VERSION}_linux_amd64.tar.gz" --repo Kong/kuma-migrator</code></pre>
+    <div class="callout good">
+      <p>
+        The same digests appear in the release's <code>checksums.txt</code>, in the attestation,
+        and in the Homebrew cask's <code>sha256</code> fields — nothing is rebuilt in between.
+      </p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Install</h2>
+
+    <h3>Homebrew (macOS and Linux)</h3>
+<pre><code>brew install --cask bcollard/kuma-migrator/kuma-migrator</code></pre>
+
+    <h3>Pre-built binaries</h3>
+    <p>
+      Download the binary for your platform from the
+      <a href="https://github.com/Kong/kuma-migrator/releases">GitHub Releases</a> page —
+      Linux and macOS (<code>amd64</code>/<code>arm64</code>), Windows (<code>amd64</code>).
+    </p>
+
+    <h3>From source</h3>
+<pre><code>git clone https://github.com/Kong/kuma-migrator.git &amp;&amp; cd kuma-migrator
+make build
+# binary at ./dist/kuma-migrator</code></pre>
+
+    <p>
+      Full options: <a href="https://github.com/Kong/kuma-migrator/blob/main/docs/installation.md">installation guide</a>.
+    </p>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <p>
+      <a href="https://github.com/Kong/kuma-migrator">Source</a> ·
+      <a href="https://github.com/Kong/kuma-migrator/releases">Releases</a> ·
+      <a href="https://github.com/Kong/kuma-migrator/tree/main/docs">Docs</a> ·
+      <a href="https://github.com/Kong/kuma-migrator/issues">Issues</a>
+    </p>
+    <p>Apache-2.0 licensed. Part of Kong's <a href="https://konghq.com/products/kong-mesh">Kong Mesh</a> tooling.</p>
+  </div>
+</footer>
+
+</body>
+</html>

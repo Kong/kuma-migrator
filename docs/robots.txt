@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://kong.github.io/kuma-migrator/sitemap.xml
