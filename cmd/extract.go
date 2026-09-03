@@ -27,9 +27,13 @@ Two connection modes are supported (mutually exclusive):
 
   --kumactl-context  Uses the kumactl CLI and the kumactl config file
                    (~/.kumactl/config or $KUMACTL_CONFIG) to resolve the
-                   context and its linked control plane, then runs:
-                     kumactl export --profile no-dataplanes --format kubernetes
-                   and splits the output into individual files.`,
+                   context and its linked control plane, calls its
+                   /_resources endpoint to discover every writable resource
+                   type, lists the meshes, then runs "kumactl get <type>
+                   [--mesh <mesh>] -o yaml" for each type/mesh combination
+                   (or an authenticated HTTP GET instead of the CLI, for a
+                   Konnect-hosted control plane), writing one file per
+                   resource.`,
 	Example: `  # Extract via kubectl
   kuma-migrator extract --kube-context prod-global --output-dir ./raw-policies
 

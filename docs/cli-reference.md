@@ -70,8 +70,8 @@ Optional, at `~/.config/kuma-migrator.yaml` (override with `$KUMA_MIGRATOR_CONFI
 
 ```yaml
 skip:
-  kubernetes: [Dataplane, ZoneIngress, ZoneEgress, Zone, Workload, Secret, GlobalSecret]
-  universal:  [Zone, Workload, Secret, GlobalSecret]
+  kubernetes: [Dataplane, AccessRole, AccessRoleBinding, ZoneEgress, ZoneIngress, Zone, Workload, Secret, GlobalSecret]
+  universal:  [AccessRole, AccessRoleBinding, Zone, Workload, Secret, GlobalSecret]
 adminServer:
   tlsSkipVerify: false
 ```

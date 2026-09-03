@@ -29,6 +29,9 @@ one YAML file per resource, organised by CP context, mesh, and policy type:
   <context-name>-standalone-ctx/
     mesh-default/
       resiliency/
+  <context-name>-unknown-ctx/        ← CP mode could not be detected — treated like standalone
+    mesh-default/                      (no origin-based filtering applied)
+      resiliency/
 ```
 
 > **Note on MeshGateway and route CRDs**: these may be created on the Global CP *or* directly on
@@ -155,8 +158,10 @@ and never writes back through this API, so the flag is irrelevant.
 
 The deployment environment (`kubernetes` or `universal`) is auto-detected from
 `GET <cpURL>/config` and printed in the extract output. On Universal CPs, `Dataplane`,
-`ZoneIngress`, `ZoneEgress`, and `Workload` resources are **not** skipped — they are
-hand-authored YAMLs that may contain deprecated fields the migrator can warn about or fix.
+`ZoneIngress`, and `ZoneEgress` are **not** skipped — they are hand-authored YAMLs that may
+contain deprecated fields the migrator can warn about or fix. `Workload` stays skipped in
+both environments: it is CP-generated either way, only *where* the `kuma.io/workload` label
+lives differs (on the `Dataplane` rather than a Pod annotation on Universal).
 
 **Kong Konnect (hosted)** — automatically detected when the CP URL contains `api.konghq.com`.
 kumactl stores Personal Access Tokens for Konnect as HTTP headers (`Authorization: Bearer kpat_…`)

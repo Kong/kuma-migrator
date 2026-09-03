@@ -31,3 +31,29 @@ A few checks are deliberately target-sensitive:
   migrate it until every control plane and data plane is on 2.14, because
   `MeshOpenTelemetryBackend` does not exist before then and the control plane silently skips
   the OTel route against an older data plane.
+- **`Dataplane` `networking.gateway.type: BUILTIN`** is only flagged under `v3`. `DELEGATED`
+  and `BUILTIN` are both valid gateway types in 2.x; on 3.0 the `BUILTIN` ordinal is `reserved`
+  in the proto, so it's rejected at parse time rather than merely at admission.
+- **`MeshOPA` `targetRef.kind: MeshService`** is auto-converted to `kind: Dataplane` under `v3`
+  (only `Mesh`/`Dataplane` remain valid targetRef kinds for MeshOPA in 3.0). This runs *before*
+  the `targetRef.name` rewrite above, so that rewrite lands under the label key matching the
+  final kind (`labels["app"]` for Dataplane) rather than MeshService's `kuma.io/display-name`.
+  Under `v2` this is a forward-looking advisory only — `MeshService` is still valid today.
+- **`MeshOPA` `agentConfig`/`appendPolicies[].rego`** legacy flat `DataSource`
+  (`secret`/`inline`/`inlineString`) is auto-converted to the discriminated `SecureDataSource`
+  shape under `v3` — a `MeshOPA` still in the old shape is rejected at write time on 3.0.
+  Auto-converted (unlike the `MeshExternalService` case below) because rego source and OPA
+  agent config aren't credential material. Advisory-only under `v2`.
+- **`MeshLoadBalancingStrategy` `crossZone`** is only flagged under `v3`: a 3.0-dev validator
+  restriction (not yet in the 2.14 line) rejects `localityAwareness.crossZone` on any `to[]`
+  entry that doesn't target a `MeshMultiZoneService`.
+- **`MeshHTTPRoute`/`HTTPRoute` catch-all rules** are only checked under `v3`: on 3.0, a route
+  with no catch-all rule blocks (rather than falls through on) any request that doesn't match
+  one of its listed rules — easy to hit by accident when a route exists only to anchor another
+  policy via a narrow match.
+- **`MeshExternalService` `spec.tls.verification.*` `DataSource`** and **Kong Mesh
+  `MeshGlobalRateLimit`** warn under *both* targets, but the wording changes: `v2` frames the
+  3.0 removal as forward-looking, `v3` states it as already in effect. Neither is
+  auto-converted under either target — the TLS `DataSource` case holds credential material
+  (decoding `inline` means re-emitting it in the clear, an operator decision), and
+  `MeshGlobalRateLimit` has no in-mesh replacement to convert to.
