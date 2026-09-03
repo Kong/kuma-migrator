@@ -72,9 +72,9 @@ See [Choosing a target version](docs/target-version.md).
 
 | Scenario | Migration |
 |---|---|
-| **Legacy** | `sources`/`destinations`/`selectors` policies → `targetRef`/`to`/`from`/`rules`, with the `conf` body rewritten to the successor's schema |
+| **Legacy** | `sources`/`destinations`/`selectors` policies → `targetRef`/`to`/`from`/`rules`, with the `conf` body rewritten to the successor's schema — except `TrafficRoute` (ambiguous HTTP vs TCP) and `VirtualOutbound` (no single successor), which have no mechanical conversion and are reported for manual migration |
 | **Subset** | `MeshSubset` with service tags → `Dataplane`/`MeshService` |
-| **Rules** | Deprecated `from[]` → `rules[]` (Kuma 2.10+) |
+| **Rules** | Deprecated `from[]` → `rules[]`, for `MeshTimeout`/`MeshCircuitBreaker`/`MeshRateLimit`/`MeshAccessLog`/`MeshTLS` only (Kuma 2.10+) — `MeshTrafficPermission`/`MeshFaultInjection` use a different, SPIFFE-identity-based `rules[]` shape and are **not** auto-converted; see [MeshTrafficPermission modes](docs/meshtrafficpermission-modes.md) |
 | **Mesh** | `Mesh` CRD observability → standalone `MeshMetric`/`MeshTrace`/`MeshAccessLog` |
 | **ExternalService** | `ExternalService` → `MeshExternalService` |
 | **GW** | `MeshGateway` and route CRDs → Gateway API |

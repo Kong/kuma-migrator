@@ -13,7 +13,7 @@ Every transformation `kuma-migrator` performs, and every deprecated field it det
 | **Legacy** | Old-style `sources`/`destinations`/`selectors` policies (e.g. `Timeout`, `TrafficPermission`) → `targetRef`/`to`/`from`/`rules`/`default` — see [below](#legacy-policies-in-detail) |
 | **Subset** | New `Mesh*` policy types still using `MeshSubset` with `kuma.io/service` or `k8s.kuma.io/service-name` tags → `Dataplane`/`MeshService` |
 | **Passthrough** | Already using `MeshService` kind throughout — passed through unchanged |
-| **Rules** | New-style `Mesh*` policies with deprecated `from[]` → `rules[]` (Kuma 2.10+) |
+| **Rules** | New-style `Mesh*` policies with deprecated `from[]` → `rules[]` (Kuma 2.10+) — only for `MeshTimeout`/`MeshCircuitBreaker`/`MeshRateLimit`/`MeshAccessLog`/`MeshTLS`. `MeshTrafficPermission`/`MeshFaultInjection` use a different, SPIFFE-identity-based `rules[]` shape and are **not** auto-converted — see [MeshTrafficPermission modes](meshtrafficpermission-modes.md) |
 | **Mesh** | `Mesh` CRD with embedded observability/passthrough → standalone `MeshMetric`, `MeshTrace`, `MeshAccessLog`, `MeshPassthrough` CRDs |
 | **ExternalService** | `ExternalService` → `MeshExternalService` |
 | **GW** | `MeshGateway` → `Gateway`, `MeshGatewayInstance` → `GatewayClass`+`MeshGatewayConfig` *(v2 only — see below)*, `MeshGatewayRoute`/`MeshHTTPRoute`/`MeshTCPRoute` → Gateway API `HTTPRoute`/`TCPRoute` |
@@ -44,6 +44,18 @@ The tool also emits warnings for deprecated fields that require manual action:
 - `kuma.io/*` annotation values `"yes"`/`"no"` → `"true"`/`"false"` *(scanner, Kuma 2.9)*
 - Legacy `kuma.io/service`-encoded addresses in Deployment/StatefulSet env vars *(scanner)*
 - RFC 1035/1123 name validation for `Mesh*Service` resources — hard error in 3.0 *(warn)*
+- `HostnameGenerator` `spec.template` rendering to an invalid RFC 1123 DNS subdomain (leading/trailing/consecutive dots, uppercase) — accepted silently before Kuma 2.14 *(warn, Kuma 2.14)*
+- `MeshPassthrough` `spec.default.appendMatch[]` partial wildcards, `type: Domain` on `tcp`/`mysql`, and wildcard domains on an L7 protocol with no port *(warn, Kuma 2.14)*
+- Deprecated Pod annotations, exact-match: `prometheus.metrics.kuma.io/port`/`/path` (use `MeshMetric`); `kuma.io/virtual-probes`/`-port` (replaced by the Application Probe Proxy); `kuma.io/builtindns`/`builtindnsport` (**silently ignored**, not just deprecated — use `kuma.io/builtin-dns`/`-port`); `kuma.io/sidecar-injection` (must be a **label**, has no effect as an annotation) *(warn)*
+- `MeshExternalService` `spec.tls.verification.{caCert,clientCert,clientKey}.{inline,inlineString,secret}` → `SecureDataSource` (`type` + `insecureInline.value`/`secretRef`) — **not auto-converted even under v3**, since `inline` is base64 credential material and rewriting it means decoding and re-emitting it in the clear *(warn, removed 3.0)*
+- Kong Mesh `MeshOPA` `spec.targetRef.{name,namespace,mesh}` — removed in 3.0; `name` is **auto-converted** to a display-name label under `--to-latest v3` (dropping it instead would silently widen the policy to every service matching `kind`) *(warn under v2, auto-fixed under v3)*
+- Kong Mesh `MeshOPA` `spec.targetRef.kind: MeshService` — no longer valid in 3.0 (only `Mesh`/`Dataplane` remain); **auto-converted** to `kind: Dataplane` with the display-name label renamed to `labels["app"]` under `--to-latest v3` *(warn under v2, auto-fixed under v3)*
+- Kong Mesh `MeshOPA` `spec.default.agentConfig`/`appendPolicies[].rego` legacy flat `DataSource` (`secret`/`inline`/`inlineString`) → `SecureDataSource` — rejected at write time on 3.0; **auto-converted** under `--to-latest v3` (unlike the `MeshExternalService` case above, rego source and OPA agent config are not credential material, so decoding `inline` here is safe) *(warn under v2, auto-fixed under v3)*
+- Kong Mesh `MeshGlobalRateLimit` — removed in 3.0 with no in-mesh replacement; leftover objects go **inert** rather than being rejected *(warn, removed 3.0)*
+- `Dataplane` `networking.inbound[].tags` — removed **silently** in 3.0 (the field is `reserved` in the proto), so a manifest still setting it applies cleanly and simply loses the tags *(warn under `--to-latest v3` only — inbound tags are mandatory in 2.x, so a v2 advisory would fire on every Dataplane with nothing actionable)*
+- `Dataplane` `networking.gateway.type: BUILTIN` — the `GatewayType` ordinal is `reserved` in the proto on 3.0, rejected at parse time, not just admission *(warn under `--to-latest v3` only — `DELEGATED`/`BUILTIN` are both valid in 2.x)*
+- `MeshLoadBalancingStrategy` `to[].default.localityAwareness.crossZone` set on a `to[]` entry whose `targetRef.kind` is not `MeshMultiZoneService` — new 3.0-dev validator restriction *(warn under `--to-latest v3` only — not yet enforced in the 2.14 line)*
+- `MeshHTTPRoute`/`HTTPRoute` with no catch-all rule (empty `matches[]`, or an unconditional `PathPrefix: "/"`) — unmatched requests now block instead of falling through on 3.0, easy to hit by accident when a route exists only to anchor another policy *(advisory under `--to-latest v3` only, surfaced on the converted `HTTPRoute` output)*
 
 For why `MeshTrafficPermission`'s `from[]` is never auto-converted, see [MeshTrafficPermission modes](meshtrafficpermission-modes.md).
 
@@ -98,9 +110,9 @@ the output directory.
 
 Kuma 3.0 removes the built-in gateway API in full — `MeshGateway`, `MeshGatewayRoute`,
 `MeshGatewayInstance` and `MeshGatewayConfig`, including their CRDs — and reduces the
-Gateway API integration to `HTTPRoute` alone. There is no `Gateway` or `GatewayClass`
-reconciler left, and the control plane strips finalizers from Kuma-controlled
-`GatewayClass` objects on startup.
+Gateway API integration to `HTTPRoute` and, since kuma#18280, `GRPCRoute`. There is no
+`Gateway` or `GatewayClass` reconciler left, and the control plane strips finalizers from
+Kuma-controlled `GatewayClass` objects on startup.
 
 `MeshGatewayInstance` therefore has **no successor on 3.0**. Under `--to-latest v3` the tool
 reports it instead of converting it, naming the settings to carry over (`replicas`,

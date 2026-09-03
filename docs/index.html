@@ -175,6 +175,7 @@
   }
   table.scenarios th { color: var(--muted); font-weight: 600; font-size: .8rem; text-transform: uppercase; letter-spacing: .03em }
   table.scenarios td:first-child { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace; font-weight: 600; white-space: nowrap }
+  table.scenarios.doclist td:first-child { font-family: inherit; font-weight: 400; white-space: normal }
 
   .callout {
     border-left: 3px solid var(--accent);
@@ -299,9 +300,9 @@ kubectl apply -f ./migrated/prod-cp-global-ctx/mesh-default/resiliency/</code></
         <tr><th>Scenario</th><th>Migration</th></tr>
       </thead>
       <tbody>
-        <tr><td>Legacy</td><td><code>sources</code>/<code>destinations</code>/<code>selectors</code> policies → <code>targetRef</code>/<code>to</code>/<code>from</code>/<code>rules</code>, with the <code>conf</code> body rewritten to the successor's schema</td></tr>
+        <tr><td>Legacy</td><td><code>sources</code>/<code>destinations</code>/<code>selectors</code> policies → <code>targetRef</code>/<code>to</code>/<code>from</code>/<code>rules</code>, with the <code>conf</code> body rewritten to the successor's schema — except <code>TrafficRoute</code> (ambiguous HTTP vs TCP) and <code>VirtualOutbound</code> (no single successor), reported for manual migration</td></tr>
         <tr><td>Subset</td><td><code>MeshSubset</code> with service tags → <code>Dataplane</code>/<code>MeshService</code></td></tr>
-        <tr><td>Rules</td><td>Deprecated <code>from[]</code> → <code>rules[]</code> (Kuma 2.10+)</td></tr>
+        <tr><td>Rules</td><td>Deprecated <code>from[]</code> → <code>rules[]</code>, for <code>MeshTimeout</code>/<code>MeshCircuitBreaker</code>/<code>MeshRateLimit</code>/<code>MeshAccessLog</code>/<code>MeshTLS</code> only (Kuma 2.10+) — <code>MeshTrafficPermission</code>/<code>MeshFaultInjection</code> use a different, SPIFFE-based <code>rules[]</code> shape and are <strong>not</strong> auto-converted</td></tr>
         <tr><td>Mesh</td><td><code>Mesh</code> CRD observability → standalone <code>MeshMetric</code>/<code>MeshTrace</code>/<code>MeshAccessLog</code></td></tr>
         <tr><td>ExternalService</td><td><code>ExternalService</code> → <code>MeshExternalService</code></td></tr>
         <tr><td>GW</td><td><code>MeshGateway</code> and route CRDs → Gateway API</td></tr>
@@ -310,6 +311,8 @@ kubectl apply -f ./migrated/prod-cp-global-ctx/mesh-default/resiliency/</code></
     </table>
 
     <p>
+      Why MTP/MFI's <code>from[]</code> is never auto-converted:
+      <a href="https://github.com/Kong/kuma-migrator/blob/main/docs/meshtrafficpermission-modes.md">MeshTrafficPermission modes</a>.
       Full list: <a href="https://github.com/Kong/kuma-migrator/blob/main/docs/migration-paths.md">migration paths and deprecation warnings</a>.
     </p>
   </div>
@@ -384,6 +387,36 @@ make build
 
     <p>
       Full options: <a href="https://github.com/Kong/kuma-migrator/blob/main/docs/installation.md">installation guide</a>.
+    </p>
+  </div>
+</section>
+
+<section class="alt">
+  <div class="wrap">
+    <h2>Documentation</h2>
+    <p class="lede">Everything above is the short version. Each page below goes deeper on one part of it.</p>
+
+    <table class="scenarios doclist">
+      <thead>
+        <tr><th>Page</th><th>What it covers</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><a href="https://github.com/Kong/kuma-migrator/blob/main/docs/installation.md">Installation</a></td><td>Homebrew, binaries, from source</td></tr>
+        <tr><td><a href="https://github.com/Kong/kuma-migrator/blob/main/docs/cli-reference.md">CLI reference</a></td><td>Every command, flag, and the config file</td></tr>
+        <tr><td><a href="https://github.com/Kong/kuma-migrator/blob/main/docs/extract.md">Extracting from a control plane</a></td><td>CP-mode rules, output layout, Konnect, Universal vs Kubernetes format</td></tr>
+        <tr><td><a href="https://github.com/Kong/kuma-migrator/blob/main/docs/plan-and-migrate.md">Plan and migrate</a></td><td>Dry run, output layout, Gateway API placement</td></tr>
+        <tr><td><a href="https://github.com/Kong/kuma-migrator/blob/main/docs/target-version.md">Choosing a target version</a></td><td><code>--to-latest</code> and the checks that change with it</td></tr>
+        <tr><td><a href="https://github.com/Kong/kuma-migrator/blob/main/docs/apply.md">Applying the migrated manifests</a></td><td>Apply order, and cleaning up changed kinds</td></tr>
+        <tr><td><a href="https://github.com/Kong/kuma-migrator/blob/main/docs/migration-paths.md">Migration paths and deprecations</a></td><td>Everything detected, fixed or flagged</td></tr>
+        <tr><td><a href="https://github.com/Kong/kuma-migrator/blob/main/docs/meshtrafficpermission-modes.md">MeshTrafficPermission modes</a></td><td><code>from[]</code> vs <code>rules[]</code>, and why it is not mechanical</td></tr>
+        <tr><td><a href="https://github.com/Kong/kuma-migrator/blob/main/docs/transformation-examples.md">Transformation examples</a></td><td>Before-and-after YAML per scenario</td></tr>
+        <tr><td><a href="https://github.com/Kong/kuma-migrator/blob/main/docs/output-and-reports.md">Console output and reports</a></td><td>What you see, and what the report contains</td></tr>
+        <tr><td><a href="https://github.com/Kong/kuma-migrator/blob/main/docs/notes.md">Notes and caveats</a></td><td>Behaviour worth knowing before relying on the output</td></tr>
+      </tbody>
+    </table>
+
+    <p>
+      Index: <a href="https://github.com/Kong/kuma-migrator/blob/main/docs/README.md">docs/</a>.
     </p>
   </div>
 </section>
