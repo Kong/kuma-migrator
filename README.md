@@ -105,6 +105,29 @@ Full list: [Migration paths and deprecation warnings](docs/migration-paths.md).
 
 Index: [docs/](docs/README.md).
 
+## Changelog
+
+Actively maintained — 15 releases since April 2026, most recently this week. Full history:
+[Releases](https://github.com/Kong/kuma-migrator/releases) · [compare view](https://github.com/Kong/kuma-migrator/compare).
+
+| Version | Date | Summary |
+|---|---|---|
+| [v0.6.2](https://github.com/Kong/kuma-migrator/releases/tag/v0.6.2) | 2026-09-03 | Release artifacts now carry a SLSA build provenance attestation, verifiable with `gh attestation verify` |
+| [v0.6.1](https://github.com/Kong/kuma-migrator/releases/tag/v0.6.1) | 2026-09-02 | Closed four `--to-latest v3` gaps found auditing upstream kuma/kong-mesh: `Dataplane` `BUILTIN` gateway type, `MeshOPA` targetRef/DataSource fixes, `MeshLoadBalancingStrategy` `crossZone`, `MeshHTTPRoute` catch-all |
+| [v0.6.0](https://github.com/Kong/kuma-migrator/releases/tag/v0.6.0) | 2026-09-01 | Fixed `Gateway.spec.gatewayClassName` to resolve a real `GatewayClass` instead of a dead controllerName string; stopped emitting a dead built-in-gateway pair under v3 |
+| [v0.5.0](https://github.com/Kong/kuma-migrator/releases/tag/v0.5.0) | 2026-08-14 | Legacy policy `conf` bodies are converted to the successor's schema instead of copied verbatim |
+| [v0.4.0](https://github.com/Kong/kuma-migrator/releases/tag/v0.4.0) | 2026-08-10 | Added `--to-latest v2\|v3` targeting, closed 2.13/2.14 deprecation gaps, fixed `OPAPolicy` handling and an extract data-loss bug |
+| [v0.3.1](https://github.com/Kong/kuma-migrator/releases/tag/v0.3.1) | 2026-06-30 | Added Kuma 2.11–2.14 deprecation scans and the `MeshIdentity`/`MeshTrust` `mtls` advisory |
+| [v0.2.8](https://github.com/Kong/kuma-migrator/releases/tag/v0.2.8) | 2026-04-25 | Fixed mesh/zone listing on Konnect control planes |
+| [v0.2.7](https://github.com/Kong/kuma-migrator/releases/tag/v0.2.7) | 2026-04-24 | `migrate`/`plan` output shows mesh name and file paths |
+| [v0.2.6](https://github.com/Kong/kuma-migrator/releases/tag/v0.2.6) | 2026-04-22 | Zone-origin skip on Global CP; normalised old Kuma-internal `MeshService` names |
+| [v0.2.5](https://github.com/Kong/kuma-migrator/releases/tag/v0.2.5) | 2026-04-22 | `--output-format` flag, context-first output directory layout, per-environment skip lists |
+| [v0.2.4](https://github.com/Kong/kuma-migrator/releases/tag/v0.2.4) | 2026-04-21 | Universal-environment detection, split Kubernetes/Universal skip lists |
+| [v0.2.3](https://github.com/Kong/kuma-migrator/releases/tag/v0.2.3) | 2026-04-20 | Added `-k`/`--tls-skip-verify`; stopped trusting `readOnly` from `/_resources` |
+| [v0.2.2](https://github.com/Kong/kuma-migrator/releases/tag/v0.2.2) | 2026-04-19 | Full Universal-format support for Konnect extract and migrate |
+| [v0.2.1](https://github.com/Kong/kuma-migrator/releases/tag/v0.2.1) | 2026-04-18 | Colorized CLI output |
+| [v0.2.0](https://github.com/Kong/kuma-migrator/releases/tag/v0.2.0) | 2026-04-17 | Initial CLI implementation, then moved from a personal repo into the Kong org |
+
 ## Development
 
 ```bash

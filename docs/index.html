@@ -198,6 +198,21 @@
   }
   .badge strong { color: var(--ink) }
 
+  .changelog-stat {
+    font-size: .95rem; color: var(--muted);
+    margin: 0 0 1.75rem;
+  }
+  .changelog-stat strong { color: var(--ink) }
+  .changelog { list-style: none; padding: 0; margin: 0; max-width: 46rem }
+  .changelog li { padding: .8rem 0; border-bottom: 1px solid var(--line) }
+  .changelog li:last-child { border-bottom: none }
+  .changelog .meta { font-size: .8rem; color: var(--muted); margin-bottom: .3rem }
+  .changelog .ver {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    font-weight: 700; color: var(--accent);
+  }
+  .changelog .desc { font-size: .93rem }
+
   footer {
     padding: 2.5rem 0 3.5rem;
     font-size: .9rem;
@@ -418,6 +433,80 @@ make build
     <p>
       Index: <a href="https://github.com/Kong/kuma-migrator/blob/main/docs/README.md">docs/</a>.
     </p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Changelog</h2>
+    <p class="changelog-stat">
+      <strong>15 releases</strong> since April 2026 — three of them this week.
+      Full history: <a href="https://github.com/Kong/kuma-migrator/releases">Releases</a> ·
+      <a href="https://github.com/Kong/kuma-migrator/compare">compare view</a>.
+    </p>
+
+    <ul class="changelog">
+      <li>
+        <div class="meta"><span class="ver">v0.6.2</span> · 2026-09-03</div>
+        <div class="desc">Release artifacts now carry a SLSA build provenance attestation, verifiable with <code>gh attestation verify</code>.</div>
+      </li>
+      <li>
+        <div class="meta"><span class="ver">v0.6.1</span> · 2026-09-02</div>
+        <div class="desc">Closed four <code>--to-latest v3</code> gaps found auditing upstream kuma/kong-mesh: <code>Dataplane</code> <code>BUILTIN</code> gateway type, <code>MeshOPA</code> targetRef/DataSource fixes, <code>MeshLoadBalancingStrategy</code> <code>crossZone</code>, <code>MeshHTTPRoute</code> catch-all.</div>
+      </li>
+      <li>
+        <div class="meta"><span class="ver">v0.6.0</span> · 2026-09-01</div>
+        <div class="desc">Fixed <code>Gateway.spec.gatewayClassName</code> to resolve a real <code>GatewayClass</code> instead of a dead controllerName string; stopped emitting a dead built-in-gateway pair under v3.</div>
+      </li>
+      <li>
+        <div class="meta"><span class="ver">v0.5.0</span> · 2026-08-14</div>
+        <div class="desc">Legacy policy <code>conf</code> bodies are converted to the successor's schema instead of copied verbatim.</div>
+      </li>
+      <li>
+        <div class="meta"><span class="ver">v0.4.0</span> · 2026-08-10</div>
+        <div class="desc">Added <code>--to-latest v2|v3</code> targeting, closed 2.13/2.14 deprecation gaps, fixed <code>OPAPolicy</code> handling and an extract data-loss bug.</div>
+      </li>
+      <li>
+        <div class="meta"><span class="ver">v0.3.1</span> · 2026-06-30</div>
+        <div class="desc">Added Kuma 2.11–2.14 deprecation scans and the <code>MeshIdentity</code>/<code>MeshTrust</code> <code>mtls</code> advisory.</div>
+      </li>
+      <li>
+        <div class="meta"><span class="ver">v0.2.8</span> · 2026-04-25</div>
+        <div class="desc">Fixed mesh/zone listing on Konnect control planes.</div>
+      </li>
+      <li>
+        <div class="meta"><span class="ver">v0.2.7</span> · 2026-04-24</div>
+        <div class="desc"><code>migrate</code>/<code>plan</code> output shows mesh name and file paths.</div>
+      </li>
+      <li>
+        <div class="meta"><span class="ver">v0.2.6</span> · 2026-04-22</div>
+        <div class="desc">Zone-origin skip on Global CP; normalised old Kuma-internal <code>MeshService</code> names.</div>
+      </li>
+      <li>
+        <div class="meta"><span class="ver">v0.2.5</span> · 2026-04-22</div>
+        <div class="desc"><code>--output-format</code> flag, context-first output directory layout, per-environment skip lists.</div>
+      </li>
+      <li>
+        <div class="meta"><span class="ver">v0.2.4</span> · 2026-04-21</div>
+        <div class="desc">Universal-environment detection, split Kubernetes/Universal skip lists.</div>
+      </li>
+      <li>
+        <div class="meta"><span class="ver">v0.2.3</span> · 2026-04-20</div>
+        <div class="desc">Added <code>-k</code>/<code>--tls-skip-verify</code>; stopped trusting <code>readOnly</code> from <code>/_resources</code>.</div>
+      </li>
+      <li>
+        <div class="meta"><span class="ver">v0.2.2</span> · 2026-04-19</div>
+        <div class="desc">Full Universal-format support for Konnect extract and migrate.</div>
+      </li>
+      <li>
+        <div class="meta"><span class="ver">v0.2.1</span> · 2026-04-18</div>
+        <div class="desc">Colorized CLI output.</div>
+      </li>
+      <li>
+        <div class="meta"><span class="ver">v0.2.0</span> · 2026-04-17</div>
+        <div class="desc">Initial CLI implementation, then moved from a personal repo into the Kong org.</div>
+      </li>
+    </ul>
   </div>
 </section>
 
