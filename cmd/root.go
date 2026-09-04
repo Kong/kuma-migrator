@@ -27,7 +27,7 @@ control plane and transforms them across the supported migration paths.
 
 Typical workflow:
 
-  extract  →  migrate --dry-run  →  review the Markdown report  →  migrate
+  extract  →  migrate (--dry-run to preview first)  →  apply
 
 Migration paths:
 

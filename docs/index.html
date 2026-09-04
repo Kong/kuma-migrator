@@ -272,20 +272,18 @@
 <pre><code># 1. Pull resources from your control plane (Global CP first)
 kuma-migrator extract --kube-context prod-global --output-dir ./raw-policies
 
-# 2. Preview every change — writes migration-plan.md, no YAML
-kuma-migrator migrate --input-dir ./raw-policies --output-dir ./migrated --dry-run
-
-# 3. Write the migrated manifests + migration-report.md
+# 2. Write the migrated manifests + migration-report.md
+#    (add --dry-run to preview first — writes migration-plan.md, no YAML)
 kuma-migrator migrate --input-dir ./raw-policies --output-dir ./migrated
 
-# 4. Apply them yourself, in the order the report gives you — this step is
+# 3. Apply them yourself, in the order the report gives you — this step is
 #    manual; kuma-migrator never touches your control plane's actual state
 kubectl apply -f ./migrated/prod-cp-global-ctx/mesh-default/resiliency/</code></pre>
 
     <p class="note">
-      Read the plan before migrating for real, and the report before applying — the apply order
-      matters, and <code>Mesh</code> resources go last because they switch on
-      <code>meshServices.mode: Exclusive</code>.
+      Run step 2 with <code>--dry-run</code> first and read the plan, then read the report
+      before applying — the apply order matters, and <code>Mesh</code> resources go last
+      because they switch on <code>meshServices.mode: Exclusive</code>.
     </p>
   </div>
 </section>
