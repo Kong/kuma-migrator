@@ -6,7 +6,7 @@ Why the 2.x and 3.0 lines need different output, and which checks change behavio
 
 ---
 
-`plan` and `migrate` take `--to-latest v2|v3`, defaulting to `v2`.
+`migrate` (including its `--dry-run` mode) takes `--to-latest v2|v3`, defaulting to `v2`.
 
 | Value | Target | What it does |
 |---|---|---|

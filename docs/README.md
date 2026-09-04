@@ -14,7 +14,7 @@
 | Page | What it covers |
 |---|---|
 | [Extracting from a control plane](extract.md) | `extract`, CP-mode rules, output layout, Konnect, Universal vs Kubernetes format |
-| [Plan and migrate](plan-and-migrate.md) | `plan` and `migrate`, and the layout they produce |
+| [Plan and migrate](plan-and-migrate.md) | `migrate --dry-run` and `migrate`, and the layout they produce |
 | [Choosing a target version](target-version.md) | `--to-latest v2\|v3` and the checks that change with it |
 | [Applying the migrated manifests](apply.md) | Apply order, and cleaning up resources whose kind changed |
 

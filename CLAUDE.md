@@ -40,9 +40,13 @@ Project-unique material that is **not** in the KB stays under `./reference/`:
 ```
 kuma-migrator extract --kube-context <ctx>    --output-dir <dir> [--mesh <mesh>] [--output-format kubernetes|universal]
 kuma-migrator extract --kumactl-context <ctx> --output-dir <dir> [--mesh <mesh>] [--output-format kubernetes|universal]
-kuma-migrator plan    --input-dir <dir> --output-dir <dir>        [--mesh <mesh>] [--to-latest v2|v3]
-kuma-migrator migrate --input-dir <dir> --output-dir <dir>        [--mesh <mesh>] [--to-latest v2|v3]
+kuma-migrator migrate --input-dir <dir> --output-dir <dir>        [--mesh <mesh>] [--to-latest v2|v3] [--dry-run]
 ```
+
+There is no separate `plan` command — `--dry-run` on `migrate` is what used to be `plan` (removed;
+see git history around the `--dry-run` flag's introduction). `migrator.Plan`/`migrator.Migrate` in
+`pkg/migrator` are still two separate Go functions (kept for their own extensive test coverage),
+but `cmd/migrate.go`'s `RunE` is the only caller and picks between them based on `--dry-run`.
 
 ### extract command
 
@@ -193,7 +197,7 @@ Falls back to `kubectl` when the metadata file is absent (older extract output).
 
 ### Target major version (`--to-latest`)
 
-`plan` and `migrate` accept `--to-latest v2|v3` (default `v2`). `TargetVersion` lives in
+`migrate` (including its `--dry-run` mode) accepts `--to-latest v2|v3` (default `v2`). `TargetVersion` lives in
 `pkg/migrator/target.go` (`TargetV2`, `TargetV3`, `ParseTargetVersion`, `IsV3()`,
 `Describe()`, `removalNote()`), and is threaded through
 `Plan`/`Migrate` → `runMigration` → `processFile` → `TransformDocument` → `ScanForDeprecations`
@@ -223,10 +227,13 @@ do not exist before 2.14.
 The selected target is recorded on `MigrationReport.Target` and printed in the report header;
 a v3 report also carries a banner warning that the output must not be applied to a 2.x CP.
 
-### migrate / plan pipeline
+### migrate (and its --dry-run mode) pipeline
 
-`Plan(inputDir, outputDir, meshFilter string)` and `Migrate(inputDir, outputDir, meshFilter string)` call
-`runMigration(inputDir, outputDir string, writeFiles bool, meshFilter string)`.
+`Plan(inputDir, outputDir, meshFilter string, target TargetVersion)` and
+`Migrate(inputDir, outputDir, meshFilter string, target TargetVersion)` call
+`runMigration(inputDir, outputDir string, writeFiles bool, meshFilter string, target TargetVersion)`.
+`cmd/migrate.go`'s `RunE` calls `Plan` when `--dry-run` is set and `Migrate` otherwise — there is
+no separate `plan` subcommand.
 
 `runMigration` detects the context directory and mesh directory from each file's relative path using
 `isKindSubfolder(s string) bool` (returns true for `resiliency`, `routing`, `zero-trust`, `mesh`,
@@ -252,7 +259,7 @@ Files with `meshDir == ""` (no mesh dir detected) are **always** processed regar
 
 `FileReport.CPModeDir` holds the context directory label; `FileReport.MeshDir` holds the plain mesh name (no `mesh-` prefix); `FileReport.InputRelPath` and `FileReport.OutputRelPath` hold the input/output paths relative to their respective root directories (computed in `runMigration` and `processFile` respectively). `FileReport.OutputRelPaths []string` holds **all** output file paths (every doc produced, including split docs like the `-outbound` counterpart from the `from[]`+`to[]` split) — used by the Apply Checklist to enumerate individual files for `kumactl apply`.
 
-**migrate/plan stdout format** — each file line shows: scenario label (fixed 18-char column) · mesh name in bold magenta (omitted for global-scoped) · filename. Two faint gray lines below show `← <inputRelPath>` and `→ <outputRelPath>`. UI helpers: `ui.FileMigrated(scenario, meshName, filename)`, `ui.DocRelPaths(inputRel, outputRel)`.
+**migrate/--dry-run stdout format** — each file line shows: scenario label (fixed 18-char column) · mesh name in bold magenta (omitted for global-scoped) · filename. Two faint gray lines below show `← <inputRelPath>` and `→ <outputRelPath>`. UI helpers: `ui.FileMigrated(scenario, meshName, filename)`, `ui.DocRelPaths(inputRel, outputRel)`.
 
 ### Partially-migrated policies (old Kuma-internal MeshService names)
 

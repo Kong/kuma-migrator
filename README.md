@@ -34,7 +34,7 @@ See [Installation](docs/installation.md) for all options.
 ## Quick start
 
 ```
-extract → plan → migrate → apply
+extract → migrate --dry-run → migrate → apply
 ```
 
 ```bash
@@ -42,23 +42,25 @@ extract → plan → migrate → apply
 kuma-migrator extract --kube-context prod-global --output-dir ./raw-policies
 
 # 2. Preview every change — writes migration-plan.md, no YAML
-kuma-migrator plan --input-dir ./raw-policies --output-dir ./migrated
+kuma-migrator migrate --input-dir ./raw-policies --output-dir ./migrated --dry-run
 
 # 3. Write the migrated manifests + migration-report.md
 kuma-migrator migrate --input-dir ./raw-policies --output-dir ./migrated
 
-# 4. Apply them, in the order the report gives you
+# 4. Apply them yourself, in the order the report gives you — this step is
+#    manual; kuma-migrator never touches your control plane's actual state
 kubectl apply -f ./migrated/prod-cp-global-ctx/mesh-default/resiliency/
 ```
 
-Read the plan before migrating, and the report before applying — the apply **order matters**, and
-`Mesh` resources go last because they switch on `meshServices.mode: Exclusive`.
+Read the plan before migrating for real, and the report before applying — the apply
+**order matters**, and `Mesh` resources go last because they switch on
+`meshServices.mode: Exclusive`.
 
 ## Choosing a target: `--to-latest v2|v3`
 
-`plan` and `migrate` take `--to-latest v2` (default, latest 2.x) or `v3` (3.0). One output cannot
-serve both lines: 3.0 removes fields 2.14 still requires, and some 3.0 replacements
-(`MeshOpenTelemetryBackend`, `SecureDataSource`) do not exist before 2.14.
+`migrate` (including its `--dry-run` mode) takes `--to-latest v2` (default, latest 2.x) or `v3`
+(3.0). One output cannot serve both lines: 3.0 removes fields 2.14 still requires, and some 3.0
+replacements (`MeshOpenTelemetryBackend`, `SecureDataSource`) do not exist before 2.14.
 
 ```bash
 kuma-migrator migrate --input-dir ./raw-policies --output-dir ./migrated --to-latest v3
@@ -107,11 +109,13 @@ Index: [docs/](docs/README.md).
 
 ## Changelog
 
-Actively maintained — 15 releases since April 2026, most recently this week. Full history:
-[Releases](https://github.com/Kong/kuma-migrator/releases) · [compare view](https://github.com/Kong/kuma-migrator/compare).
+Actively maintained — 16 releases since April 2026, four of them in the last four days. Full
+history: [Releases](https://github.com/Kong/kuma-migrator/releases) ·
+[compare view](https://github.com/Kong/kuma-migrator/compare).
 
 | Version | Date | Summary |
 |---|---|---|
+| [v0.6.3](https://github.com/Kong/kuma-migrator/releases/tag/v0.6.3) | 2026-09-04 | The migration report's "Already Migrated"/"Skipped" sections no longer silently drop deprecation warnings attached to those files; fixed `HostnameGenerator` being misclassified as "Skipped" |
 | [v0.6.2](https://github.com/Kong/kuma-migrator/releases/tag/v0.6.2) | 2026-09-03 | Release artifacts now carry a SLSA build provenance attestation, verifiable with `gh attestation verify` |
 | [v0.6.1](https://github.com/Kong/kuma-migrator/releases/tag/v0.6.1) | 2026-09-02 | Closed four `--to-latest v3` gaps found auditing upstream kuma/kong-mesh: `Dataplane` `BUILTIN` gateway type, `MeshOPA` targetRef/DataSource fixes, `MeshLoadBalancingStrategy` `crossZone`, `MeshHTTPRoute` catch-all |
 | [v0.6.0](https://github.com/Kong/kuma-migrator/releases/tag/v0.6.0) | 2026-09-01 | Fixed `Gateway.spec.gatewayClassName` to resolve a real `GatewayClass` instead of a dead controllerName string; stopped emitting a dead built-in-gateway pair under v3 |

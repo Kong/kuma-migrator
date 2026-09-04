@@ -263,27 +263,28 @@
 <section class="alt">
   <div class="wrap">
     <h2>How it works</h2>
-    <p class="lede">Four commands. Extract from a live control plane, preview, migrate, apply.</p>
+    <p class="lede">Two commands, plus a manual apply step. Extract from a live control plane, migrate (preview first with <code>--dry-run</code>), apply.</p>
 
     <figure>
-      <img src="img/pipeline.svg" alt="Pipeline diagram: extract pulls resources from a running control plane, plan previews every change with no YAML written, migrate writes the migrated manifests and report, apply runs kubectl in the report's order.">
+      <img src="img/pipeline.svg" alt="Pipeline diagram: extract pulls resources from a running control plane, migrate writes the migrated manifests and report (add --dry-run to preview with no YAML written), apply — a manual step, not a kuma-migrator command — runs kubectl or kumactl in the report's order.">
     </figure>
 
 <pre><code># 1. Pull resources from your control plane (Global CP first)
 kuma-migrator extract --kube-context prod-global --output-dir ./raw-policies
 
 # 2. Preview every change — writes migration-plan.md, no YAML
-kuma-migrator plan --input-dir ./raw-policies --output-dir ./migrated
+kuma-migrator migrate --input-dir ./raw-policies --output-dir ./migrated --dry-run
 
 # 3. Write the migrated manifests + migration-report.md
 kuma-migrator migrate --input-dir ./raw-policies --output-dir ./migrated
 
-# 4. Apply them, in the order the report gives you
+# 4. Apply them yourself, in the order the report gives you — this step is
+#    manual; kuma-migrator never touches your control plane's actual state
 kubectl apply -f ./migrated/prod-cp-global-ctx/mesh-default/resiliency/</code></pre>
 
     <p class="note">
-      Read the plan before migrating, and the report before applying — the apply order matters,
-      and <code>Mesh</code> resources go last because they switch on
+      Read the plan before migrating for real, and the report before applying — the apply order
+      matters, and <code>Mesh</code> resources go last because they switch on
       <code>meshServices.mode: Exclusive</code>.
     </p>
   </div>
@@ -338,8 +339,8 @@ kubectl apply -f ./migrated/prod-cp-global-ctx/mesh-default/resiliency/</code></
     <h2>Choosing a target: <code>--to-latest v2|v3</code></h2>
     <p class="lede">One output cannot serve both lines.</p>
     <p>
-      <code>plan</code> and <code>migrate</code> take <code>--to-latest v2</code> (default, latest
-      2.x) or <code>v3</code>. 3.0 removes fields 2.14 still requires, and some 3.0 replacements
+      <code>migrate</code> (including its <code>--dry-run</code> mode) takes <code>--to-latest v2</code>
+      (default, latest 2.x) or <code>v3</code>. 3.0 removes fields 2.14 still requires, and some 3.0 replacements
       (<code>MeshOpenTelemetryBackend</code>, <code>SecureDataSource</code>) do not exist before
       2.14.
     </p>
@@ -440,12 +441,16 @@ make build
   <div class="wrap">
     <h2>Changelog</h2>
     <p class="changelog-stat">
-      <strong>15 releases</strong> since April 2026 — three of them this week.
+      <strong>16 releases</strong> since April 2026 — four of them in the last four days.
       Full history: <a href="https://github.com/Kong/kuma-migrator/releases">Releases</a> ·
       <a href="https://github.com/Kong/kuma-migrator/compare">compare view</a>.
     </p>
 
     <ul class="changelog">
+      <li>
+        <div class="meta"><span class="ver">v0.6.3</span> · 2026-09-04</div>
+        <div class="desc">The migration report's "Already Migrated"/"Skipped" sections no longer silently drop deprecation warnings attached to those files; fixed <code>HostnameGenerator</code> being misclassified as "Skipped".</div>
+      </li>
       <li>
         <div class="meta"><span class="ver">v0.6.2</span> · 2026-09-03</div>
         <div class="desc">Release artifacts now carry a SLSA build provenance attestation, verifiable with <code>gh attestation verify</code>.</div>

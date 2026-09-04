@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 180" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif">
-  <title>kuma-migrator pipeline: extract, plan, migrate, apply</title>
+  <title>kuma-migrator pipeline: extract, migrate, apply</title>
   <style>
     :root {
       --bg: #ffffff;
@@ -8,6 +8,8 @@
       --title: #1f2328;
       --muted: #6e7781;
       --accent: #6639ba;
+      --manual: #9a6700;
+      --manual-bg: #fff8c5;
     }
     @media (prefers-color-scheme: dark) {
       :root {
@@ -17,13 +19,19 @@
         --title: #e6edf3;
         --muted: #8b949e;
         --accent: #b083f0;
+        --manual: #e3b341;
+        --manual-bg: #2b2111;
       }
     }
     .card { fill: var(--card-bg); stroke: var(--rule); stroke-width: 1.5; }
+    .card-manual { fill: var(--manual-bg); stroke: var(--manual); stroke-width: 1.5; stroke-dasharray: 5 4; }
     .step-badge { fill: var(--accent); }
+    .step-badge-manual { fill: var(--manual); }
     .step-num { fill: #fff; font-size: 11px; font-weight: 700; text-anchor: middle; }
     .cmd { font-family: SFMono-Regular,Consolas,'Liberation Mono',Menlo,monospace; font-size: 16px; font-weight: 700; fill: var(--accent); }
+    .cmd-manual { font-family: SFMono-Regular,Consolas,'Liberation Mono',Menlo,monospace; font-size: 16px; font-weight: 700; fill: var(--manual); }
     .desc { font-size: 11.5px; fill: var(--muted); }
+    .tag { font-size: 9px; font-weight: 700; letter-spacing: .04em; fill: var(--manual); }
     .arrow { stroke: var(--muted); stroke-width: 1.5; }
   </style>
 
@@ -35,39 +43,31 @@
     </marker>
   </defs>
 
-  <!-- Box 1: extract (x=40..225) -->
-  <rect class="card" x="40" y="50" width="185" height="110" rx="8"/>
+  <!-- Box 1: extract (x=40..310) -->
+  <rect class="card" x="40" y="50" width="270" height="110" rx="8"/>
   <circle class="step-badge" cx="62" cy="72" r="11"/>
   <text class="step-num" x="62" y="76">1</text>
   <text class="cmd" x="56" y="98">extract</text>
-  <text class="desc" x="56" y="120">Pull resources from a</text>
-  <text class="desc" x="56" y="135">running control plane</text>
+  <text class="desc" x="56" y="120">Pull resources from a running control plane</text>
+  <text class="desc" x="56" y="135">writes one YAML file per resource</text>
 
-  <!-- Box 2: plan (x=285..470) -->
-  <rect class="card" x="285" y="50" width="185" height="110" rx="8"/>
-  <circle class="step-badge" cx="307" cy="72" r="11"/>
-  <text class="step-num" x="307" y="76">2</text>
-  <text class="cmd" x="301" y="98">plan</text>
-  <text class="desc" x="301" y="120">Preview every change —</text>
-  <text class="desc" x="301" y="135">no YAML written</text>
+  <!-- Box 2: migrate (x=365..635) -->
+  <rect class="card" x="365" y="50" width="270" height="110" rx="8"/>
+  <circle class="step-badge" cx="387" cy="72" r="11"/>
+  <text class="step-num" x="387" y="76">2</text>
+  <text class="cmd" x="381" y="98">migrate</text>
+  <text class="desc" x="381" y="120">Write migrated manifests</text>
+  <text class="desc" x="381" y="135">+ report (--dry-run to preview)</text>
 
-  <!-- Box 3: migrate (x=530..715) -->
-  <rect class="card" x="530" y="50" width="185" height="110" rx="8"/>
-  <circle class="step-badge" cx="552" cy="72" r="11"/>
-  <text class="step-num" x="552" y="76">3</text>
-  <text class="cmd" x="546" y="98">migrate</text>
-  <text class="desc" x="546" y="120">Write the migrated</text>
-  <text class="desc" x="546" y="135">manifests + report</text>
+  <!-- Box 3: apply (x=690..960) — visually distinct: manual, not a kuma-migrator command -->
+  <rect class="card-manual" x="690" y="50" width="270" height="110" rx="8"/>
+  <text class="tag" x="952" y="66" text-anchor="end">MANUAL STEP</text>
+  <circle class="step-badge-manual" cx="712" cy="72" r="11"/>
+  <text class="step-num" x="712" y="76">3</text>
+  <text class="cmd-manual" x="706" y="98">apply</text>
+  <text class="desc" x="706" y="120">kubectl / kumactl apply,</text>
+  <text class="desc" x="706" y="135">in the order the report gives</text>
 
-  <!-- Box 4: apply (x=775..960) -->
-  <rect class="card" x="775" y="50" width="185" height="110" rx="8"/>
-  <circle class="step-badge" cx="797" cy="72" r="11"/>
-  <text class="step-num" x="797" y="76">4</text>
-  <text class="cmd" x="791" y="98">apply</text>
-  <text class="desc" x="791" y="120">Apply in the order</text>
-  <text class="desc" x="791" y="135">the report gives</text>
-
-  <line class="arrow" x1="231" y1="105" x2="279" y2="105" marker-end="url(#pipe-arrowhead)"/>
-  <line class="arrow" x1="476" y1="105" x2="524" y2="105" marker-end="url(#pipe-arrowhead)"/>
-  <line class="arrow" x1="721" y1="105" x2="769" y2="105" marker-end="url(#pipe-arrowhead)"/>
+  <line class="arrow" x1="316" y1="105" x2="359" y2="105" marker-end="url(#pipe-arrowhead)"/>
+  <line class="arrow" x1="641" y1="105" x2="684" y2="105" marker-end="url(#pipe-arrowhead)"/>
 </svg>

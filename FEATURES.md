@@ -36,14 +36,16 @@ Extracts Kuma policy resources from a running control plane and writes one YAML 
 
 ---
 
-### `kuma-migrator plan`
+### `kuma-migrator migrate --dry-run`
 
-Previews all migration changes in dry-run mode. No output YAML files are written.
+Previews all migration changes in dry-run mode. No output YAML files are written. (There is no
+separate `plan` command — `--dry-run` is a flag on `migrate`.)
 
 | Flag | Short | Required | Description |
 |---|---|---|---|
 | `--input-dir` | `-i` | yes | Directory containing source policy YAML files |
 | `--output-dir` | `-o` | yes | Directory to write `migration-plan.md` |
+| `--dry-run` | | yes (for this mode) | Preview without writing output YAML |
 
 ---
 

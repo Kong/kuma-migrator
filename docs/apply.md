@@ -65,10 +65,10 @@ what each step means, in the order they always appear when present.
     the originals were not modified. (This is about the *input files*; resources whose *kind*
     changed also need deleting from the cluster — see [below](#clean-up-the-originals).)
 11. **Plan your next upgrade** if you haven't yet reached the target version — re-run
-    `extract` + `plan` + `migrate` for each minor-version step.
+    `extract` + `migrate --dry-run` + `migrate` for each minor-version step.
 
-`plan` writes a shorter three-step version of this list (fix warnings, run `migrate`, follow
-`migrate`'s own checklist) — it never applies anything itself.
+`--dry-run` writes a shorter three-step version of this list (fix warnings, run `migrate` for
+real, follow its checklist) — it never applies anything itself.
 
 ## When MeshGateway was zone-local
 

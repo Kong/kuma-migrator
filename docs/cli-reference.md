@@ -13,11 +13,8 @@ kuma-migrator extract  --kube-context <ctx> | --kumactl-context <ctx>
                        --output-dir <dir> [--mesh <name>]
                        [--output-format kubernetes|universal] [--tls-skip-verify]
 
-kuma-migrator plan     --input-dir <dir> --output-dir <dir>
-                       [--mesh <name>] [--to-latest v2|v3]
-
 kuma-migrator migrate  --input-dir <dir> --output-dir <dir>
-                       [--mesh <name>] [--to-latest v2|v3]
+                       [--mesh <name>] [--to-latest v2|v3] [--dry-run]
 
 kuma-migrator version
 kuma-migrator completion <bash|zsh|fish|powershell>
@@ -44,10 +41,12 @@ mutually exclusive; exactly one is required. Kinds containing `Insight` are alwa
 
 See [Extracting from a control plane](extract.md) for CP-mode behaviour and output layout.
 
-## plan / migrate
+## migrate
 
-Identical flags. `plan` writes only `migration-plan.md` and no YAML; `migrate` writes the
-transformed manifests plus `migration-report.md`.
+`--dry-run` writes only `migration-plan.md` and no YAML; without it, `migrate` writes the
+transformed manifests plus `migration-report.md`. Both paths run the identical transform and
+deprecation-scanning logic — `--dry-run` only changes whether files get written and which report
+comes out.
 
 | Flag | Short | Required | Description |
 |---|---|---|---|
@@ -55,6 +54,7 @@ transformed manifests plus `migration-report.md`.
 | `--output-dir` | `-o` | yes | Directory for output files and the Markdown report |
 | `--mesh` | | no | Restrict processing to the named mesh subdirectory (default: all meshes). Files with no mesh directory are always processed |
 | `--to-latest` | | no | Target major version: `v2` (default, latest 2.x) or `v3` (3.0) |
+| `--dry-run` | | no | Preview every change without writing any output YAML — writes `migration-plan.md` instead of `migration-report.md` |
 
 Invalid `--to-latest` values fail before any work is done:
 

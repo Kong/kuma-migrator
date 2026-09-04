@@ -6,25 +6,30 @@ Previewing changes, writing the migrated manifests, and the output layout they l
 
 ---
 
-## Plan (dry run)
+`plan` is not a separate command — it's `migrate --dry-run`. Both paths run the exact same
+transform and deprecation-scanning logic; `--dry-run` only changes whether output files get
+written and which report is produced.
+
+## Dry run (`--dry-run`)
 
 Preview all changes **without writing any output files**.
 Point `--input-dir` at the entire extracted tree and optionally filter to a single mesh:
 
 ```bash
 # All meshes
-kuma-migrator plan --input-dir ./raw-policies --output-dir ./migrated
+kuma-migrator migrate --input-dir ./raw-policies --output-dir ./migrated --dry-run
 
 # Single mesh only
-kuma-migrator plan --input-dir ./raw-policies --output-dir ./migrated --mesh default
+kuma-migrator migrate --input-dir ./raw-policies --output-dir ./migrated --mesh default --dry-run
 
 # Target the 3.0 line instead of the latest 2.x
-kuma-migrator plan --input-dir ./raw-policies --output-dir ./migrated --to-latest v3
+kuma-migrator migrate --input-dir ./raw-policies --output-dir ./migrated --to-latest v3 --dry-run
 ```
 
-Writes `migration-plan.md` in the output directory. Review before proceeding.
+Writes `migration-plan.md` in the output directory. Review before running the same command
+again without `--dry-run`.
 
-## Migrate
+## Migrate (writes output)
 
 Transform policies and write migrated YAML files:
 
@@ -39,7 +44,8 @@ kuma-migrator migrate --input-dir ./raw-policies --output-dir ./migrated --mesh 
 kuma-migrator migrate --input-dir ./raw-policies --output-dir ./migrated --to-latest v3
 ```
 
-See [Choosing a target version](target-version.md) for what `--to-latest` changes.
+Writes `migration-report.md` alongside the migrated YAML files. See
+[Choosing a target version](target-version.md) for what `--to-latest` changes.
 
 ## Output layout
 
