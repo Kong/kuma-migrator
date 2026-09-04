@@ -147,15 +147,25 @@ func writeMarkdown(b *strings.Builder, r *MigrationReport) {
 	}
 
 	// ── Already migrated ──────────────────────────────────────────────────────
+	// A Passthrough scenario means the STRUCTURE is already on the new API —
+	// it says nothing about whether ScanForDeprecations (which runs on every
+	// document regardless of scenario) found anything else to flag, e.g. a
+	// MeshTrafficPermission already using targetRef/from[] with only
+	// namespace/workload tags still carries the from[]-deprecated-for-rules[]
+	// advisory. List those warnings here so passing through unchanged doesn't
+	// also mean silently dropping them.
 	if len(alreadyFiles) > 0 {
 		line(b, "## Already Migrated")
 		line(b, "")
 		line(b, "These files already use the new API and are passed through unchanged.")
 		line(b, "")
 		for _, fr := range alreadyFiles {
-			linef(b, "- `%s`", fr.FileName)
+			linef(b, "- `%s`%s", fr.FileName, alreadyMigratedSuffix(fr))
 		}
 		line(b, "")
+		for _, fr := range alreadyFiles {
+			writeFileNotes(b, fr)
+		}
 	}
 
 	// ── Skipped ───────────────────────────────────────────────────────────────
@@ -165,9 +175,12 @@ func writeMarkdown(b *strings.Builder, r *MigrationReport) {
 		line(b, "No recognised Kuma policy documents found in these files.")
 		line(b, "")
 		for _, fr := range skippedFiles {
-			linef(b, "- `%s`", fr.FileName)
+			linef(b, "- `%s`%s", fr.FileName, alreadyMigratedSuffix(fr))
 		}
 		line(b, "")
+		for _, fr := range skippedFiles {
+			writeFileNotes(b, fr)
+		}
 	}
 
 	// ── Action Items ──────────────────────────────────────────────────────────
@@ -303,6 +316,26 @@ func writeSubfolderTables(b *strings.Builder, order []string, bySubfolder map[st
 }
 
 // notesCell returns the content for the Notes column of a file table row.
+// alreadyMigratedSuffix returns an inline "⚠ N warning(s) — see below" marker
+// for a file's list-item line when ScanForDeprecations found something worth
+// flagging, or "" for a clean file. Mirrors notesCell's wording for the
+// migrated-files table, so the same warning count reads the same way whether
+// the file appears there or in "Already Migrated"/"Skipped".
+func alreadyMigratedSuffix(fr FileReport) string {
+	n := 0
+	for _, dc := range fr.Changes {
+		n += len(dc.Warnings)
+	}
+	switch n {
+	case 0:
+		return ""
+	case 1:
+		return " — ⚠ 1 warning — see below"
+	default:
+		return fmt.Sprintf(" — ⚠ %d warnings — see below", n)
+	}
+}
+
 func notesCell(dc DocChange, isError bool) string {
 	if isError && dc.ErrMsg != "" {
 		return "⚠ error — see Action Items"

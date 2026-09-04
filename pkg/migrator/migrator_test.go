@@ -585,3 +585,100 @@ conf:
 		t.Errorf("expected output at %s", outPath)
 	}
 }
+
+// TestPlan_AlreadyMigratedFileStillShowsWarnings is a regression test for a
+// real customer report (British Airways): a MeshTrafficPermission whose
+// from[]/targetRef use only namespace/workload-label tags (no
+// kuma.io/service or k8s.kuma.io/service-name) resolves to ScenarioPassthrough
+// — the shape is already on the new API — but it still carries the
+// from[]-deprecated-for-rules[] advisory from ScanForDeprecations, which runs
+// on every document regardless of scenario. The "Already Migrated" section
+// used to print just the filename, silently dropping that advisory. Reported
+// here: docs/migration-report.md's Already-Migrated/Skipped sections must
+// surface any warnings the same way the migrated-files table does.
+func TestPlan_AlreadyMigratedFileStillShowsWarnings(t *testing.T) {
+	in := tempDir(t)
+	out := tempDir(t)
+
+	writeTempFile(t, in, "mtp.yaml", `apiVersion: kuma.io/v1alpha1
+kind: MeshTrafficPermission
+metadata:
+  name: default-by-namespace-al
+  namespace: kong-mesh-system
+spec:
+  targetRef:
+    kind: Dataplane
+    labels:
+      k8s.kuma.io/namespace: al
+  from:
+    - targetRef:
+        kind: MeshSubset
+        tags:
+          k8s.kuma.io/namespace: al
+      default:
+        action: Allow
+`)
+
+	if err := Plan(in, out, "", TargetV2); err != nil {
+		t.Fatalf("Plan: %v", err)
+	}
+
+	content, err := os.ReadFile(filepath.Join(out, "migration-plan.md"))
+	if err != nil {
+		t.Fatalf("read report: %v", err)
+	}
+	body := string(content)
+
+	if !strings.Contains(body, "## Already Migrated") {
+		t.Fatalf("expected the file to land in Already Migrated, got:\n%s", body)
+	}
+	if !strings.Contains(body, "warning") {
+		t.Errorf("expected the from[]-deprecated-for-rules[] warning to be surfaced for an "+
+			"Already Migrated file, got:\n%s", body)
+	}
+	if !strings.Contains(body, "rules[]") {
+		t.Errorf("expected the from[]->rules[] advisory text in the report, got:\n%s", body)
+	}
+}
+
+// TestPlan_HostnameGeneratorIsAlreadyMigratedNotSkipped is another regression
+// test from the same British Airways report: HostnameGenerator has no "Mesh"
+// prefix, so DetectScenario's generic fallback used to classify it as
+// ScenarioSkipped — landing it under "## Skipped" with the heading "No
+// recognised Kuma policy documents found in these files", even though it IS a
+// recognised, actively-scanned Kuma resource (its spec.template is checked by
+// warnHostnameGeneratorTemplate). It belongs in recognisedNonPolicyKinds
+// alongside ContainerPatch, reported as "Already Migrated" instead.
+func TestPlan_HostnameGeneratorIsAlreadyMigratedNotSkipped(t *testing.T) {
+	in := tempDir(t)
+	out := tempDir(t)
+
+	writeTempFile(t, in, "hostname-generator.yaml", `apiVersion: kuma.io/v1alpha1
+kind: HostnameGenerator
+metadata:
+  name: local-mesh-external-service
+spec:
+  selector:
+    meshExternalService:
+      matchLabels:
+        kuma.io/origin: zone
+  template: '{{ .DisplayName }}.extsvc.mesh.local'
+`)
+
+	if err := Plan(in, out, "", TargetV2); err != nil {
+		t.Fatalf("Plan: %v", err)
+	}
+
+	content, err := os.ReadFile(filepath.Join(out, "migration-plan.md"))
+	if err != nil {
+		t.Fatalf("read report: %v", err)
+	}
+	body := string(content)
+
+	if !strings.Contains(body, "## Already Migrated") {
+		t.Errorf("expected HostnameGenerator to land in Already Migrated, got:\n%s", body)
+	}
+	if strings.Contains(body, "## Skipped") {
+		t.Errorf("HostnameGenerator should not be reported as Skipped, got:\n%s", body)
+	}
+}

@@ -32,8 +32,17 @@ var knownLegacyTypes = map[string]bool{
 // containers via JSON patch) and has no targetRef policy successor. It is not
 // part of the 12 legacy policy resources removed in Kuma 3.0 and is still served
 // there, so it needs no action on any migration path.
+//
+// HostnameGenerator has no "Mesh" prefix, so without this entry it falls
+// through to the generic "not a Kuma policy" ScenarioSkipped branch below —
+// which is wrong: it IS a recognised, actively-scanned Kuma resource
+// (warnHostnameGeneratorTemplate checks its spec.template), just one with no
+// structural migration of its own. Reported as "Already Migrated" like
+// ContainerPatch rather than "Skipped" so a real template warning doesn't end
+// up printed under a "no recognised Kuma policy documents" heading.
 var recognisedNonPolicyKinds = map[string]bool{
-	"ContainerPatch": true,
+	"ContainerPatch":    true,
+	"HostnameGenerator": true,
 }
 
 // probe is a minimal struct used only for scenario detection — never for transformation.
@@ -49,7 +58,7 @@ type probe struct {
 }
 
 type probeSpec struct {
-	TargetRef *probeRef  `json:"targetRef"`
+	TargetRef *probeRef    `json:"targetRef"`
 	To        []probeEntry `json:"to"`
 	From      []probeEntry `json:"from"`
 }
