@@ -112,6 +112,7 @@
     border: 1px solid var(--line);
   }
   pre code { background: none; padding: 0; font-size: inherit }
+  pre .c { color: var(--muted); font-style: italic }
 
   /* ---- hero ---- */
   .hero {
@@ -269,15 +270,15 @@
       <img src="img/pipeline.svg" alt="Pipeline diagram: extract pulls resources from a running control plane, migrate writes the migrated manifests and report (add --dry-run to preview with no YAML written), apply — a manual step, not a kuma-migrator command — runs kubectl or kumactl in the report's order.">
     </figure>
 
-<pre><code># 1. Pull resources from your control plane (Global CP first)
+<pre><code><span class="c"># 1. Pull resources from your control plane (Global CP first)</span>
 kuma-migrator extract --kube-context prod-global --output-dir ./raw-policies
 
-# 2. Write the migrated manifests + migration-report.md
-#    (add --dry-run to preview first — writes migration-plan.md, no YAML)
+<span class="c"># 2. Write the migrated manifests + migration-report.md
+#    (add --dry-run to preview first — writes migration-plan.md, no YAML)</span>
 kuma-migrator migrate --input-dir ./raw-policies --output-dir ./migrated
 
-# 3. Apply them yourself, in the order the report gives you — this step is
-#    manual; kuma-migrator never touches your control plane's actual state
+<span class="c"># 3. Apply them yourself, in the order the report gives you — this step is
+#    manual; kuma-migrator never touches your control plane's actual state</span>
 kubectl apply -f ./migrated/prod-cp-global-ctx/mesh-default/resiliency/</code></pre>
 
     <p class="note">
@@ -397,7 +398,7 @@ gh attestation verify "kuma-migrator_${VERSION}_linux_amd64.tar.gz" --repo Kong/
     <h3>From source</h3>
 <pre><code>git clone https://github.com/Kong/kuma-migrator.git &amp;&amp; cd kuma-migrator
 make build
-# binary at ./dist/kuma-migrator</code></pre>
+<span class="c"># binary at ./dist/kuma-migrator</span></code></pre>
 
     <p>
       Full options: <a href="https://github.com/Kong/kuma-migrator/blob/main/docs/installation.md">installation guide</a>.
