@@ -14,7 +14,7 @@ var extractCmd = &cobra.Command{
 	Short: "Extract Kuma policy resources from a running control plane",
 	Long: `Connects to a Kuma or Kong Mesh control plane and writes one YAML file per
 resource to --output-dir. The output directory can then be used directly as
-the --input-dir for 'kuma-migrator plan' or 'kuma-migrator migrate'.
+the --input-dir for 'kuma-migrator migrate' (add --dry-run to preview first).
 
 Resources whose kind contains "Insight" (e.g. ZoneInsight, DataplaneInsight)
 are automatically excluded — these are control-plane status objects, not policies.
@@ -40,8 +40,8 @@ Two connection modes are supported (mutually exclusive):
   # Extract via kumactl (uses ~/.kumactl/config)
   kuma-migrator extract --kumactl-context my-cp --output-dir ./raw-policies
 
-  # Then plan the migration
-  kuma-migrator plan --input-dir ./raw-policies --output-dir ./plan`,
+  # Then preview the migration
+  kuma-migrator migrate --input-dir ./raw-policies --output-dir ./migrated --dry-run`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if extractKubeContext == "" && extractKumactlContext == "" {
 			return fmt.Errorf("one of --kube-context or --kumactl-context is required")

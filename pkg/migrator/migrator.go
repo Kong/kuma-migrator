@@ -77,7 +77,7 @@ type MigrationReport struct {
 // mesh subdirectory (e.g. "default"). Files without a mesh directory prefix
 // are always processed.
 func Plan(inputDir, outputDir, meshFilter string, target TargetVersion) error {
-	ui.Header("plan")
+	ui.Header("migrate --dry-run")
 	report, err := runMigration(inputDir, outputDir, false, meshFilter, target)
 	if err != nil {
 		return err
