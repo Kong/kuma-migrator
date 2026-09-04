@@ -61,6 +61,8 @@
     --accent-d:  #4f2a94;
     --old:       #b3261e;
     --new:       #0f6f5c;
+    --manual:    #9a6700;
+    --accent2:   #3d1f75;
   }
 
   @media (prefers-color-scheme: dark) {
@@ -75,6 +77,8 @@
       --accent-d: #cba8f7;
       --old:      #ff7b72;
       --new:      #56d4a4;
+      --manual:   #e3b341;
+      --accent2:  #e2a6ff;
     }
   }
 
@@ -113,6 +117,17 @@
   }
   pre code { background: none; padding: 0; font-size: inherit }
   pre .c { color: var(--muted); font-style: italic }
+  /* kuma-migrator command highlighting: binary/subcommand echo the diagram's
+     purple/dark-purple command boxes; flags are the diagram's teal "new"
+     accent; values stay plain but semibold. The apply line echoes the
+     diagram's amber "manual step" instead, since it isn't a kuma-migrator
+     command at all. */
+  pre .k-bin      { color: var(--accent); font-weight: 700 }
+  pre .k-sub      { color: var(--accent2); font-weight: 700 }
+  pre .k-flag     { color: var(--new) }
+  pre .k-val      { color: var(--ink); font-weight: 600 }
+  pre .k-manual   { color: var(--manual); font-weight: 600 }
+  pre .k-manual-b { color: var(--manual); font-weight: 700 }
 
   /* ---- hero ---- */
   .hero {
@@ -271,15 +286,15 @@
     </figure>
 
 <pre><code><span class="c"># 1. Pull resources from your control plane (Global CP first)</span>
-kuma-migrator extract --kube-context prod-global --output-dir ./raw-policies
+<span class="k-bin">kuma-migrator</span> <span class="k-sub">extract</span> <span class="k-flag">--kube-context</span> <span class="k-val">prod-global</span> <span class="k-flag">--output-dir</span> <span class="k-val">./raw-policies</span>
 
 <span class="c"># 2. Write the migrated manifests + migration-report.md
 #    (add --dry-run to preview first — writes migration-plan.md, no YAML)</span>
-kuma-migrator migrate --input-dir ./raw-policies --output-dir ./migrated
+<span class="k-bin">kuma-migrator</span> <span class="k-sub">migrate</span> <span class="k-flag">--input-dir</span> <span class="k-val">./raw-policies</span> <span class="k-flag">--output-dir</span> <span class="k-val">./migrated</span>
 
 <span class="c"># 3. Apply them yourself, in the order the report gives you — this step is
 #    manual; kuma-migrator never touches your control plane's actual state</span>
-kubectl apply -f ./migrated/prod-cp-global-ctx/mesh-default/resiliency/</code></pre>
+<span class="k-manual">kubectl</span> <span class="k-manual-b">apply</span> <span class="k-flag">-f</span> <span class="k-val">./migrated/prod-cp-global-ctx/mesh-default/resiliency/</span></code></pre>
 
     <p class="note">
       Run step 2 with <code>--dry-run</code> first and read the plan, then read the report
