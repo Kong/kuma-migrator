@@ -109,12 +109,13 @@ Index: [docs/](docs/README.md).
 
 ## Changelog
 
-Actively maintained — 16 releases since April 2026, four of them in the last four days. Full
+Actively maintained — 17 releases since April 2026, five of them in the last four days. Full
 history: [Releases](https://github.com/Kong/kuma-migrator/releases) ·
 [compare view](https://github.com/Kong/kuma-migrator/compare).
 
 | Version | Date | Summary |
 |---|---|---|
+| [v0.7.0](https://github.com/Kong/kuma-migrator/releases/tag/v0.7.0) | 2026-09-04 | **Breaking:** removed the `plan` command — use `migrate --dry-run` instead, same flags and output. Also redesigned the pipeline diagram to mark `apply` as a manual step, not a command |
 | [v0.6.3](https://github.com/Kong/kuma-migrator/releases/tag/v0.6.3) | 2026-09-04 | The migration report's "Already Migrated"/"Skipped" sections no longer silently drop deprecation warnings attached to those files; fixed `HostnameGenerator` being misclassified as "Skipped" |
 | [v0.6.2](https://github.com/Kong/kuma-migrator/releases/tag/v0.6.2) | 2026-09-03 | Release artifacts now carry a SLSA build provenance attestation, verifiable with `gh attestation verify` |
 | [v0.6.1](https://github.com/Kong/kuma-migrator/releases/tag/v0.6.1) | 2026-09-02 | Closed four `--to-latest v3` gaps found auditing upstream kuma/kong-mesh: `Dataplane` `BUILTIN` gateway type, `MeshOPA` targetRef/DataSource fixes, `MeshLoadBalancingStrategy` `crossZone`, `MeshHTTPRoute` catch-all |

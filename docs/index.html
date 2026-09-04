@@ -441,12 +441,16 @@ make build
   <div class="wrap">
     <h2>Changelog</h2>
     <p class="changelog-stat">
-      <strong>16 releases</strong> since April 2026 — four of them in the last four days.
+      <strong>17 releases</strong> since April 2026 — five of them in the last four days.
       Full history: <a href="https://github.com/Kong/kuma-migrator/releases">Releases</a> ·
       <a href="https://github.com/Kong/kuma-migrator/compare">compare view</a>.
     </p>
 
     <ul class="changelog">
+      <li>
+        <div class="meta"><span class="ver">v0.7.0</span> · 2026-09-04</div>
+        <div class="desc"><strong>Breaking:</strong> removed the <code>plan</code> command — use <code>migrate --dry-run</code> instead, same flags and output. Also redesigned the pipeline diagram to mark <code>apply</code> as a manual step, not a command.</div>
+      </li>
       <li>
         <div class="meta"><span class="ver">v0.6.3</span> · 2026-09-04</div>
         <div class="desc">The migration report's "Already Migrated"/"Skipped" sections no longer silently drop deprecation warnings attached to those files; fixed <code>HostnameGenerator</code> being misclassified as "Skipped".</div>
