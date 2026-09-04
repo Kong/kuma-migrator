@@ -682,3 +682,83 @@ spec:
 		t.Errorf("HostnameGenerator should not be reported as Skipped, got:\n%s", body)
 	}
 }
+
+// TestPlan_SkippedFileStillShowsWarnings covers the other half of the
+// Already-Migrated/Skipped warning-surfacing fix: a genuinely non-Kuma,
+// non-Mesh-prefixed resource (a Deployment) still gets ScanForDeprecations
+// run on it (the post-pass is unconditional), and warnDeprecatedAnnotations
+// fires for ANY kind carrying a deprecated kuma.io/* annotation — not just
+// Mesh* policies. Before the fix, this warning was silently dropped the same
+// way the MeshTrafficPermission one was.
+func TestPlan_SkippedFileStillShowsWarnings(t *testing.T) {
+	in := tempDir(t)
+	out := tempDir(t)
+
+	writeTempFile(t, in, "deployment.yaml", `apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-app
+  annotations:
+    kuma.io/virtual-probes: "true"
+spec:
+  replicas: 1
+`)
+
+	if err := Plan(in, out, "", TargetV2); err != nil {
+		t.Fatalf("Plan: %v", err)
+	}
+
+	content, err := os.ReadFile(filepath.Join(out, "migration-plan.md"))
+	if err != nil {
+		t.Fatalf("read report: %v", err)
+	}
+	body := string(content)
+
+	if !strings.Contains(body, "## Skipped") {
+		t.Fatalf("expected a plain Deployment to land in Skipped, got:\n%s", body)
+	}
+	if !strings.Contains(body, "virtual-probes") {
+		t.Errorf("expected the deprecated kuma.io/virtual-probes annotation warning to be "+
+			"surfaced for a Skipped file, got:\n%s", body)
+	}
+}
+
+// TestPlan_CleanAlreadyMigratedFileHasNoWarningMarker is the negative case for
+// the same fix: a file with nothing to flag must not gain a spurious
+// "— see below" suffix or an empty detail block.
+func TestPlan_CleanAlreadyMigratedFileHasNoWarningMarker(t *testing.T) {
+	in := tempDir(t)
+	out := tempDir(t)
+
+	writeTempFile(t, in, "clean-mtp.yaml", `apiVersion: kuma.io/v1alpha1
+kind: MeshTrafficPermission
+metadata:
+  name: clean
+spec:
+  targetRef:
+    kind: Mesh
+  rules:
+    - default:
+        allow:
+          - spiffeID:
+              value: "spiffe://mesh.local/ns/demo/sa/backend"
+              type: Exact
+`)
+
+	if err := Plan(in, out, "", TargetV2); err != nil {
+		t.Fatalf("Plan: %v", err)
+	}
+
+	content, err := os.ReadFile(filepath.Join(out, "migration-plan.md"))
+	if err != nil {
+		t.Fatalf("read report: %v", err)
+	}
+	body := string(content)
+
+	if !strings.Contains(body, "## Already Migrated") {
+		t.Fatalf("expected the file to land in Already Migrated, got:\n%s", body)
+	}
+	if strings.Contains(body, "see below") {
+		t.Errorf("clean file must not get a warning-count marker, got:\n%s", body)
+	}
+}
