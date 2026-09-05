@@ -38,11 +38,11 @@ extract → migrate → apply
 ```
 
 ```bash
-# 1a. Pull resources via kubectl (self-hosted, Kubernetes-backed CP)
-kuma-migrator extract --kube-context prod-global --output-dir ./raw-policies
+# 1a. Pull resources via kumactl (self-hosted OR Konnect-hosted, zonal or Global CP)
+kuma-migrator extract --kumactl-context konnect-global-prod --output-dir ./raw-policies
 
-# 1b. ...or via kumactl (self-hosted OR Konnect-hosted, zonal or Global CP)
-kuma-migrator extract --kumactl-context prod-global --output-dir ./raw-policies
+# 1b. ...or via kubectl (self-hosted, Kubernetes-backed CP)
+kuma-migrator extract --kube-context zone-eu-west1-prod --output-dir ./raw-policies
 
 # 2. Write the migrated manifests + migration-report.md
 #    (add --dry-run to preview first — writes migration-plan.md, no YAML)
@@ -51,14 +51,14 @@ kuma-migrator migrate --input-dir ./raw-policies --output-dir ./migrated
 # Now read migration-report.md — it gives the exact apply order for your
 # setup (Mesh resources go last: they switch on meshServices.mode: Exclusive)
 
-# 3a. Apply them yourself if you extracted via --kube-context — this step
-#     is manual; kuma-migrator never touches your control plane's state
-kubectl apply -f ./migrated/prod-cp-global-ctx/mesh-default/resiliency/
-
-# 3b. ...or via kumactl if you used --kumactl-context (self-hosted or
+# 3a. Apply them yourself if you used --kumactl-context (self-hosted or
 #     Konnect) — kumactl rejects a directory, so apply one file at a time
-kumactl config use-context prod-cp
-kumactl apply -f ./migrated/prod-cp-global-ctx/mesh-default/resiliency/MeshTimeout-my-timeout.yaml
+kumactl config use-context konnect-global-prod
+kumactl apply -f ./migrated/konnect-global-prod-global-ctx/mesh-default/resiliency/MeshTimeout-my-timeout.yaml
+
+# 3b. ...or via kubectl if you extracted via --kube-context — this step
+#     is manual; kuma-migrator never touches your control plane's state
+kubectl apply -f ./migrated/zone-eu-west1-prod-zone-ctx/mesh-default/resiliency/
 ```
 
 ## Choosing a target: `--to-latest v2|v3`

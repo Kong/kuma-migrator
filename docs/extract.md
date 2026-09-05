@@ -68,7 +68,7 @@ subdirectories inside. Global-scoped resources (Zone, HostnameGenerator, …) go
 
 ```
 <output-dir>/
-  prod-cp-global-ctx/              ← context "prod-cp" + global CP
+  konnect-global-prod-global-ctx/  ← context "konnect-global-prod" + global CP
     mesh-default/                  ← mesh (prefixed with "mesh-")
       resiliency/
       routing/
@@ -79,7 +79,7 @@ subdirectories inside. Global-scoped resources (Zone, HostnameGenerator, …) go
       resiliency/
     global-scoped-resources/       ← global-scoped resources (Zone, HostnameGenerator, …)
       mesh/
-  zone-eu-west-zone-ctx/           ← context "zone-eu-west" + zone CP
+  zone-eu-west1-prod-zone-ctx/     ← context "zone-eu-west1-prod" + zone CP
     mesh-default/
       resiliency/
 ```
@@ -93,11 +93,11 @@ kuma-migrator extract --kumactl-context global-cp --output-dir ./raw-policies --
 ## Always extract from the Global CP first
 
 ```bash
-# kubectl path
-kuma-migrator extract --kube-context prod-global --output-dir ./raw-policies
-
 # kumactl path
 kuma-migrator extract --kumactl-context global-cp --output-dir ./raw-policies
+
+# ...or kubectl path — same CP, either tool
+kuma-migrator extract --kube-context global-cp --output-dir ./raw-policies
 ```
 
 The tool auto-detects the CP mode and prints it. On a Global CP it also lists

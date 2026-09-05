@@ -36,17 +36,17 @@ what each step means, in the order they always appear when present.
 7. **Apply policies** (resiliency, routing, zero-trust, observability), one context at a time,
    in the order the report lists them. **The command differs by how that context was
    extracted** — the report gets this from `.kuma-migrator.json`, written during `extract`:
-   - **`extract --kube-context`** → a single directory apply per context:
-     ```bash
-     kubectl apply -f ./migrated/prod-cp-global-ctx/mesh-default/resiliency/
-     ```
    - **`extract --kumactl-context`** (including every Konnect-hosted CP) → `kumactl` rejects a
      directory as `-f`, so the report lists **one `kumactl apply -f <file>` per file**,
      preceded by a context reminder:
      ```bash
-     kumactl config use-context prod-cp
-     kumactl apply -f ./migrated/prod-cp-global-ctx/mesh-default/resiliency/MeshTimeout-my-timeout.yaml
-     kumactl apply -f ./migrated/prod-cp-global-ctx/mesh-default/resiliency/MeshRetry-my-retry.yaml
+     kumactl config use-context konnect-global-prod
+     kumactl apply -f ./migrated/konnect-global-prod-global-ctx/mesh-default/resiliency/MeshTimeout-my-timeout.yaml
+     kumactl apply -f ./migrated/konnect-global-prod-global-ctx/mesh-default/resiliency/MeshRetry-my-retry.yaml
+     ```
+   - **`extract --kube-context`** → a single directory apply per context:
+     ```bash
+     kubectl apply -f ./migrated/zone-eu-west1-prod-zone-ctx/mesh-default/resiliency/
      ```
 
    Global-scoped resources (`global-scoped-resources/`, e.g. Kubernetes-native Gateway API CRDs)

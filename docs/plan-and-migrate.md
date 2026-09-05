@@ -53,7 +53,7 @@ The output preserves the input layout, keeping context and mesh subdirectories i
 
 ```
 migrated/
-  prod-cp-global-ctx/                ← context + CP mode dir
+  konnect-global-prod-global-ctx/    ← context + CP mode dir
     mesh-default/                    ← mesh (prefixed with "mesh-")
       resiliency/
       routing/
@@ -65,7 +65,7 @@ migrated/
         Gateway-my-gw.yaml
         HTTPRoute-my-route.yaml
       mesh/
-  zone-eu-west-zone-ctx/             ← zone-origin policies
+  zone-eu-west1-prod-zone-ctx/       ← zone-origin policies
     mesh-default/
       resiliency/
 ```

@@ -34,11 +34,11 @@ Two connection modes are supported (mutually exclusive):
                    (or an authenticated HTTP GET instead of the CLI, for a
                    Konnect-hosted control plane), writing one file per
                    resource.`,
-	Example: `  # Extract via kubectl
-  kuma-migrator extract --kube-context prod-global --output-dir ./raw-policies
+	Example: `  # Extract via kumactl (uses ~/.kumactl/config; self-hosted OR Konnect)
+  kuma-migrator extract --kumactl-context konnect-global-prod --output-dir ./raw-policies
 
-  # Extract via kumactl (uses ~/.kumactl/config)
-  kuma-migrator extract --kumactl-context my-cp --output-dir ./raw-policies
+  # ...or via kubectl
+  kuma-migrator extract --kube-context zone-eu-west1-prod --output-dir ./raw-policies
 
   # Then preview the migration
   kuma-migrator migrate --input-dir ./raw-policies --output-dir ./migrated --dry-run`,

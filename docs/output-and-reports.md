@@ -16,13 +16,13 @@ and the filename. Two faint lines below show where it came from (`←`) and wher
   kuma-migrator  migrate --dry-run
 
   ✓  OPA               default  meshopa.yaml
-       ←  prod-cp-global-ctx/mesh-default/zero-trust/meshopa.yaml
-       →  prod-cp-global-ctx/mesh-default/zero-trust/MeshOPA-my-opa.yaml
+       ←  konnect-global-prod-global-ctx/mesh-default/zero-trust/meshopa.yaml
+       →  konnect-global-prod-global-ctx/mesh-default/zero-trust/MeshOPA-my-opa.yaml
        ⚠  MeshOPA "my-opa": spec.targetRef.{name,namespace} still accepted in 2.14 but
           removed in 3.0 — use spec.targetRef.labels["kuma.io/display-name"] instead. …
   ✓  RULES             default  meshtls.yaml
-       ←  prod-cp-global-ctx/mesh-default/zero-trust/meshtls.yaml
-       →  prod-cp-global-ctx/mesh-default/zero-trust/MeshTLS-kuma-system-strict-tls.yaml
+       ←  konnect-global-prod-global-ctx/mesh-default/zero-trust/meshtls.yaml
+       →  konnect-global-prod-global-ctx/mesh-default/zero-trust/MeshTLS-kuma-system-strict-tls.yaml
        ⚠  MeshTLS "strict-tls": from[] migrated to rules[] (Kuma 2.10+). …
   ●  ALREADY MIGRATED  default  mesh-retry.yaml
   –  SKIP              deployment.yaml: no recognised Kuma policy documents
@@ -47,7 +47,7 @@ contains:
 
 - **Summary table** — files processed, migrated, already migrated, skipped, errors
 - **Files That Would Be Migrated** (`--dry-run`) / **Migrated Files** (real run) — compact table
-  per `contextDir/meshDir/subfolder` (e.g. `prod-cp-global-ctx/default/resiliency/`), with
+  per `contextDir/meshDir/subfolder` (e.g. `konnect-global-prod-global-ctx/default/resiliency/`), with
   per-file warning blocks where relevant; `mesh/` noted as "apply last"
 - **Already Migrated** — files passed through unchanged, with any deprecation warnings still
   listed per file

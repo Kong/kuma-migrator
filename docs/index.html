@@ -285,11 +285,11 @@
       <img src="img/pipeline.svg" alt="Pipeline diagram: extract pulls resources from a running control plane, migrate writes the migrated manifests and report (add --dry-run to preview with no YAML written), apply — a manual step, not a kuma-migrator command — runs kubectl or kumactl in the report's order.">
     </figure>
 
-<pre><code><span class="c"># 1a. Pull resources via kubectl (self-hosted, Kubernetes-backed CP)</span>
-<span class="k-bin">kuma-migrator</span> <span class="k-sub">extract</span> <span class="k-flag">--kube-context</span> <span class="k-val">prod-global</span> <span class="k-flag">--output-dir</span> <span class="k-val">./raw-policies</span>
+<pre><code><span class="c"># 1a. Pull resources via kumactl (self-hosted OR Konnect-hosted, zonal or Global CP)</span>
+<span class="k-bin">kuma-migrator</span> <span class="k-sub">extract</span> <span class="k-flag">--kumactl-context</span> <span class="k-val">konnect-global-prod</span> <span class="k-flag">--output-dir</span> <span class="k-val">./raw-policies</span>
 
-<span class="c"># 1b. ...or via kumactl (self-hosted OR Konnect-hosted, zonal or Global CP)</span>
-<span class="k-bin">kuma-migrator</span> <span class="k-sub">extract</span> <span class="k-flag">--kumactl-context</span> <span class="k-val">prod-global</span> <span class="k-flag">--output-dir</span> <span class="k-val">./raw-policies</span>
+<span class="c"># 1b. ...or via kubectl (self-hosted, Kubernetes-backed CP)</span>
+<span class="k-bin">kuma-migrator</span> <span class="k-sub">extract</span> <span class="k-flag">--kube-context</span> <span class="k-val">zone-eu-west1-prod</span> <span class="k-flag">--output-dir</span> <span class="k-val">./raw-policies</span>
 
 <span class="c"># 2. Write the migrated manifests + migration-report.md
 #    (add --dry-run to preview first — writes migration-plan.md, no YAML)</span>
@@ -298,14 +298,14 @@
 <span class="c"># Now read migration-report.md — it gives the exact apply order for your
 # setup (Mesh resources go last: they switch on meshServices.mode: Exclusive)</span>
 
-<span class="c"># 3a. Apply them yourself if you extracted via --kube-context — this step
-#     is manual; kuma-migrator never touches your control plane's state</span>
-<span class="k-manual">kubectl</span> <span class="k-manual-b">apply</span> <span class="k-flag">-f</span> <span class="k-val">./migrated/prod-cp-global-ctx/mesh-default/resiliency/</span>
-
-<span class="c"># 3b. ...or via kumactl if you used --kumactl-context (self-hosted or
+<span class="c"># 3a. Apply them yourself if you used --kumactl-context (self-hosted or
 #     Konnect) — kumactl rejects a directory, so apply one file at a time</span>
-<span class="k-manual">kumactl</span> <span class="k-manual-b">config use-context</span> <span class="k-val">prod-cp</span>
-<span class="k-manual">kumactl</span> <span class="k-manual-b">apply</span> <span class="k-flag">-f</span> <span class="k-val">./migrated/prod-cp-global-ctx/mesh-default/resiliency/MeshTimeout-my-timeout.yaml</span></code></pre>
+<span class="k-manual">kumactl</span> <span class="k-manual-b">config use-context</span> <span class="k-val">konnect-global-prod</span>
+<span class="k-manual">kumactl</span> <span class="k-manual-b">apply</span> <span class="k-flag">-f</span> <span class="k-val">./migrated/konnect-global-prod-global-ctx/mesh-default/resiliency/MeshTimeout-my-timeout.yaml</span>
+
+<span class="c"># 3b. ...or via kubectl if you extracted via --kube-context — this step
+#     is manual; kuma-migrator never touches your control plane's state</span>
+<span class="k-manual">kubectl</span> <span class="k-manual-b">apply</span> <span class="k-flag">-f</span> <span class="k-val">./migrated/zone-eu-west1-prod-zone-ctx/mesh-default/resiliency/</span></code></pre>
   </div>
 </section>
 
