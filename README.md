@@ -48,9 +48,14 @@ kuma-migrator extract --kumactl-context prod-global --output-dir ./raw-policies
 #    (add --dry-run to preview first — writes migration-plan.md, no YAML)
 kuma-migrator migrate --input-dir ./raw-policies --output-dir ./migrated
 
-# 3. Apply them yourself, in the order the report gives you — this step is
-#    manual; kuma-migrator never touches your control plane's actual state
+# 3a. Apply them yourself if you extracted via --kube-context — this step
+#     is manual; kuma-migrator never touches your control plane's state
 kubectl apply -f ./migrated/prod-cp-global-ctx/mesh-default/resiliency/
+
+# 3b. ...or via kumactl if you used --kumactl-context (self-hosted or
+#     Konnect) — kumactl rejects a directory, so apply one file at a time
+kumactl config use-context prod-cp
+kumactl apply -f ./migrated/prod-cp-global-ctx/mesh-default/resiliency/MeshTimeout-my-timeout.yaml
 ```
 
 Run step 2 with `--dry-run` first and read the plan, then read the report before applying —
