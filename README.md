@@ -38,8 +38,11 @@ extract → migrate → apply
 ```
 
 ```bash
-# 1. Pull resources from your control plane (Global CP first)
+# 1a. Pull resources via kubectl (self-hosted, Kubernetes-backed CP)
 kuma-migrator extract --kube-context prod-global --output-dir ./raw-policies
+
+# 1b. ...or via kumactl (self-hosted OR Konnect-hosted, zonal or Global CP)
+kuma-migrator extract --kumactl-context prod-global --output-dir ./raw-policies
 
 # 2. Write the migrated manifests + migration-report.md
 #    (add --dry-run to preview first — writes migration-plan.md, no YAML)

@@ -285,8 +285,11 @@
       <img src="img/pipeline.svg" alt="Pipeline diagram: extract pulls resources from a running control plane, migrate writes the migrated manifests and report (add --dry-run to preview with no YAML written), apply — a manual step, not a kuma-migrator command — runs kubectl or kumactl in the report's order.">
     </figure>
 
-<pre><code><span class="c"># 1. Pull resources from your control plane (Global CP first)</span>
+<pre><code><span class="c"># 1a. Pull resources via kubectl (self-hosted, Kubernetes-backed CP)</span>
 <span class="k-bin">kuma-migrator</span> <span class="k-sub">extract</span> <span class="k-flag">--kube-context</span> <span class="k-val">prod-global</span> <span class="k-flag">--output-dir</span> <span class="k-val">./raw-policies</span>
+
+<span class="c"># 1b. ...or via kumactl (self-hosted OR Konnect-hosted, zonal or Global CP)</span>
+<span class="k-bin">kuma-migrator</span> <span class="k-sub">extract</span> <span class="k-flag">--kumactl-context</span> <span class="k-val">prod-global</span> <span class="k-flag">--output-dir</span> <span class="k-val">./raw-policies</span>
 
 <span class="c"># 2. Write the migrated manifests + migration-report.md
 #    (add --dry-run to preview first — writes migration-plan.md, no YAML)</span>
