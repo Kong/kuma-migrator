@@ -48,6 +48,9 @@ kuma-migrator extract --kumactl-context prod-global --output-dir ./raw-policies
 #    (add --dry-run to preview first — writes migration-plan.md, no YAML)
 kuma-migrator migrate --input-dir ./raw-policies --output-dir ./migrated
 
+# Now read migration-report.md — it gives the exact apply order for your
+# setup (Mesh resources go last: they switch on meshServices.mode: Exclusive)
+
 # 3a. Apply them yourself if you extracted via --kube-context — this step
 #     is manual; kuma-migrator never touches your control plane's state
 kubectl apply -f ./migrated/prod-cp-global-ctx/mesh-default/resiliency/
@@ -57,10 +60,6 @@ kubectl apply -f ./migrated/prod-cp-global-ctx/mesh-default/resiliency/
 kumactl config use-context prod-cp
 kumactl apply -f ./migrated/prod-cp-global-ctx/mesh-default/resiliency/MeshTimeout-my-timeout.yaml
 ```
-
-Run step 2 with `--dry-run` first and read the plan, then read the report before applying —
-the apply **order matters**, and `Mesh` resources go last because they switch on
-`meshServices.mode: Exclusive`.
 
 ## Choosing a target: `--to-latest v2|v3`
 
