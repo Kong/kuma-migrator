@@ -993,6 +993,94 @@ spec:
 	}
 }
 
+// policyWithTopLevelTargetRef renders a MeshTimeout whose top-level targetRef block is
+// the given YAML fragment (already indented to sit under spec.targetRef).
+func policyWithTopLevelTargetRef(targetRefBody string) string {
+	return `apiVersion: kuma.io/v1alpha1
+kind: MeshTimeout
+metadata:
+  name: t1
+spec:
+  targetRef:
+` + targetRefBody
+}
+
+// Kuma 3.0 narrows the top-level targetRef to Mesh|Dataplane for *every* policy — verified
+// across pkg/plugins/policies/*/api/v1alpha1/valid*.go on master, with no per-policy and no
+// system-role exception. Under v3 the advisory therefore has to fire on every other kind,
+// including the two that 2.14 still accepts: MeshGateway, and a MeshSubset carrying service
+// tags. See docs/meshhttproute-3.0.md.
+func TestScanForDeprecations_TopLevelTargetRef_V3UniformRule(t *testing.T) {
+	const uniform = "Mesh and Dataplane are the only top-level"
+
+	for _, tc := range []struct {
+		name      string
+		targetRef string
+		wantWarn  bool
+	}{
+		{"MeshService", "    kind: MeshService\n    name: backend\n", true},
+		{"MeshServiceSubset", "    kind: MeshServiceSubset\n    name: backend\n", true},
+		{"MeshSubset untagged", "    kind: MeshSubset\n    tags:\n      version: v1\n", true},
+		// Tagged MeshSubset is ScenarioSubset's job and is exempt under v2; reaching the
+		// post-pass with the kind intact under v3 means nothing rewrote it, so it must warn.
+		{"MeshSubset tagged", "    kind: MeshSubset\n    tags:\n      kuma.io/service: backend_demo_svc_3001\n", true},
+		{"MeshHTTPRoute", "    kind: MeshHTTPRoute\n    name: route-1\n", true},
+		{"MeshGateway", "    kind: MeshGateway\n    name: edge\n", true},
+		{"Mesh", "    kind: Mesh\n", false},
+		{"Dataplane", "    kind: Dataplane\n    labels:\n      app: backend\n", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, warnings := ScanForDeprecations([]byte(policyWithTopLevelTargetRef(tc.targetRef)), TargetV3)
+			found := false
+			for _, w := range warnings {
+				if strings.Contains(w, uniform) {
+					found = true
+				}
+			}
+			if found != tc.wantWarn {
+				t.Errorf("v3 uniform top-level warning = %v, want %v (warnings: %v)", found, tc.wantWarn, warnings)
+			}
+		})
+	}
+}
+
+// MeshGateway is a legitimate top-level target at 2.14 (system-role policies), so it must
+// stay silent under v2 — it only becomes invalid when the built-in gateway API is deleted.
+func TestScanForDeprecations_TopLevelMeshGateway_V2NoWarn(t *testing.T) {
+	input := policyWithTopLevelTargetRef("    kind: MeshGateway\n    name: edge\n")
+
+	_, warnings := ScanForDeprecations([]byte(input), TargetV2)
+	for _, w := range warnings {
+		if strings.Contains(w, "MeshGateway") {
+			t.Errorf("unexpected v2 warning for a top-level MeshGateway targetRef: %s", w)
+		}
+	}
+
+	_, warnings = ScanForDeprecations([]byte(input), TargetV3)
+	found := false
+	for _, w := range warnings {
+		if strings.Contains(w, "MeshGateway is removed in Kuma 3.0") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected a v3 removal warning for a top-level MeshGateway targetRef, got: %v", warnings)
+	}
+}
+
+// A MeshSubset carrying service-identity tags is rewritten by ScenarioSubset, so warning
+// about it under v2 would be noise on every converted document.
+func TestScanForDeprecations_TopLevelTaggedMeshSubset_V2NoWarn(t *testing.T) {
+	input := policyWithTopLevelTargetRef("    kind: MeshSubset\n    tags:\n      kuma.io/service: backend_demo_svc_3001\n")
+
+	_, warnings := ScanForDeprecations([]byte(input), TargetV2)
+	for _, w := range warnings {
+		if strings.Contains(w, "MeshSubset") {
+			t.Errorf("unexpected v2 warning for a tagged MeshSubset targetRef: %s", w)
+		}
+	}
+}
+
 func TestScanForDeprecations_MeshMtlsBackendsAdvisory(t *testing.T) {
 	input := `apiVersion: kuma.io/v1alpha1
 kind: Mesh

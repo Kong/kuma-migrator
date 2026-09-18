@@ -278,8 +278,8 @@ Five sub-scenarios, all labelled `[MIGRATED GW]`:
 
 | Input kind | Output |
 |---|---|
-| `MeshGateway` | `Gateway` (Gateway API `gateway.networking.k8s.io/v1`), `gatewayClassName: gateways.kuma.io/controller` |
-| `MeshGatewayInstance` | `GatewayClass` + `MeshGatewayConfig` |
+| `MeshGateway` | `Gateway` (Gateway API `gateway.networking.k8s.io/v1`), with `gatewayClassName` resolved from the companion `MeshGatewayInstance` under v2, or the `REPLACE-WITH-YOUR-GATEWAYCLASS` placeholder when unresolvable / under v3 |
+| `MeshGatewayInstance` | `GatewayClass` + `MeshGatewayConfig` **(v2 only — reported as an error under v3)** |
 | `MeshHTTPRoute` | `HTTPRoute` (Gateway API) |
 | `MeshTCPRoute` | `TCPRoute` (Gateway API experimental) |
 | `MeshGatewayRoute` | `HTTPRoute` and/or `TCPRoute` depending on protocol |
@@ -288,6 +288,12 @@ Five sub-scenarios, all labelled `[MIGRATED GW]`:
 - Listener `hostname: "*"` is invalid in Gateway API — field is omitted and a warning is emitted
 - `kuma.io/service`-encoded backend names (e.g. `backend_demo_svc_3001`) are parsed to extract `name`, `namespace`, and `port` for `backendRef`/`parentRef`
 - GAMMA mesh routing `parentRef` with `kind: Service` always includes the `port` field
+
+**Under `--to-latest v3`**:
+- Kuma 3.0 deletes the built-in gateway API in full — `MeshGateway`, `MeshGatewayRoute`, `MeshGatewayInstance` and `MeshGatewayConfig`, their Go/proto types, their CRDs and their KDS sync — and `MeshGateway` stops being a valid `targetRef.kind` for any policy
+- `MeshGatewayInstance` is **reported instead of converted**: both of its v2 outputs are dead on 3.0. The error names the delegated-gateway replacement — `traffic.kuma.io/exclude-inbound-ports` on the pod (the `kuma.io/gateway` marking is *removed*, not renamed) plus `kuma.io/ignore: "true"` on the fronting `Service` — and carries over `replicas`/`serviceType`/`tags`
+- `MeshGateway` and `MeshGatewayRoute` are still converted (their listener and routing content is valid Gateway API), but each carries an advisory to **delete the source object before upgrading**: the 3.0 Helm chart removes their CRDs and anything still stored under them goes with it
+- `MeshHTTPRoute` and `MeshTCPRoute` are **not removed in 3.0** — Kuma's Gateway API reconcilers compile `HTTPRoute`/`GRPCRoute` *into* `MeshHTTPRoute`. Converting them is modernization rather than a requirement; see [docs/meshhttproute-3.0.md](docs/meshhttproute-3.0.md)
 
 ---
 

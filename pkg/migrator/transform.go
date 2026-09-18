@@ -154,6 +154,15 @@ func TransformDocumentWithOptions(raw []byte, opts TransformOptions) ([][]byte, 
 		docs = [][]byte{raw}
 	}
 
+	// The built-in gateway API is deleted outright in 3.0, so converting a MeshGateway or
+	// MeshGatewayRoute is only half the job: the source object still has to go before the
+	// upgrade, or the Helm CRD removal takes it with no record.
+	if target.IsV3() {
+		if note := removedGatewaySourceNote(scenario); note != "" {
+			warnings = append(warnings, note)
+		}
+	}
+
 	// Post-pass: scan every output document for deprecated fields.
 	for i, doc := range docs {
 		fixed, depWarns := ScanForDeprecations(doc, target)

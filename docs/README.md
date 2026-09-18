@@ -24,6 +24,7 @@
 |---|---|
 | [Migration paths and deprecation warnings](migration-paths.md) | Every transformation, and every deprecation detected but not auto-fixed |
 | [MeshTrafficPermission: `from[]` vs `rules[]`](meshtrafficpermission-modes.md) | The two identity models, and why the move between them is not mechanical |
+| [MeshHTTPRoute and the 3.0 routing changes](meshhttproute-3.0.md) | Where routing is heading in 3.0, the `404` behaviour change, and the `targetRef` matrix for every policy |
 | [Transformation examples](transformation-examples.md) | Before-and-after YAML per scenario |
 | [Console output and reports](output-and-reports.md) | What the CLI prints, and what the Markdown report contains |
 | [Notes and caveats](notes.md) | Behaviour worth knowing before relying on the output |

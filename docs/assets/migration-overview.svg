@@ -73,10 +73,11 @@
   <rect x="590" y="120" width="380" height="116" rx="8" fill="var(--new-bg)" stroke="var(--new-border)" stroke-width="1.5"/>
   <text class="badge badge-new" x="956" y="138">TARGETREF</text>
   <g class="code">
-    <text x="606" y="157">targetRef:</text>
-    <text x="626" y="174" class="code-new-hl">kind: MeshService</text>
-    <text x="626" y="191">name: backend</text>
-    <text x="626" y="208">namespace: demo</text>
+    <text x="606" y="148">to:</text>
+    <text y="165"><tspan x="626">-</tspan><tspan x="646">targetRef:</tspan></text>
+    <text x="666" y="182" class="code-new-hl">kind: MeshService</text>
+    <text x="666" y="199">name: backend</text>
+    <text x="666" y="216">namespace: demo</text>
   </g>
 
   <line x1="420" y1="178" x2="578" y2="178" stroke="var(--arrow)" stroke-width="1.5" marker-end="url(#arrowhead)"/>

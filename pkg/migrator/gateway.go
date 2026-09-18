@@ -334,7 +334,9 @@ func resolveGatewayClassName(gw oldMeshGateway, name string, opts TransformOptio
 				"GatewayClass exists to reference. The listener block below is valid Gateway API and "+
 				"carries over as-is; set spec.gatewayClassName to the GatewayClass of the gateway "+
 				"implementation you adopt, and rejoin the workload to the mesh as a delegated gateway "+
-				"(its pod labelled kuma.io/gateway: enabled). Left as %q so it cannot be applied unnoticed.",
+				"(3.0 removes the kuma.io/gateway marking rather than renaming it — annotate the pod "+
+				"traffic.kuma.io/exclude-inbound-ports with its listen ports, and the fronting Service "+
+				"kuma.io/ignore: \"true\"). Left as %q so it cannot be applied unnoticed.",
 			name, gatewayClassPlaceholder)}
 	}
 
@@ -407,7 +409,9 @@ func gatewayServiceTags(gw oldMeshGateway) []string {
 // GatewayClasses left behind by the removal).
 //
 // The replacement is a delegated gateway: a Deployment and Service you own, with
-// the pod labelled kuma.io/gateway: enabled so Kuma injects a sidecar. That
+// the pod annotated traffic.kuma.io/exclude-inbound-ports (3.0 removes the
+// kuma.io/gateway marking rather than renaming it, and ignores a pod that still
+// carries it) and the fronting Service annotated kuma.io/ignore: "true". That
 // cannot be synthesised from a MeshGatewayInstance — the manifest has no
 // container image or pod spec — so this is reported rather than half-generated.
 func meshGatewayInstanceRemovedInV3(inst oldMeshGatewayInstance, name, namespace string) error {
@@ -419,14 +423,47 @@ func meshGatewayInstanceRemovedInV3(inst oldMeshGatewayInstance, name, namespace
 
 	return fmt.Errorf(
 		"MeshGatewayInstance %q (%s) has no successor on Kuma 3.0: the built-in gateway API is removed "+
-			"in full (MeshGateway, MeshGatewayRoute, MeshGatewayInstance and MeshGatewayConfig, including "+
-			"the meshgatewayconfigs.kuma.io CRD), and the Gateway API integration is reduced to HTTPRoute — "+
-			"no Gateway or GatewayClass reconciler remains, and the control plane strips finalizers from "+
-			"Kuma-controlled GatewayClasses on startup. Replace it with a delegated gateway: a Deployment "+
-			"and Service you manage, with the pod labelled kuma.io/gateway: enabled so the sidecar is "+
-			"injected. That needs a container image and pod spec this manifest does not carry, so it cannot "+
-			"be generated.%s Re-run with --to-latest v2 to keep the 2.x GatewayClass + MeshGatewayConfig "+
-			"output", name, namespace, detail)
+			"in full — the MeshGateway, MeshGatewayRoute, MeshGatewayInstance and MeshGatewayConfig "+
+			"resources, their Go/proto types, their CRDs (meshgateways.kuma.io, meshgatewayroutes.kuma.io, "+
+			"meshgatewayinstances.kuma.io, meshgatewayconfigs.kuma.io) and their KDS sync registration all "+
+			"cease to exist, and MeshGateway stops being a valid targetRef.kind for any policy. The Gateway "+
+			"API integration is reduced to HTTPRoute and GRPCRoute — no Gateway or GatewayClass reconciler "+
+			"remains, and the control plane strips finalizers from Kuma-controlled GatewayClasses on "+
+			"startup. Replace it with a delegated gateway: a Deployment and Service you manage. Note the "+
+			"kuma.io/gateway marking is removed rather than renamed — on Kubernetes keep the gateway's "+
+			"listen ports out of inbound redirection with the pod annotation "+
+			"traffic.kuma.io/exclude-inbound-ports: \"<ports>\" (comma-separated, no all-ports spelling) and "+
+			"annotate the fronting Service kuma.io/ignore: \"true\" so it does not generate a MeshService; on "+
+			"Universal drop kuma.io/gateway from the Dataplane labels and run kuma-dp with "+
+			"--exclude-inbound-ports. That needs a container image and pod spec this manifest does not "+
+			"carry, so it cannot be generated.%s Delete the leftover MeshGateway/MeshGatewayRoute/"+
+			"MeshGatewayInstance/MeshGatewayConfig objects before upgrading — the 3.0 Helm chart removes "+
+			"their CRDs and any resources still stored under them go with it. Re-run with --to-latest v2 "+
+			"to keep the 2.x GatewayClass + MeshGatewayConfig output", name, namespace, detail)
+}
+
+// removedGatewaySourceNote returns the --to-latest v3 advisory for a scenario whose *input*
+// kind belongs to the built-in gateway API that Kuma 3.0 deletes outright. The converted
+// output (Gateway / HTTPRoute) is valid on 3.0 — this is about the original object, which
+// is not merely left inert: the 3.0 Helm chart removes meshgateways.kuma.io and
+// meshgatewayroutes.kuma.io, and anything still stored under them is deleted with the CRD.
+// MeshGatewayInstance is not listed here because it errors out under v3 instead of converting.
+func removedGatewaySourceNote(scenario Scenario) string {
+	var kind string
+	switch scenario {
+	case ScenarioGateway:
+		kind = "MeshGateway"
+	case ScenarioGatewayRoute:
+		kind = "MeshGatewayRoute"
+	default:
+		return ""
+	}
+	return fmt.Sprintf(
+		"%s: the converted output is valid on Kuma 3.0, but the source %s object is not — "+
+			"3.0 removes the built-in gateway API in full (types, CRDs and KDS sync). Apply the "+
+			"converted Gateway API resources, verify traffic on them, then delete the %s objects "+
+			"before upgrading: the 3.0 Helm chart drops their CRDs and any resources still stored "+
+			"under them are deleted with it.", kind, kind, kind)
 }
 
 // carriedGatewayInstanceSettings renders the MeshGatewayInstance spec fields that

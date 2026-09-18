@@ -40,7 +40,8 @@ The tool also emits warnings for deprecated fields that require manual action:
 - `Mesh` `spec.mtls.backends` → `MeshIdentity` + `MeshTrust` successor model *(advisory only — guided CA cutover, not a transform; `spec.mtls` is not deprecated)*
 - `Mesh` with no `spec.meshServices` block → 3.0 removes the `meshServices` field entirely and behaves as `Exclusive` unconditionally (restricts outbound reachability) *(advisory only — set the mode explicitly before upgrading to 3.0)*
 - `MeshTrafficPermission`/`MeshFaultInjection` `from[]` deprecated → `rules[]` API *(warn — manual, MFI 2.13 / MTP 2.14)*
-- Deprecated top-level `spec.targetRef.kind`: `MeshSubset`/`MeshService`/`MeshServiceSubset` → `Dataplane`; `MeshHTTPRoute` → `spec.to[].targetRef` *(warn, Kuma 2.10/2.11)*
+- Deprecated top-level `spec.targetRef.kind`: `MeshSubset`/`MeshService`/`MeshServiceSubset` → `Dataplane`; `MeshHTTPRoute` → `spec.to[].targetRef` *(warn, Kuma 2.10/2.11)*. Under `--to-latest v3` the rule is **uniform and absolute**: every policy accepts only `Mesh` and `Dataplane` at the top level, so `MeshGateway` (valid at 2.14 for system-role policies) and a tag-carrying `MeshSubset` are flagged too — see [the matrix](meshhttproute-3.0.md#the-narrowing-is-universal--full-matrix)
+- `MeshGateway`/`MeshGatewayRoute` source objects after conversion — 3.0 deletes the built-in gateway API in full (resources, types, CRDs, KDS sync), so the originals must be deleted **before** upgrading or the Helm CRD removal takes them with it *(advisory under `--to-latest v3` only; the converted Gateway API output stays valid)*
 - `kuma.io/*` annotation values `"yes"`/`"no"` → `"true"`/`"false"` *(scanner, Kuma 2.9)*
 - Legacy `kuma.io/service`-encoded addresses in Deployment/StatefulSet env vars *(scanner)*
 - RFC 1035/1123 name validation for `Mesh*Service` resources — hard error in 3.0 *(warn)*
@@ -117,9 +118,34 @@ Kuma-controlled `GatewayClass` objects on startup.
 `MeshGatewayInstance` therefore has **no successor on 3.0**. Under `--to-latest v3` the tool
 reports it instead of converting it, naming the settings to carry over (`replicas`,
 `serviceType`, `tags`). The replacement is a *delegated* gateway: a `Deployment` and
-`Service` you manage, with the pod labelled `kuma.io/gateway: enabled` so Kuma injects a
-sidecar. That needs a container image and pod spec the original manifest does not carry,
-so it cannot be generated for you.
+`Service` you manage. That needs a container image and pod spec the original manifest does
+not carry, so it cannot be generated for you.
+
+Note that the `kuma.io/gateway` marking is **removed in 3.0, not renamed** — the Pod
+annotation, the `Dataplane` label and `Dataplane.networking.gateway` all cease to exist. What
+actually mattered about it (Kuma not proxying the traffic the gateway terminates) now comes
+from keeping the listen ports out of inbound redirection:
+
+```yaml
+metadata:
+  annotations:
+    traffic.kuma.io/exclude-inbound-ports: "8000,8443"   # replaces kuma.io/gateway
+```
+
+List every port the gateway accepts traffic on — the annotation takes a comma-separated list
+and has no all-ports spelling. A port left off it is redirected into Envoy and served by an
+inbound listener, so traffic the gateway terminates becomes mesh inbound traffic subject to
+`MeshTrafficPermission` and mTLS, and an outside client is rejected rather than reaching the
+gateway. Annotate the fronting `Service` with `kuma.io/ignore: "true"` as well, or it
+generates a `MeshService` and in-mesh clients addressing the gateway through it get a
+destination with no endpoints. On Universal, drop `kuma.io/gateway` from the `Dataplane`
+labels and run `kuma-dp` with `--exclude-inbound-ports` covering the same ports.
+
+Because the CRDs themselves are deleted, leftover `MeshGateway`, `MeshGatewayRoute`,
+`MeshGatewayInstance` and `MeshGatewayConfig` objects must be **deleted before upgrading** —
+the 3.0 Helm chart removes their CRDs and anything still stored under them goes with it. The
+tool emits that advisory on every `MeshGateway`/`MeshGatewayRoute` it converts under
+`--to-latest v3`.
 
 Under `--to-latest v2` the 2.x `GatewayClass` + `MeshGatewayConfig` output is unchanged.
 

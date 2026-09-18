@@ -340,7 +340,7 @@
         <tr><td>Rules</td><td>Deprecated <code>from[]</code> → <code>rules[]</code>, for <code>MeshTimeout</code>/<code>MeshCircuitBreaker</code>/<code>MeshRateLimit</code>/<code>MeshAccessLog</code>/<code>MeshTLS</code> only (Kuma 2.10+) — <code>MeshTrafficPermission</code>/<code>MeshFaultInjection</code> use a different, SPIFFE-based <code>rules[]</code> shape and are <strong>not</strong> auto-converted</td></tr>
         <tr><td>Mesh</td><td><code>Mesh</code> CRD observability → standalone <code>MeshMetric</code>/<code>MeshTrace</code>/<code>MeshAccessLog</code></td></tr>
         <tr><td>ExternalService</td><td><code>ExternalService</code> → <code>MeshExternalService</code></td></tr>
-        <tr><td>GW</td><td><code>MeshGateway</code> and route CRDs → Gateway API</td></tr>
+        <tr><td>GW</td><td><code>MeshGateway</code> and route CRDs → Gateway API. Kuma 3.0 deletes the built-in gateway API outright, so under <code>v3</code> <code>MeshGatewayInstance</code> is reported rather than converted, and the source objects must be deleted before upgrading</td></tr>
         <tr><td>OPAPolicy</td><td>Kong Mesh <code>OPAPolicy</code> → <code>MeshOPA</code></td></tr>
       </tbody>
     </table>
@@ -444,6 +444,7 @@ make build
         <tr><td><a href="https://github.com/Kong/kuma-migrator/blob/main/docs/apply.md">Applying the migrated manifests</a></td><td>Apply order, and cleaning up changed kinds</td></tr>
         <tr><td><a href="https://github.com/Kong/kuma-migrator/blob/main/docs/migration-paths.md">Migration paths and deprecations</a></td><td>Everything detected, fixed or flagged</td></tr>
         <tr><td><a href="https://github.com/Kong/kuma-migrator/blob/main/docs/meshtrafficpermission-modes.md">MeshTrafficPermission modes</a></td><td><code>from[]</code> vs <code>rules[]</code>, and why it is not mechanical</td></tr>
+        <tr><td><a href="https://github.com/Kong/kuma-migrator/blob/main/docs/meshhttproute-3.0.md">MeshHTTPRoute and 3.0 routing</a></td><td>The <code>404</code> change, and the <code>targetRef</code> matrix for every policy</td></tr>
         <tr><td><a href="https://github.com/Kong/kuma-migrator/blob/main/docs/transformation-examples.md">Transformation examples</a></td><td>Before-and-after YAML per scenario</td></tr>
         <tr><td><a href="https://github.com/Kong/kuma-migrator/blob/main/docs/output-and-reports.md">Console output and reports</a></td><td>What you see, and what the report contains</td></tr>
         <tr><td><a href="https://github.com/Kong/kuma-migrator/blob/main/docs/notes.md">Notes and caveats</a></td><td>Behaviour worth knowing before relying on the output</td></tr>
@@ -460,12 +461,16 @@ make build
   <div class="wrap">
     <h2>Changelog</h2>
     <p class="changelog-stat">
-      <strong>17 releases</strong> since April 2026 — five of them in the last four days.
+      <strong>18 releases</strong> since April 2026.
       Full history: <a href="https://github.com/Kong/kuma-migrator/releases">Releases</a> ·
       <a href="https://github.com/Kong/kuma-migrator/compare">compare view</a>.
     </p>
 
     <ul class="changelog">
+      <li>
+        <div class="meta"><span class="ver">v0.7.1</span> · 2026-09-18</div>
+        <div class="desc">Corrected the <code>--to-latest v3</code> delegated-gateway guidance: Kuma 3.0 <em>removes</em> the <code>kuma.io/gateway</code> marking rather than renaming it, so the tool now points at <code>traffic.kuma.io/exclude-inbound-ports</code> and <code>kuma.io/ignore</code>. Top-level <code>targetRef</code> checks apply 3.0's uniform <code>Mesh</code>/<code>Dataplane</code>-only rule to every policy, and converted <code>MeshGateway</code>/<code>MeshGatewayRoute</code> objects now carry a delete-before-upgrading advisory.</div>
+      </li>
       <li>
         <div class="meta"><span class="ver">v0.7.0</span> · 2026-09-04</div>
         <div class="desc"><strong>Breaking:</strong> removed the <code>plan</code> command — use <code>migrate --dry-run</code> instead, same flags and output. Also redesigned the pipeline diagram to mark <code>apply</code> as a manual step, not a command.</div>

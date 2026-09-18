@@ -424,8 +424,6 @@ Found while auditing `kuma/UPGRADE.md` on master (3.0-dev) during the 2026-08-14
 overhaul. None of these affect a `v2` target; all of them produce output a 3.0 CP rejects
 or ignores.
 
-- **`MeshGateway` is no longer a valid `targetRef.kind` for any policy** in 3.0. No scanner
-  warns about a policy that targets one.
 - **`ExternalService`** is removed in 3.0 (CRD, API and webhook). Already converted by
   `ScenarioExternalService`, so this only matters for a `--to-latest v3` advisory on inputs
   the migrator leaves alone.
@@ -462,11 +460,65 @@ or ignores.
 - **`MeshGatewayInstance` under v3** — `TransformMeshGatewayInstance(raw, target)` now errors
   under `--to-latest v3` instead of emitting `GatewayClass` + `MeshGatewayConfig`, both of which
   are dead on 3.0. The error names what was removed, points at the delegated-gateway
-  replacement (a Deployment/Service you own, pod labelled `kuma.io/gateway: enabled`), carries
-  over the settings the manifest does hold (`replicas`, `serviceType`, `tags`) via
-  `carriedGatewayInstanceSettings`, and says to re-run with `--to-latest v2` for the old output.
-  A pod spec and container image cannot be synthesised from a MeshGatewayInstance, so this is
-  reported rather than half-generated. **v2 behaviour is unchanged.**
+  replacement (a Deployment/Service you own), carries over the settings the manifest does hold
+  (`replicas`, `serviceType`, `tags`) via `carriedGatewayInstanceSettings`, says to delete the
+  leftover `MeshGateway*` objects before upgrading, and says to re-run with `--to-latest v2` for
+  the old output. A pod spec and container image cannot be synthesised from a
+  MeshGatewayInstance, so this is reported rather than half-generated. **v2 behaviour is
+  unchanged.**
+
+  The error used to recommend labelling the pod `kuma.io/gateway: enabled`. That was **wrong for
+  3.0**: `UPGRADE.md`'s "`kuma.io/gateway` is removed" entry deletes the Pod annotation, the
+  `Dataplane` label and `Dataplane.networking.gateway` outright — the marking is removed, not
+  renamed, and a Pod still carrying it is *ignored* rather than rejected, so following the old
+  advice silently leaves the gateway's traffic redirected into Envoy and subject to
+  `MeshTrafficPermission`/mTLS. The error now names `traffic.kuma.io/exclude-inbound-ports`
+  (comma-separated, no all-ports spelling) on the pod plus `kuma.io/ignore: "true"` on the
+  fronting Service, and the Universal equivalent (`kuma-dp --exclude-inbound-ports`).
+- **`MeshGateway` as a `targetRef.kind`** — 3.0 removes the built-in gateway API in full
+  (`MeshGateway`, `MeshGatewayRoute`, `MeshGatewayInstance`, `MeshGatewayConfig` — resources,
+  Go/proto types, CRDs *and* KDS sync), and with it `MeshGateway` stops being a valid
+  `targetRef.kind` for any policy. Covered by the uniform v3 rule in
+  `warnDeprecatedTopLevelTargetRef` (below). Note the 3.0 notes retire the built-in gateway in
+  **three separate entries**, and the middle one ("Built-in gateway Kubernetes controllers
+  removed") says the CRDs are *"not removed by this change"* — that sentence is scoped to that
+  change only, and a later entry ("Built-in gateway API and CRDs removed") completes the
+  removal. Reading only the middle entry gives the wrong answer.
+- **Converted `MeshGateway`/`MeshGatewayRoute` source objects under v3** — the converted Gateway
+  API output is valid on 3.0, but the *source* object is not merely left inert: the 3.0 Helm
+  chart deletes `meshgateways.kuma.io` / `meshgatewayroutes.kuma.io` and anything still stored
+  under them goes with the CRD. `removedGatewaySourceNote(scenario)` (`gateway.go`, called from
+  `TransformDocumentWithOptions`) emits the delete-before-upgrading advisory for both kinds
+  under `--to-latest v3`. `MeshGatewayInstance` is excluded — it errors instead of converting.
+- **Top-level `targetRef` is `Mesh`/`Dataplane`-only for every policy on 3.0** — verified by
+  extracting every `SupportedKinds` list from `pkg/plugins/policies/*/api/v1alpha1/valid*.go` on
+  kuma master and at `v2.14.4`, plus Kong Mesh's `MeshOPA`. No per-policy exception and no
+  system-role exception (the `SystemPolicyRole` branch that allowed `MeshGateway` now lists the
+  same two kinds). `warnDeprecatedTopLevelTargetRef(obj, name, kind, target)` therefore applies a
+  uniform rule under v3 — including `MeshGateway` and a tag-carrying `MeshSubset`, both of which
+  stay silent under v2 — and falls through to a generic advisory for any other kind. `to[]`, by
+  contrast, keeps **four** distinct shapes; the full matrix is in `docs/meshhttproute-3.0.md`.
+
+### `MeshHTTPRoute` is NOT removed in 3.0 — it is the compile target
+
+Correcting a wrong model this project carried: `MeshHTTPRoute` and `MeshTCPRoute` both survive
+3.0 (`pkg/plugins/policies/meshhttproute`, `meshtcproute` present on master). Kuma's Gateway API
+reconcilers translate *inward* — `plugin_gateway.go` registers an `HTTPRouteReconciler` and a
+`GRPCRouteReconciler`, and all four conversion paths return `&v1alpha1.MeshHTTPRoute{}`
+(`http_route_conversion.go:109,192`, `grpc_route_conversion.go:102,155`). So 3.0 is
+*Gateway API `HTTPRoute`/`GRPCRoute` → generated `MeshHTTPRoute` → Envoy*, with hand-written
+`MeshHTTPRoute` still fully supported; `UPGRADE.md` protects that path explicitly (*"Gateways you
+run yourself and the Gateway API `HTTPRoute` GAMMA path are unaffected"*).
+
+Consequence for `ScenarioGW`: converting `MeshHTTPRoute` → `HTTPRoute` is **optional
+modernization, not a 3.0 requirement**, and it is not free — a generated route now lands in the
+`HTTPRoute`'s own namespace with `kuma.io/policy-role=producer`, so it *ties* with an equivalent
+hand-written `MeshHTTPRoute` (which previously always won, the generated one ranking `system`),
+and conflicting `HTTPRoute`s tie-break by `creationTimestamp` rather than name. Making the
+conversion opt-in under v3 — default "keep the `MeshHTTPRoute`, add the catch-all rule" — is an
+open product decision. If it is ever taken, the catch-all advisory has to move from
+`TransformMeshHTTPRoute` into `ScanForDeprecations`, since it currently lives there only because
+`DetectScenario` always converts the kind away.
 - **`Dataplane networking.gateway.type: BUILTIN`** — was rejected only at admission before;
   kuma#18058 (merged 2026-08-18) made the `BUILTIN` ordinal `reserved` in the proto, so it is
   now rejected at parse time too. `warnDataplaneGatewayBuiltinType` in `deprecation.go` scans
@@ -514,7 +566,7 @@ or ignores.
 - `Mesh spec.mtls.backends` → **advisory only** (warn): legacy mTLS/identity model; Kuma 2.12+ successor is `MeshIdentity` + `MeshTrust`, and the experimental SPIFFE `rules[]` MTP API requires `MeshIdentity`. **Not auto-converted** — it's a guided CA cutover (Kuma MADR-074); trust domain (zone/runtime-derived), per-workload SPIFFE paths, and CA key material (CP Secret / DataSource / Kong Mesh Vault backend) are not in the manifest, and the builtin backend mints a new CA. `spec.mtls` is **not deprecated** (safe to leave). The `MeshTLS` policy is orthogonal (tlsVersion/ciphers/mode) and is **not** the identity source. `warnMeshMtlsBackends` in `deprecation.go`. MeshFaultInjection never requires identity (its `rules[].matches[].spiffeID` is an optional client selector). When the Mesh uses a Kong Mesh enterprise CA backend (`vault`, `acm`, `cert-manager`), the advisory additionally names the **Kong Mesh 2.14 `MeshIdentity` `Extension` provider** that replaces it: `spec.provider.type: Extension` with `spec.provider.extension.name` = `vault` / `acmpca` / `certmanager` (constants in `kong-mesh/pkg/plugins/resources/meshidentity/*/api/*.go`). `certmanager` is Kubernetes-only. This mapping is **undocumented on the docs site** — `meshidentity/index.md` still lists only `Bundled` and `Spire`. Mapping table: `caBackendExtensionMap` in `deprecation.go`.
 - `Mesh` with **no `spec.meshServices` block** → **advisory only** (warn): Kuma 3.0 flips the default for such meshes from permissive to `meshServices.mode: Exclusive` (kumahq/kuma#17102, master/3.0-dev), restricting outbound connectivity to explicitly-reachable services and requiring `reachableServices`/`reachableBackends` to use MeshService display names. Advises setting `spec.meshServices.mode` explicitly before 3.0. `warnMeshServicesDefaultFlip` in `deprecation.go`. **Note:** `TransformMesh` (ScenarioMesh) already injects `meshServices.mode: Exclusive` on migrated Mesh output, so this advisory only fires on Meshes the migrator leaves untransformed (never double-warns).
 - `MeshTrafficPermission`/`MeshFaultInjection` `from[]` → warn, deprecated in favour of `rules[]` API (MFI: `rules[]` API landed v2.13.0, `from` deprecated **v2.14.0**; MTP v2.14; removed 3.0). **Intentionally not auto-converted**: the `rules[]` API matches clients by SPIFFE identity (MTP, via `default.{allow,deny,allowWithShadowDeny}`, requires `MeshIdentity`, default-deny) / `matches[]` SpiffeID·SNI (MFI), while `from[].targetRef` uses tag/label selectors. The SPIFFE trust-domain + identity strings are not present in the manifest, so a mechanical rewrite would either fail or silently widen access (a security regression for MTP). The warning lists the manual steps. `warnFromDeprecatedForRulesAPI` in `deprecation.go`.
-- deprecated **top-level `spec.targetRef.kind`** (any policy) → warn: `MeshSubset` (only when no service-identity tags) / `MeshService` / `MeshServiceSubset` → use `Dataplane` with labels; `MeshHTTPRoute` → reference in `spec.to[].targetRef` (v2.10/2.11). Mirrors upstream `validators.TopLevelTargetRefDeprecations`. Warn-only (not auto-converted) because a `MeshService`/`MeshServiceSubset` selector can't be expanded to the equivalent `Dataplane` label set from the manifest alone — only the legacy Kuma-internal `_svc_` names carry enough info, and those are already rewritten to `Dataplane` by `ScenarioSubset` before this post-pass. `warnDeprecatedTopLevelTargetRef` in `deprecation.go`.
+- deprecated **top-level `spec.targetRef.kind`** (any policy) → warn: `MeshSubset` (under v2, only when no service-identity tags) / `MeshService` / `MeshServiceSubset` → use `Dataplane` with labels; `MeshHTTPRoute` → reference in `spec.to[].targetRef` (v2.10/2.11). Mirrors upstream `validators.TopLevelTargetRefDeprecations`. Warn-only (not auto-converted) because a `MeshService`/`MeshServiceSubset` selector can't be expanded to the equivalent `Dataplane` label set from the manifest alone — only the legacy Kuma-internal `_svc_` names carry enough info, and those are already rewritten to `Dataplane` by `ScenarioSubset` before this post-pass. **Under v3 the rule is uniform and absolute**: `Mesh`/`Dataplane` are the only kinds any policy accepts at top level, so `MeshGateway` (valid at 2.14 for system-role policies, removed with the built-in gateway API) and a *tagged* `MeshSubset` are flagged too, and any other kind falls through to a generic advisory. `warnDeprecatedTopLevelTargetRef(obj, name, kind, target)` in `deprecation.go`; matrix in `docs/meshhttproute-3.0.md`.
 - `Mesh`/`MeshService`/`MeshExternalService`/`MeshMultiZoneService` names violating RFC 1035 or exceeding 63 chars → warn, becomes a hard error in 3.0 (via `ValidateResourceName`)
 - `MeshTrust spec.origin` → warn. **Removed** in 2.13 from both the API and the Kubernetes CRD schema, so a manifest still setting it can be rejected as unknown-field input (strict validation / server-side apply). Value now published read-only at `status.origin.kri`. This is the single hard YAML break in 2.13. Note the Kuma website still documents `spec.origin` as a live field with no deprecation marker — `UPGRADE.md` is authoritative. `warnMeshTrustOrigin`.
 - `HostnameGenerator spec.template` → warn when the rendered template would not be a valid RFC 1123 DNS subdomain (leading/trailing dot, consecutive dots, uppercase). Kuma 2.14 validates at creation; earlier versions accepted it and silently produced a broken hostname. Checked by substituting each `{{ ... }}` expression with one valid label char, so only defects in the literal skeleton are flagged. `warnHostnameGeneratorTemplate`. **HostnameGenerator was removed from both skip lists** so it is actually scanned.
@@ -538,7 +590,7 @@ or ignores.
 - inline `openTelemetry.endpoint` warning now also states the `backendRef` constraints (selects by `labels` only — `name` unsupported; mutually exclusive with inline `endpoint`; MOTB is `kuma-system`-only; `endpoint.path` must be empty with `protocol: grpc`).
 - `Dataplane networking.gateway.type: BUILTIN` → warn **under v3 only**. Was rejected only at admission before; kuma#18058 (2026-08-18) made the ordinal `reserved` in the proto, so it is now rejected at parse time too. `DELEGATED`/`BUILTIN` are both valid in 2.x, so no v2 advisory. `warnDataplaneGatewayBuiltinType`.
 - `MeshLoadBalancingStrategy to[].default.localityAwareness.crossZone` set on a `to[]` entry whose `targetRef.kind` is not `MeshMultiZoneService` → warn **under v3 only**. New 3.0-dev validator restriction (kuma#18210, 2026-08-26; not yet in the 2.14 line). `warnMeshLoadBalancingStrategyCrossZoneTarget`.
-- `MeshHTTPRoute` with no catch-all rule (empty `matches[]`, or an unconditional `PathPrefix: "/"` match) → advisory **under v3 only**, surfaced on the converted `HTTPRoute` output. kuma#18268 (2026-09-01) changed unmatched requests from falling through to being blocked on that destination's HTTP ports — easy to hit by accident when a `MeshHTTPRoute` exists only to anchor another policy (`MeshTimeout`/`MeshRetry`/`MeshAccessLog`) via a narrow match. Checked in `TransformMeshHTTPRoute` (`route.go`, `httpRuleIsCatchAll`), not `ScanForDeprecations` — `DetectScenario` always converts `kind: MeshHTTPRoute` away to `kind: HTTPRoute`, so a `ScanForDeprecations` case keyed on `MeshHTTPRoute` would never see a document in the pipeline.
+- `MeshHTTPRoute` with no catch-all rule (empty `matches[]`, or an unconditional `PathPrefix: "/"` match) → advisory **under v3 only**, surfaced on the converted `HTTPRoute` output. kuma#18268 (2026-09-01) changed unmatched requests from falling through to being answered with a `404` on that destination's HTTP ports (upstream's stated reason: *"This is what the Gateway API requires of an `HTTPRoute`, and it is what the GAMMA conformance suite asserts"*; on a gRPC destination the client sees `UNIMPLEMENTED`). It covers **every** HTTP port of the destination when `to[].targetRef` names a `MeshService` with no `sectionName` — easy to hit by accident when a `MeshHTTPRoute` exists only to anchor another policy (`MeshTimeout`/`MeshRetry`/`MeshAccessLog`) via a narrow match. Checked in `TransformMeshHTTPRoute` (`route.go`, `httpRuleIsCatchAll`), not `ScanForDeprecations` — `DetectScenario` always converts `kind: MeshHTTPRoute` away to `kind: HTTPRoute`, so a `ScanForDeprecations` case keyed on `MeshHTTPRoute` would never see a document in the pipeline.
 
 `ScanForDeprecations` normalises `kind` from `obj["type"]` when `obj["kind"]` is empty, so
 Universal-format resources (including `Dataplane`) are handled correctly.

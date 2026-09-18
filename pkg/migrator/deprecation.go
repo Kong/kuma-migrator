@@ -130,7 +130,7 @@ func ScanForDeprecations(raw []byte, target TargetVersion) (out []byte, warnings
 	if len(kind) > 4 && kind[:4] == "Mesh" {
 		// Deprecated top-level spec.targetRef kinds (MeshSubset/MeshService/MeshServiceSubset
 		// → Dataplane; MeshHTTPRoute → spec.to[].targetRef).
-		warnings = append(warnings, warnDeprecatedTopLevelTargetRef(obj, name, kind)...)
+		warnings = append(warnings, warnDeprecatedTopLevelTargetRef(obj, name, kind, target)...)
 	}
 
 	// Annotation deprecations apply to any resource carrying metadata.annotations.
@@ -821,13 +821,23 @@ func warnDataplaneReachableServices(obj map[string]interface{}, name string) []s
 //   - MeshSubset / MeshService / MeshServiceSubset → use Dataplane with labels
 //   - MeshHTTPRoute → reference it in spec.to[].targetRef instead
 //
+// Under --to-latest v3 the rule is stronger and uniform: every policy's validateTop on
+// kuma master accepts Mesh and Dataplane only — verified across all of
+// pkg/plugins/policies/*/api/v1alpha1/valid*.go plus Kong Mesh's MeshOPA, with no
+// per-policy exception and no system-role exception (the SystemPolicyRole branch that used
+// to allow MeshGateway now lists the same two kinds). So anything else is rejected outright,
+// including MeshGateway — valid at 2.14 for several policies, but removed with the rest of
+// the built-in gateway API — and MeshHTTPRoute, which was a valid top-level kind for
+// MeshTimeout, MeshRetry and MeshRateLimit at 2.14. See docs/meshhttproute-3.0.md.
+//
 // These are warn-only, not auto-converted: a MeshService/MeshServiceSubset selector cannot
 // be mechanically expanded to the equivalent Dataplane label set from the manifest alone
 // (only the legacy Kuma-internal `_svc_` names carry enough info, and those are already
 // rewritten to Dataplane by ScenarioSubset before this post-pass runs). For MeshSubset the
-// tagged case is likewise handled by ScenarioSubset, so it is only flagged when it carries
-// no service-identity tags.
-func warnDeprecatedTopLevelTargetRef(obj map[string]interface{}, name, kind string) []string {
+// tagged case is likewise handled by ScenarioSubset, so under v2 it is only flagged when it
+// carries no service-identity tags; under v3 it is flagged either way, since reaching this
+// post-pass with the kind intact means nothing rewrote it.
+func warnDeprecatedTopLevelTargetRef(obj map[string]interface{}, name, kind string, target TargetVersion) []string {
 	spec, ok := obj["spec"].(map[string]interface{})
 	if !ok {
 		return nil
@@ -837,32 +847,64 @@ func warnDeprecatedTopLevelTargetRef(obj map[string]interface{}, name, kind stri
 		return nil
 	}
 	trKind, _ := targetRef["kind"].(string)
+	if trKind == "" || trKind == "Mesh" || trKind == "Dataplane" {
+		return nil
+	}
+
+	// On 3.0 every non-Mesh/Dataplane kind is rejected, so the advisory always fires and
+	// carries the uniform rule. On 2.x only the kinds Kuma actually deprecated are flagged.
+	v3 := target.IsV3()
+	suffix := ""
+	if v3 {
+		suffix = " Kuma 3.0 rejects it outright: Mesh and Dataplane are the only top-level " +
+			"targetRef kinds any policy accepts."
+	}
+
 	switch trKind {
 	case "MeshSubset":
-		// Tagged MeshSubset is rewritten to Dataplane by ScenarioSubset; only warn when no
-		// service-identity tags are present.
-		tags, _ := targetRef["tags"].(map[string]interface{})
-		for k := range tags {
-			if k == "kuma.io/service" || k == "k8s.kuma.io/service-name" {
-				return nil
+		// Tagged MeshSubset is rewritten to Dataplane by ScenarioSubset; under v2 only warn
+		// when no service-identity tags are present.
+		if !v3 {
+			tags, _ := targetRef["tags"].(map[string]interface{})
+			for k := range tags {
+				if k == "kuma.io/service" || k == "k8s.kuma.io/service-name" {
+					return nil
+				}
 			}
 		}
 		return []string{fmt.Sprintf(
 			"%s %q: spec.targetRef.kind MeshSubset is deprecated in Kuma 2.10+ — "+
-				"use kind: Dataplane with labels instead.",
-			kind, name)}
+				"use kind: Dataplane with labels instead.%s",
+			kind, name, suffix)}
 	case "MeshService", "MeshServiceSubset":
 		return []string{fmt.Sprintf(
 			"%s %q: spec.targetRef.kind %s is deprecated as a top-level target in Kuma 2.10+ — "+
-				"use kind: Dataplane with labels instead.",
-			kind, name, trKind)}
+				"use kind: Dataplane with labels instead.%s",
+			kind, name, trKind, suffix)}
 	case "MeshHTTPRoute":
 		return []string{fmt.Sprintf(
 			"%s %q: spec.targetRef.kind MeshHTTPRoute is deprecated as a top-level target — "+
-				"reference the MeshHTTPRoute in spec.to[].targetRef instead.",
-			kind, name)}
+				"reference the MeshHTTPRoute in spec.to[].targetRef instead.%s",
+			kind, name, suffix)}
+	case "MeshGateway":
+		// Valid at 2.14 (system-role policies), removed in 3.0 with the built-in gateway API.
+		if !v3 {
+			return nil
+		}
+		return []string{fmt.Sprintf(
+			"%s %q: spec.targetRef.kind MeshGateway is removed in Kuma 3.0 — the built-in "+
+				"gateway API (MeshGateway, MeshGatewayRoute, MeshGatewayInstance, "+
+				"MeshGatewayConfig) is deleted, so no policy can target one. Re-target the "+
+				"policy at the delegated gateway's own proxies (kind: Dataplane with labels).%s",
+			kind, name, suffix)}
 	}
-	return nil
+
+	if !v3 {
+		return nil
+	}
+	return []string{fmt.Sprintf(
+		"%s %q: spec.targetRef.kind %s is not a valid top-level target.%s",
+		kind, name, trKind, suffix)}
 }
 
 // ---- Helpers -----------------------------------------------------------------
@@ -1205,9 +1247,11 @@ func warnDataplaneGatewayBuiltinType(obj map[string]interface{}, name string, ta
 	return []string{fmt.Sprintf(
 		"Dataplane %q: networking.gateway.type BUILTIN is removed in 3.0 — the GatewayType ordinal is "+
 			"reserved in the proto, so this is rejected at parse time, not just admission. Migrate the "+
-			"built-in gateway to a delegated gateway (a Deployment/Service you own, with the pod "+
-			"labelled kuma.io/gateway: enabled) before upgrading — see the MeshGatewayInstance advisory "+
-			"for the settings to carry over.",
+			"built-in gateway to a delegated gateway (a Deployment/Service you own) before upgrading. "+
+			"Note 3.0 also removes the kuma.io/gateway marking itself rather than renaming it: annotate "+
+			"the pod traffic.kuma.io/exclude-inbound-ports with the gateway's listen ports, and the "+
+			"fronting Service kuma.io/ignore: \"true\" — see the MeshGatewayInstance advisory for the "+
+			"settings to carry over.",
 		name)}
 }
 

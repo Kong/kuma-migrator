@@ -356,11 +356,11 @@ spec:
 		t.Fatalf("v2: expected GatewayClass + MeshGatewayConfig, got %d docs", len(docs))
 	}
 
-	// v3 has no successor: Kuma 3.0 removes the built-in gateway API in full,
-	// including the meshgatewayconfigs.kuma.io CRD, and keeps only the HTTPRoute
-	// half of the Gateway API integration. Emitting the 2.x pair would produce a
-	// document the control plane rejects and a GatewayClass it strips finalizers
-	// from on startup.
+	// v3 has no successor: Kuma 3.0 removes the built-in gateway API in full —
+	// resources, Go/proto types, CRDs and KDS sync — and keeps only the HTTPRoute
+	// and GRPCRoute halves of the Gateway API integration. Emitting the 2.x pair
+	// would produce a document the control plane rejects and a GatewayClass it
+	// strips finalizers from on startup.
 	docs, _, err = TransformMeshGatewayInstance([]byte(input), TargetV3)
 	if err == nil {
 		t.Fatal("v3: expected an error, got none")
@@ -369,17 +369,87 @@ spec:
 		t.Errorf("v3: expected no output documents, got %d", len(docs))
 	}
 	for _, want := range []string{
-		"MeshGatewayConfig",        // names what is removed
-		"kuma.io/gateway: enabled", // names the delegated-gateway replacement
-		"replicas=3",               // carries the settings forward
+		"MeshGatewayConfig", // names what is removed
+		// The delegated-gateway replacement. kuma.io/gateway is *removed* in 3.0, not
+		// renamed, so the error must point at the exclude-inbound-ports annotation that
+		// carries the behaviour instead — recommending the old marking would leave the
+		// gateway's traffic redirected into Envoy and subject to MeshTrafficPermission.
+		"traffic.kuma.io/exclude-inbound-ports",
+		`kuma.io/ignore: "true"`, // stops the fronting Service generating a MeshService
+		"GRPCRoute",              // the Gateway API surface that survives alongside HTTPRoute
+		"replicas=3",             // carries the settings forward
 		"serviceType=LoadBalancer",
-		"--to-latest v2", // says how to get the old behaviour back
+		"before upgrading", // says to delete the leftovers first
+		"--to-latest v2",   // says how to get the old behaviour back
 	} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("v3 error should mention %q: %v", want, err)
 		}
 	}
 }
+
+// Kuma 3.0 deletes the built-in gateway API outright — resources, types, CRDs and KDS sync
+// — so a converted MeshGateway/MeshGatewayRoute is only half the migration: the source
+// object has to be deleted before the upgrade, or the Helm CRD removal takes it silently.
+// The converted Gateway API output itself stays valid, so this is a warning, not an error.
+func TestTransformDocument_RemovedGatewaySourceNote_V3(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		input string
+		kind  string
+	}{
+		{"MeshGateway", meshGatewayForClassResolution, "MeshGateway"},
+		{"MeshGatewayRoute", meshGatewayRouteForRemovalNote, "MeshGatewayRoute"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, warnings, _, err := TransformDocument([]byte(tc.input), TargetV3)
+			if err != nil {
+				t.Fatalf("v3: unexpected error: %v", err)
+			}
+			found := false
+			for _, w := range warnings {
+				if strings.Contains(w, tc.kind) && strings.Contains(w, "before upgrading") {
+					found = true
+				}
+			}
+			if !found {
+				t.Errorf("expected a v3 delete-the-source advisory for %s, got: %v", tc.kind, warnings)
+			}
+
+			// v2 keeps the built-in gateway API, so the advisory must stay quiet.
+			_, warnings, _, err = TransformDocument([]byte(tc.input), TargetV2)
+			if err != nil {
+				t.Fatalf("v2: unexpected error: %v", err)
+			}
+			for _, w := range warnings {
+				if strings.Contains(w, "before upgrading") {
+					t.Errorf("unexpected v2 delete-the-source advisory for %s: %s", tc.kind, w)
+				}
+			}
+		})
+	}
+}
+
+const meshGatewayRouteForRemovalNote = `
+apiVersion: kuma.io/v1alpha1
+kind: MeshGatewayRoute
+metadata:
+  name: edge-route
+spec:
+  selectors:
+    - match:
+        kuma.io/service: edge-gateway_kuma-demo_svc
+  conf:
+    http:
+      rules:
+        - matches:
+            - path:
+                match: PREFIX
+                value: /
+          backends:
+            - destination:
+                kuma.io/service: backend_kuma-demo_svc_3001
+`
 
 const meshGatewayForClassResolution = `
 apiVersion: kuma.io/v1alpha1
@@ -500,7 +570,13 @@ func TestTransformMeshGateway_V3_NoKumaGatewayClass(t *testing.T) {
 	if !hasWarning(warnings, "HTTPRoute-only") && !hasWarning(warnings, "reduces its Gateway API") {
 		t.Errorf("expected a v3 explanation, got: %v", warnings)
 	}
-	if !hasWarning(warnings, "kuma.io/gateway: enabled") {
+	// The delegated-gateway pointer must name the annotation that replaces the marking,
+	// not the marking itself: 3.0 removes kuma.io/gateway outright and silently ignores a
+	// pod that still carries it.
+	if !hasWarning(warnings, "traffic.kuma.io/exclude-inbound-ports") {
 		t.Errorf("expected the delegated-gateway pointer, got: %v", warnings)
+	}
+	if hasWarning(warnings, "kuma.io/gateway: enabled") {
+		t.Errorf("v3 warning still recommends the removed kuma.io/gateway marking: %v", warnings)
 	}
 }
