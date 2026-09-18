@@ -308,6 +308,47 @@ spec:
 	}
 }
 
+// MeshHTTPRoute/MeshTCPRoute must reach the output byte-identical: rewriting a valid,
+// current policy into Gateway API changes its owner and its precedence class (a generated
+// route ranks as a producer and ties with hand-written ones), and Kuma never reconciled
+// Gateway API TCPRoute at all.
+func TestTransformDocument_RoutesArePassedThrough(t *testing.T) {
+	for _, kind := range []string{"MeshHTTPRoute", "MeshTCPRoute"} {
+		t.Run(kind, func(t *testing.T) {
+			input := `apiVersion: kuma.io/v1alpha1
+kind: ` + kind + `
+metadata:
+  name: route-1
+spec:
+  targetRef:
+    kind: Mesh
+  to:
+    - targetRef:
+        kind: MeshService
+        name: backend
+      rules:
+        - default:
+            backendRefs: []
+`
+			for _, target := range []TargetVersion{TargetV2, TargetV3} {
+				docs, _, scenario, err := TransformDocument([]byte(input), target)
+				if err != nil {
+					t.Fatalf("%v: unexpected error: %v", target, err)
+				}
+				if scenario != ScenarioPassthrough {
+					t.Errorf("%v: scenario = %v, want ScenarioPassthrough", target, scenario)
+				}
+				if len(docs) != 1 {
+					t.Fatalf("%v: expected 1 document, got %d", target, len(docs))
+				}
+				if string(docs[0]) != input {
+					t.Errorf("%v: document was rewritten:\n%s", target, docs[0])
+				}
+			}
+		})
+	}
+}
+
 func TestDetectScenario_GatewayResources(t *testing.T) {
 	cases := []struct {
 		name     string
@@ -316,8 +357,11 @@ func TestDetectScenario_GatewayResources(t *testing.T) {
 	}{
 		{"MeshGateway", "MeshGateway", ScenarioGateway},
 		{"MeshGatewayInstance", "MeshGatewayInstance", ScenarioGatewayInstance},
-		{"MeshHTTPRoute", "MeshHTTPRoute", ScenarioHTTPRoute},
-		{"MeshTCPRoute", "MeshTCPRoute", ScenarioTCPRoute},
+		// MeshHTTPRoute and MeshTCPRoute are current Kuma policies on both 2.x and 3.0 —
+		// Kuma's own Gateway API reconcilers compile HTTPRoute/GRPCRoute *into*
+		// MeshHTTPRoute — so they are passed through, not rewritten to Gateway API.
+		{"MeshHTTPRoute", "MeshHTTPRoute", ScenarioPassthrough},
+		{"MeshTCPRoute", "MeshTCPRoute", ScenarioPassthrough},
 	}
 
 	for _, tc := range cases {

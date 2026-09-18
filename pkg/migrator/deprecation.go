@@ -124,6 +124,8 @@ func ScanForDeprecations(raw []byte, target TargetVersion) (out []byte, warnings
 		warnings = append(warnings, warnMeshOPALegacyDataSource(obj, name, target)...)
 	case "MeshGlobalRateLimit":
 		warnings = append(warnings, warnMeshGlobalRateLimitRemoved(obj, name, target)...)
+	case "MeshHTTPRoute":
+		warnings = append(warnings, warnMeshHTTPRouteNoCatchAll(obj, name, target)...)
 	}
 
 	// Generic checks applied to every Mesh* policy regardless of kind.
@@ -811,6 +813,102 @@ func warnDataplaneReachableServices(obj map[string]interface{}, name string) []s
 			"display names (kuma.io/display-name label value), or migrate to the structured "+
 			"reachableBackends.refs[] form.",
 		name, services)}
+}
+
+// ---- MeshHTTPRoute catch-all rule (3.0) --------------------------------------
+
+// warnMeshHTTPRouteNoCatchAll warns when a MeshHTTPRoute has no catch-all rule.
+//
+// kuma#18268 (2026-09-01) changed an unmatched request from falling through to the
+// destination to being answered with a 404, because "This is what the Gateway API requires
+// of an HTTPRoute, and it is what the GAMMA conformance suite asserts" (UPGRADE.md). When
+// to[].targetRef names a MeshService with no sectionName the rules cover *every* HTTP port
+// of that destination, including ports no rule mentions; on a gRPC destination the client
+// sees UNIMPLEMENTED. The case upstream calls out is a route written only to anchor another
+// policy (MeshTimeout/MeshRetry/MeshAccessLog) via a narrow match — that pattern still
+// validates on 3.0, so nothing else signals the change.
+//
+// v3 only: on the 2.x line unmatched requests still fall through.
+func warnMeshHTTPRouteNoCatchAll(obj map[string]interface{}, name string, target TargetVersion) []string {
+	if !target.IsV3() {
+		return nil
+	}
+	spec, ok := obj["spec"].(map[string]interface{})
+	if !ok {
+		return nil
+	}
+	to, ok := spec["to"].([]interface{})
+	if !ok || len(to) == 0 {
+		return nil
+	}
+
+	sawRule := false
+	for _, rawTo := range to {
+		toEntry, ok := rawTo.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		rules, ok := toEntry["rules"].([]interface{})
+		if !ok {
+			continue
+		}
+		for _, rawRule := range rules {
+			rule, ok := rawRule.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			sawRule = true
+			matches, _ := rule["matches"].([]interface{})
+			if httpMatchesAreCatchAll(matches) {
+				return nil
+			}
+		}
+	}
+	if !sawRule {
+		return nil
+	}
+
+	return []string{fmt.Sprintf(
+		"MeshHTTPRoute %q: none of its rules is a catch-all (empty matches[], or an unconditional "+
+			"PathPrefix \"/\" match) — on Kuma 3.0 a request matching no rule is answered with a 404 "+
+			"instead of falling through to the destination (kuma#18268), across every HTTP port of that "+
+			"destination when to[].targetRef names a MeshService with no sectionName. On a gRPC "+
+			"destination the client sees UNIMPLEMENTED. This is easy to hit by accident when the route "+
+			"exists only to anchor a MeshTimeout/MeshRetry/MeshAccessLog via a narrow match. Add a "+
+			"catch-all rule if traffic outside the listed matches should still reach the backend — on "+
+			"the route itself when the anchored policies should cover it too, or on a second "+
+			"MeshHTTPRoute when they should not.",
+		name)}
+}
+
+// httpMatchesAreCatchAll reports whether a rule's matches[] lets everything through:
+// either no matches at all, or an unconditional PathPrefix "/" entry (one carrying no
+// other narrowing field such as method, headers or queryParams).
+func httpMatchesAreCatchAll(matches []interface{}) bool {
+	if len(matches) == 0 {
+		return true
+	}
+	for _, rawMatch := range matches {
+		m, ok := rawMatch.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		path, ok := m["path"].(map[string]interface{})
+		if !ok || path["type"] != "PathPrefix" || path["value"] != "/" {
+			continue
+		}
+		narrowed := false
+		for k := range m {
+			if k != "path" {
+				narrowed = true
+				break
+			}
+		}
+		if !narrowed {
+			return true
+		}
+	}
+	return false
 }
 
 // ---- Deprecated top-level spec.targetRef kinds (v2.10/2.11) -------------------

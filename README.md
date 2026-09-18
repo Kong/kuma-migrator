@@ -120,6 +120,8 @@ history: [Releases](https://github.com/Kong/kuma-migrator/releases) ·
 
 | Version | Date | Summary |
 |---|---|---|
+| [v0.8.0](https://github.com/Kong/kuma-migrator/releases/tag/v0.8.0) | 2026-09-18 | **Breaking:** `MeshHTTPRoute`/`MeshTCPRoute` are no longer converted to Gateway API. Both are current policies on 2.x *and* 3.0 — Kuma compiles `HTTPRoute`/`GRPCRoute` **into** a `MeshHTTPRoute` — and Kuma has never reconciled Gateway API `TCPRoute` at all, so that output was dead on every version. They now pass through unchanged, and the 3.0 `404` catch-all advisory fires on the `MeshHTTPRoute` itself |
+| [v0.7.1](https://github.com/Kong/kuma-migrator/releases/tag/v0.7.1) | 2026-09-18 | Corrected the `--to-latest v3` delegated-gateway guidance: 3.0 *removes* the `kuma.io/gateway` marking rather than renaming it, so the tool now points at `traffic.kuma.io/exclude-inbound-ports` and `kuma.io/ignore`. Top-level `targetRef` checks apply 3.0's uniform `Mesh`/`Dataplane`-only rule to every policy |
 | [v0.7.0](https://github.com/Kong/kuma-migrator/releases/tag/v0.7.0) | 2026-09-04 | **Breaking:** removed the `plan` command — use `migrate --dry-run` instead, same flags and output. Also redesigned the pipeline diagram to mark `apply` as a manual step, not a command |
 | [v0.6.3](https://github.com/Kong/kuma-migrator/releases/tag/v0.6.3) | 2026-09-04 | The migration report's "Already Migrated"/"Skipped" sections no longer silently drop deprecation warnings attached to those files; fixed `HostnameGenerator` being misclassified as "Skipped" |
 | [v0.6.2](https://github.com/Kong/kuma-migrator/releases/tag/v0.6.2) | 2026-09-03 | Release artifacts now carry a SLSA build provenance attestation, verifiable with `gh attestation verify` |

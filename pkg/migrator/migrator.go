@@ -332,7 +332,7 @@ func processFile(inputPath, outputDir, cpModeDir, meshDir string, writeFile bool
 			foundMesh = true
 		case ScenarioExternalService:
 			foundES = true
-		case ScenarioGateway, ScenarioGatewayInstance, ScenarioHTTPRoute, ScenarioTCPRoute, ScenarioGatewayRoute:
+		case ScenarioGateway, ScenarioGatewayInstance, ScenarioGatewayRoute:
 			foundGW = true
 		case ScenarioOPAPolicy:
 			foundOPA = true

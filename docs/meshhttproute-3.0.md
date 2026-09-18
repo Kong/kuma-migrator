@@ -216,10 +216,10 @@ Two entries, both about who wins a tie:
 
 ## What this means for kuma-migrator
 
-| Area | Today | Proposed |
+| Area | Was | Now (shipped) |
 |---|---|---|
-| `TransformMeshHTTPRoute` → `HTTPRoute` | always converts (`ScenarioGW`) | Reconsider under `--to-latest v3`: the conversion is optional, and it moves the route into the *generated* precedence class (§5) and changes ownership. Candidate for an opt-in flag, with the default being "keep the `MeshHTTPRoute`, add the catch-all rule" |
-| catch-all advisory | lives in `TransformMeshHTTPRoute` (`route.go`, `httpRuleIsCatchAll`) because `DetectScenario` always converts the kind away | If the conversion becomes opt-in, this must move to `ScanForDeprecations` so it still fires on routes we leave alone |
+| `MeshHTTPRoute`/`MeshTCPRoute` conversion | always converted to Gateway API (`ScenarioGW`) | **Removed.** Both detect as `ScenarioPassthrough` and are emitted byte-identical. The rewrite was never a 3.0 requirement and moved the route into the *generated* precedence class (§5); `MeshTCPRoute` → `TCPRoute` produced something Kuma has never reconciled on any version |
+| catch-all advisory | lived in `TransformMeshHTTPRoute` (`route.go`) because `DetectScenario` always converted the kind away | Moved to `warnMeshHTTPRouteNoCatchAll` in `ScanForDeprecations` (v3 only), so it fires on the `MeshHTTPRoute` itself |
 | top-level `targetRef` on a `MeshHTTPRoute` | covered generically by `warnDeprecatedTopLevelTargetRef` | Confirmed correct for 3.0 by §3 — `Mesh`/`Dataplane` only |
 | `MeshGatewayInstance` under v3 | errors, points at the delegated-gateway replacement | Correct, and now backed by the CRD-removal entry. Worth naming `traffic.kuma.io/exclude-inbound-ports` and `kuma.io/ignore` explicitly in the error text |
 | `MeshGateway` as a `targetRef.kind` | listed as a known v3 gap, no scanner | Now confirmed removed (§2) — the gap can be closed with a real check |
@@ -234,7 +234,8 @@ automatically, in whichever direction the error runs.
 
 ## Open questions
 
-- Does `MeshTCPRoute` get the same top-level `targetRef` narrowing as `MeshHTTPRoute`?
 - Does Kong Mesh's `UPGRADE_km.md` add anything gateway- or route-specific on top of this?
-- If the `MeshHTTPRoute` → `HTTPRoute` conversion becomes opt-in, what is the right default for
-  an input that targets a `MeshGateway` — which has no 3.0 successor at all?
+- `MeshGatewayRoute` still converts to Gateway API, which suits replacing the built-in gateway
+  with one you run — the only option on 3.0. But `UPGRADE.md` names `MeshHTTPRoute`/`MeshTCPRoute`
+  as its replacement, which is right when Kuma keeps routing. Should the tool generate that form
+  too (behind a flag, or by detecting whether a `MeshGateway` is present in the input)?

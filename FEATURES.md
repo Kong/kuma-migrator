@@ -280,9 +280,9 @@ Five sub-scenarios, all labelled `[MIGRATED GW]`:
 |---|---|
 | `MeshGateway` | `Gateway` (Gateway API `gateway.networking.k8s.io/v1`), with `gatewayClassName` resolved from the companion `MeshGatewayInstance` under v2, or the `REPLACE-WITH-YOUR-GATEWAYCLASS` placeholder when unresolvable / under v3 |
 | `MeshGatewayInstance` | `GatewayClass` + `MeshGatewayConfig` **(v2 only — reported as an error under v3)** |
-| `MeshHTTPRoute` | `HTTPRoute` (Gateway API) |
-| `MeshTCPRoute` | `TCPRoute` (Gateway API experimental) |
 | `MeshGatewayRoute` | `HTTPRoute` and/or `TCPRoute` depending on protocol |
+
+`MeshHTTPRoute` and `MeshTCPRoute` are **not** in this scenario. Both are current Kuma policies on 2.x and 3.0 — Kuma's own Gateway API reconcilers compile `HTTPRoute`/`GRPCRoute` *into* a `MeshHTTPRoute` — so they are passed through unchanged and only scanned for deprecations. Kuma also has no Gateway API `TCPRoute` reconciler at all, so the `TCPRoute` this used to emit was never reconciled.
 
 **Gateway-specific behaviours**:
 - Listener `hostname: "*"` is invalid in Gateway API — field is omitted and a warning is emitted

@@ -15,8 +15,6 @@ const (
 	ScenarioExternalService          // ExternalService CRD to be converted to MeshExternalService
 	ScenarioGateway                  // MeshGateway → Gateway (gateway.networking.k8s.io)
 	ScenarioGatewayInstance          // MeshGatewayInstance → GatewayClass + MeshGatewayConfig
-	ScenarioHTTPRoute                // MeshHTTPRoute → HTTPRoute (gateway.networking.k8s.io)
-	ScenarioTCPRoute                 // MeshTCPRoute → TCPRoute (gateway.networking.k8s.io)
 	ScenarioRules                    // from[] deprecated in 2.10 → rules[] (MeshTimeout, MeshCircuitBreaker, etc.)
 	ScenarioGatewayRoute             // MeshGatewayRoute → Gateway API HTTPRoute or TCPRoute
 	ScenarioOPAPolicy                // Kong Mesh OPAPolicy → MeshOPA
@@ -40,10 +38,6 @@ func (s Scenario) String() string {
 		return "MeshGateway → Gateway"
 	case ScenarioGatewayInstance:
 		return "MeshGatewayInstance → GatewayClass + MeshGatewayConfig"
-	case ScenarioHTTPRoute:
-		return "MeshHTTPRoute → HTTPRoute"
-	case ScenarioTCPRoute:
-		return "MeshTCPRoute → TCPRoute"
 	case ScenarioRules:
 		return "Rules (from[] → rules[])"
 	case ScenarioGatewayRoute:

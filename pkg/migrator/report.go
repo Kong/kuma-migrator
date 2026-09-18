@@ -404,7 +404,7 @@ func requiresKubeDelete(s Scenario) bool {
 	switch s {
 	case ScenarioLegacy,
 		ScenarioExternalService,
-		ScenarioGateway, ScenarioGatewayInstance, ScenarioHTTPRoute, ScenarioTCPRoute, ScenarioGatewayRoute,
+		ScenarioGateway, ScenarioGatewayInstance, ScenarioGatewayRoute,
 		ScenarioOPAPolicy:
 		return true
 	}
@@ -787,7 +787,7 @@ func hasLabel(r *MigrationReport, label string) bool {
 func hasTCPRouteOutput(r *MigrationReport) bool {
 	for _, fr := range r.Files {
 		for _, dc := range fr.Changes {
-			if dc.Scenario == ScenarioTCPRoute || dc.Scenario == ScenarioGatewayRoute {
+			if dc.Scenario == ScenarioGatewayRoute {
 				return true
 			}
 		}

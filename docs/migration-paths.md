@@ -16,7 +16,7 @@ Every transformation `kuma-migrator` performs, and every deprecated field it det
 | **Rules** | New-style `Mesh*` policies with deprecated `from[]` → `rules[]` (Kuma 2.10+) — only for `MeshTimeout`/`MeshCircuitBreaker`/`MeshRateLimit`/`MeshAccessLog`/`MeshTLS`. `MeshTrafficPermission`/`MeshFaultInjection` use a different, SPIFFE-identity-based `rules[]` shape and are **not** auto-converted — see [MeshTrafficPermission modes](meshtrafficpermission-modes.md) |
 | **Mesh** | `Mesh` CRD with embedded observability/passthrough → standalone `MeshMetric`, `MeshTrace`, `MeshAccessLog`, `MeshPassthrough` CRDs |
 | **ExternalService** | `ExternalService` → `MeshExternalService` |
-| **GW** | `MeshGateway` → `Gateway`, `MeshGatewayInstance` → `GatewayClass`+`MeshGatewayConfig` *(v2 only — see below)*, `MeshGatewayRoute`/`MeshHTTPRoute`/`MeshTCPRoute` → Gateway API `HTTPRoute`/`TCPRoute` |
+| **GW** | `MeshGateway` → `Gateway`, `MeshGatewayInstance` → `GatewayClass`+`MeshGatewayConfig` *(v2 only — see below)*, `MeshGatewayRoute` → Gateway API `HTTPRoute`/`TCPRoute`. `MeshHTTPRoute`/`MeshTCPRoute` are **passed through unchanged** — see [below](#meshhttproute-and-meshtcproute-are-not-converted) |
 | **OPAPolicy** | Kong Mesh `OPAPolicy` → `MeshOPA` (Kong Mesh 2.5+) |
 
 ## Deprecated-field warnings (auto-detected, not auto-transformed)
@@ -56,7 +56,7 @@ The tool also emits warnings for deprecated fields that require manual action:
 - `Dataplane` `networking.inbound[].tags` — removed **silently** in 3.0 (the field is `reserved` in the proto), so a manifest still setting it applies cleanly and simply loses the tags *(warn under `--to-latest v3` only — inbound tags are mandatory in 2.x, so a v2 advisory would fire on every Dataplane with nothing actionable)*
 - `Dataplane` `networking.gateway.type: BUILTIN` — the `GatewayType` ordinal is `reserved` in the proto on 3.0, rejected at parse time, not just admission *(warn under `--to-latest v3` only — `DELEGATED`/`BUILTIN` are both valid in 2.x)*
 - `MeshLoadBalancingStrategy` `to[].default.localityAwareness.crossZone` set on a `to[]` entry whose `targetRef.kind` is not `MeshMultiZoneService` — new 3.0-dev validator restriction *(warn under `--to-latest v3` only — not yet enforced in the 2.14 line)*
-- `MeshHTTPRoute`/`HTTPRoute` with no catch-all rule (empty `matches[]`, or an unconditional `PathPrefix: "/"`) — unmatched requests now block instead of falling through on 3.0, easy to hit by accident when a route exists only to anchor another policy *(advisory under `--to-latest v3` only, surfaced on the converted `HTTPRoute` output)*
+- `MeshHTTPRoute` with no catch-all rule (empty `matches[]`, or an unconditional `PathPrefix: "/"`) — on 3.0 an unmatched request is answered with a `404` instead of falling through, across every HTTP port of the destination when `to[].targetRef` names a `MeshService` with no `sectionName`; on a gRPC destination the client sees `UNIMPLEMENTED`. Easy to hit by accident when the route exists only to anchor a `MeshTimeout`/`MeshRetry`/`MeshAccessLog` via a narrow match *(advisory under `--to-latest v3` only)*
 
 For why `MeshTrafficPermission`'s `from[]` is never auto-converted, see [MeshTrafficPermission modes](meshtrafficpermission-modes.md).
 
@@ -106,6 +106,28 @@ allocates a VIP per result. Nothing reproduces that in one resource:
 
 The tool reports it as needing manual migration and leaves the original document in
 the output directory.
+
+### `MeshHTTPRoute` and `MeshTCPRoute` are not converted
+
+Both are **current Kuma policies on 2.x and on 3.0**, so the tool passes them through
+unchanged and only scans them for deprecations. They are not legacy, and converting them to
+Gateway API is not part of any upgrade.
+
+The direction of travel runs the other way: Kuma's Gateway API integration *compiles into*
+these policies. On 3.0 the control plane registers an `HTTPRouteReconciler` and a
+`GRPCRouteReconciler`, and both translate a Gateway API route into a generated
+`MeshHTTPRoute`. Rewriting a hand-written `MeshHTTPRoute` into an `HTTPRoute` would therefore:
+
+- change who owns it — the generated `MeshHTTPRoute` belongs to the `HTTPRoute`;
+- change its precedence — a generated route now lands in the `HTTPRoute`'s namespace with
+  `kuma.io/policy-role=producer`, so it **ties** with an equivalent hand-written route that
+  previously always won, and conflicting `HTTPRoute`s tie-break by `creationTimestamp`;
+- for `MeshTCPRoute`, produce something Kuma never reconciles at all — there is no Gateway
+  API `TCPRoute` reconciler in Kuma, at `v2.14.4` or on master.
+
+Standardising on Gateway API for mesh routing is a legitimate architectural choice, but it is
+a choice about where your source of truth lives, not a version migration — so it is left to
+you. See [MeshHTTPRoute and the 3.0 routing changes](meshhttproute-3.0.md).
 
 ### Built-in gateways and `--to-latest v3`
 

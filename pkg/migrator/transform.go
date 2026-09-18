@@ -136,19 +136,6 @@ func TransformDocumentWithOptions(raw []byte, opts TransformOptions) ([][]byte, 
 			return nil, nil, scenario, err
 		}
 
-	case ScenarioHTTPRoute:
-		var err error
-		docs, warnings, err = TransformMeshHTTPRoute(raw, target)
-		if err != nil {
-			return nil, nil, scenario, err
-		}
-
-	case ScenarioTCPRoute:
-		var err error
-		docs, warnings, err = TransformMeshTCPRoute(raw)
-		if err != nil {
-			return nil, nil, scenario, err
-		}
 
 	default: // ScenarioPassthrough, ScenarioSkipped, ScenarioUnknown
 		docs = [][]byte{raw}

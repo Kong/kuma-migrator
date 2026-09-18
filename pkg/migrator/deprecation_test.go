@@ -1081,6 +1081,84 @@ func TestScanForDeprecations_TopLevelTaggedMeshSubset_V2NoWarn(t *testing.T) {
 	}
 }
 
+// A MeshHTTPRoute is a current Kuma policy on 2.x and 3.0 — Kuma's own Gateway API
+// reconcilers compile HTTPRoute/GRPCRoute into one — so it is passed through unchanged
+// rather than rewritten into Gateway API. The 3.0 404 change is therefore surfaced on the
+// MeshHTTPRoute itself, in ScanForDeprecations.
+func TestScanForDeprecations_MeshHTTPRouteCatchAll(t *testing.T) {
+	route := func(matches string) string {
+		return `apiVersion: kuma.io/v1alpha1
+kind: MeshHTTPRoute
+metadata:
+  name: anchor
+spec:
+  targetRef:
+    kind: Mesh
+  to:
+    - targetRef:
+        kind: MeshService
+        name: backend
+      rules:
+` + matches
+	}
+
+	// Exists only to anchor a MeshTimeout on /api — every other path 404s on 3.0.
+	narrow := route(`        - matches:
+            - path:
+                type: PathPrefix
+                value: /api
+          default:
+            backendRefs: []
+`)
+	catchAll := route(`        - matches:
+            - path:
+                type: PathPrefix
+                value: /
+          default:
+            backendRefs: []
+`)
+	// A PathPrefix "/" that also narrows on method is not a catch-all.
+	narrowedRoot := route(`        - matches:
+            - path:
+                type: PathPrefix
+                value: /
+              method: GET
+          default:
+            backendRefs: []
+`)
+	noMatches := route(`        - default:
+            backendRefs: []
+`)
+
+	const want = "none of its rules is a catch-all"
+	for _, tc := range []struct {
+		name     string
+		input    string
+		target   TargetVersion
+		wantWarn bool
+	}{
+		{"narrow match under v3", narrow, TargetV3, true},
+		{"narrowed root match under v3", narrowedRoot, TargetV3, true},
+		{"catch-all under v3", catchAll, TargetV3, false},
+		{"empty matches under v3", noMatches, TargetV3, false},
+		// 2.x still falls through to the destination, so the advisory would be noise.
+		{"narrow match under v2", narrow, TargetV2, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, warnings := ScanForDeprecations([]byte(tc.input), tc.target)
+			found := false
+			for _, w := range warnings {
+				if strings.Contains(w, want) {
+					found = true
+				}
+			}
+			if found != tc.wantWarn {
+				t.Errorf("catch-all advisory = %v, want %v (warnings: %v)", found, tc.wantWarn, warnings)
+			}
+		})
+	}
+}
+
 func TestScanForDeprecations_MeshMtlsBackendsAdvisory(t *testing.T) {
 	input := `apiVersion: kuma.io/v1alpha1
 kind: Mesh

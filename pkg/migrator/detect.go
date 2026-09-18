@@ -105,10 +105,6 @@ func DetectScenario(raw []byte) (Scenario, error) {
 		return ScenarioGatewayInstance, nil
 	case "MeshGatewayRoute":
 		return ScenarioGatewayRoute, nil
-	case "MeshHTTPRoute":
-		return ScenarioHTTPRoute, nil
-	case "MeshTCPRoute":
-		return ScenarioTCPRoute, nil
 	}
 
 	// Mesh CRD — check if it has sections that need extracting.

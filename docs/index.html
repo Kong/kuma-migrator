@@ -340,7 +340,7 @@
         <tr><td>Rules</td><td>Deprecated <code>from[]</code> → <code>rules[]</code>, for <code>MeshTimeout</code>/<code>MeshCircuitBreaker</code>/<code>MeshRateLimit</code>/<code>MeshAccessLog</code>/<code>MeshTLS</code> only (Kuma 2.10+) — <code>MeshTrafficPermission</code>/<code>MeshFaultInjection</code> use a different, SPIFFE-based <code>rules[]</code> shape and are <strong>not</strong> auto-converted</td></tr>
         <tr><td>Mesh</td><td><code>Mesh</code> CRD observability → standalone <code>MeshMetric</code>/<code>MeshTrace</code>/<code>MeshAccessLog</code></td></tr>
         <tr><td>ExternalService</td><td><code>ExternalService</code> → <code>MeshExternalService</code></td></tr>
-        <tr><td>GW</td><td><code>MeshGateway</code> and route CRDs → Gateway API. Kuma 3.0 deletes the built-in gateway API outright, so under <code>v3</code> <code>MeshGatewayInstance</code> is reported rather than converted, and the source objects must be deleted before upgrading</td></tr>
+        <tr><td>GW</td><td><code>MeshGateway</code> and <code>MeshGatewayRoute</code> → Gateway API. Kuma 3.0 deletes the built-in gateway API outright, so under <code>v3</code> <code>MeshGatewayInstance</code> is reported rather than converted, and the source objects must be deleted before upgrading. <code>MeshHTTPRoute</code>/<code>MeshTCPRoute</code> are current policies on both lines and pass through unchanged</td></tr>
         <tr><td>OPAPolicy</td><td>Kong Mesh <code>OPAPolicy</code> → <code>MeshOPA</code></td></tr>
       </tbody>
     </table>
@@ -461,12 +461,16 @@ make build
   <div class="wrap">
     <h2>Changelog</h2>
     <p class="changelog-stat">
-      <strong>18 releases</strong> since April 2026.
+      <strong>19 releases</strong> since April 2026.
       Full history: <a href="https://github.com/Kong/kuma-migrator/releases">Releases</a> ·
       <a href="https://github.com/Kong/kuma-migrator/compare">compare view</a>.
     </p>
 
     <ul class="changelog">
+      <li>
+        <div class="meta"><span class="ver">v0.8.0</span> · 2026-09-18</div>
+        <div class="desc"><strong>Breaking:</strong> <code>MeshHTTPRoute</code>/<code>MeshTCPRoute</code> are no longer converted to Gateway API. Both are current policies on 2.x <em>and</em> 3.0 — Kuma compiles <code>HTTPRoute</code>/<code>GRPCRoute</code> <strong>into</strong> a <code>MeshHTTPRoute</code> — and Kuma has never reconciled Gateway API <code>TCPRoute</code> at all, so that output was dead on every version. They now pass through unchanged, and the 3.0 <code>404</code> catch-all advisory fires on the <code>MeshHTTPRoute</code> itself.</div>
+      </li>
       <li>
         <div class="meta"><span class="ver">v0.7.1</span> · 2026-09-18</div>
         <div class="desc">Corrected the <code>--to-latest v3</code> delegated-gateway guidance: Kuma 3.0 <em>removes</em> the <code>kuma.io/gateway</code> marking rather than renaming it, so the tool now points at <code>traffic.kuma.io/exclude-inbound-ports</code> and <code>kuma.io/ignore</code>. Top-level <code>targetRef</code> checks apply 3.0's uniform <code>Mesh</code>/<code>Dataplane</code>-only rule to every policy, and converted <code>MeshGateway</code>/<code>MeshGatewayRoute</code> objects now carry a delete-before-upgrading advisory.</div>

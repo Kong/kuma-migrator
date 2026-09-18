@@ -319,7 +319,7 @@ instead of `metadata`. All migrate-side parsing must normalise these:
 | Rules | New-style Mesh* with deprecated `from[]` (Kuma 2.10+) | `rules[]` |
 | Mesh | `Mesh` CRD with embedded observability | standalone companion CRDs |
 | ExternalService | `ExternalService` | `MeshExternalService` |
-| GW | `MeshGateway`, `MeshGatewayInstance`, `MeshGatewayRoute`, `MeshHTTPRoute`, `MeshTCPRoute` | Gateway API CRDs |
+| GW | `MeshGateway`, `MeshGatewayInstance`, `MeshGatewayRoute` | Gateway API CRDs. **`MeshHTTPRoute`/`MeshTCPRoute` are NOT in this scenario** — they are current policies on 2.x and 3.0 and pass through unchanged |
 | OPAPolicy | Kong Mesh `OPAPolicy` | `MeshOPA` |
 
 ## Legacy policy conversion (ScenarioLegacy)
@@ -510,15 +510,27 @@ reconcilers translate *inward* — `plugin_gateway.go` registers an `HTTPRouteRe
 `MeshHTTPRoute` still fully supported; `UPGRADE.md` protects that path explicitly (*"Gateways you
 run yourself and the Gateway API `HTTPRoute` GAMMA path are unaffected"*).
 
-Consequence for `ScenarioGW`: converting `MeshHTTPRoute` → `HTTPRoute` is **optional
-modernization, not a 3.0 requirement**, and it is not free — a generated route now lands in the
-`HTTPRoute`'s own namespace with `kuma.io/policy-role=producer`, so it *ties* with an equivalent
-hand-written `MeshHTTPRoute` (which previously always won, the generated one ranking `system`),
-and conflicting `HTTPRoute`s tie-break by `creationTimestamp` rather than name. Making the
-conversion opt-in under v3 — default "keep the `MeshHTTPRoute`, add the catch-all rule" — is an
-open product decision. If it is ever taken, the catch-all advisory has to move from
-`TransformMeshHTTPRoute` into `ScanForDeprecations`, since it currently lives there only because
-`DetectScenario` always converts the kind away.
+**Decided (and shipped): the conversion is gone.** `MeshHTTPRoute`/`MeshTCPRoute` now detect as
+`ScenarioPassthrough`; `route.go` and `route_test.go` were deleted along with the
+`ScenarioHTTPRoute`/`ScenarioTCPRoute` constants. Rewriting them was never a 3.0 requirement and
+was not free: a generated route lands in the `HTTPRoute`'s own namespace with
+`kuma.io/policy-role=producer`, so it *ties* with an equivalent hand-written `MeshHTTPRoute`
+(which previously always won, the generated one ranking `system`), and conflicting `HTTPRoute`s
+tie-break by `creationTimestamp` rather than name. `MeshTCPRoute` was worse: **Kuma has never had
+a Gateway API `TCPRoute` reconciler** (none at `v2.14.4`, none on master), so that output was
+never reconciled on any version — the same class of bug as the old hardcoded `gatewayClassName`.
+
+Because the kind now survives into the output, the catch-all advisory moved from
+`TransformMeshHTTPRoute` to `warnMeshHTTPRouteNoCatchAll` in `ScanForDeprecations` (v3 only,
+map-based, with `httpMatchesAreCatchAll`). Two shared symbols that lived in `route.go`
+(`gatewayAPIVersionAlpha2`, `sectionNameFromTags`) moved to `gatewayroute.go`.
+
+`MeshGatewayRoute` is still converted to Gateway API, because on 3.0 the built-in gateway is
+deleted and a gateway you run is the only option. But `UPGRADE.md` names the *other* target —
+*"Migrate gateway routing to `MeshHTTPRoute`/`MeshTCPRoute`, which replace `MeshGatewayRoute`"* —
+which is right when Kuma keeps doing the routing. The manifest does not say which path the
+operator is on, so `gatewayRouteSuccessorNote` states the choice instead of guessing, and flags
+the TCPRoute caveat.
 - **`Dataplane networking.gateway.type: BUILTIN`** — was rejected only at admission before;
   kuma#18058 (merged 2026-08-18) made the `BUILTIN` ordinal `reserved` in the proto, so it is
   now rejected at parse time too. `warnDataplaneGatewayBuiltinType` in `deprecation.go` scans
