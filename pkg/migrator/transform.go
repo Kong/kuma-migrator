@@ -76,8 +76,15 @@ func TransformDocumentWithOptions(raw []byte, opts TransformOptions) ([][]byte, 
 			return nil, nil, scenario, err
 		}
 		warnings = w
+		// Universal input yields Universal output: the policies are built as
+		// KubePolicy and re-rendered as type/name/mesh/labels/spec.
+		universal := isUniversalShape(raw)
 		for _, out := range outputs {
-			b, err := yaml.Marshal(out)
+			var v interface{} = out
+			if universal {
+				v = kubePolicyAsUniversal(out, policy.Labels)
+			}
+			b, err := yaml.Marshal(v)
 			if err != nil {
 				return nil, nil, scenario, fmt.Errorf("marshal output policy: %w", err)
 			}
@@ -289,8 +296,9 @@ var legacyShapes = map[string]legacyPolicyShape{
 	"ProxyTemplate":     shapeSelector,
 }
 
-// transformScenarioLegacy converts a legacy Universal-style policy into one or more
-// Kubernetes-style KubePolicy documents.
+// transformScenarioLegacy converts a legacy policy into one or more KubePolicy
+// documents. The caller re-renders them in the Universal layout when the input
+// was Universal (kubePolicyAsUniversal).
 func transformScenarioLegacy(policy UniversalPolicy, opts TransformOptions) ([]KubePolicy, []string, error) {
 	if policy.Type == "TrafficRoute" {
 		return nil, nil, fmt.Errorf("TrafficRoute requires manual migration to MeshHTTPRoute or MeshTCPRoute")

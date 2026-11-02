@@ -506,23 +506,17 @@ func isUniversalDoc(obj map[string]interface{}) bool {
 
 // buildCompanion builds a generated resource in the format cm asks for:
 // Universal (type/name/mesh/spec) or Kubernetes (apiVersion/kind/metadata/spec,
-// in the system namespace, mesh as the kuma.io/mesh label). An empty cm.Mesh
-// leaves the mesh out.
+// in cm.Namespace, mesh as the kuma.io/mesh label). An empty cm.Mesh leaves the
+// mesh out; an empty cm.Namespace leaves the namespace out.
 func buildCompanion(kind, name string, cm companionMeta, spec map[string]interface{}) map[string]interface{} {
 	if cm.Universal {
-		out := map[string]interface{}{
-			"type": kind,
-			"name": name,
-			"spec": spec,
-		}
-		if cm.Mesh != "" {
-			out["mesh"] = cm.Mesh
-		}
-		return out
+		return universalDoc(kind, name, cm.Mesh, nil, spec)
 	}
 	meta := map[string]interface{}{
-		"name":      name,
-		"namespace": cm.Namespace,
+		"name": name,
+	}
+	if cm.Namespace != "" {
+		meta["namespace"] = cm.Namespace
 	}
 	if cm.Mesh != "" {
 		meta["labels"] = map[string]interface{}{meshLabel: cm.Mesh}
@@ -533,6 +527,55 @@ func buildCompanion(kind, name string, cm companionMeta, spec map[string]interfa
 		"metadata":   meta,
 		"spec":       spec,
 	}
+}
+
+// universalDoc renders a Kuma resource in the Universal layout that kumactl and
+// the API server use for new-style resources: top-level type, name, mesh and
+// labels, with the body under spec:
+//
+//	type: MeshTimeout
+//	name: backend
+//	mesh: default
+//	labels: {team: payments}
+//	spec: {targetRef: ..., to: [...]}
+//
+// The kuma.io/mesh label is dropped from labels: on Universal the mesh is the
+// top-level field. An empty mesh or labels leaves the key out. spec may be a map
+// or a typed struct (KubePolicySpec keeps its field order that way).
+func universalDoc(kind, name, mesh string, labels map[string]string, spec interface{}) map[string]interface{} {
+	out := map[string]interface{}{
+		"type": kind,
+		"name": name,
+		"spec": spec,
+	}
+	if mesh != "" {
+		out["mesh"] = mesh
+	}
+	l := map[string]interface{}{}
+	for k, v := range labels {
+		if k != meshLabel {
+			l[k] = v
+		}
+	}
+	if len(l) > 0 {
+		out["labels"] = l
+	}
+	return out
+}
+
+// kubePolicyAsUniversal re-renders a policy built as a KubePolicy in the
+// Universal layout. The mesh comes from the kuma.io/mesh label; extraLabels
+// (the source document's own top-level labels) are carried over beneath the
+// policy's labels.
+func kubePolicyAsUniversal(p KubePolicy, extraLabels map[string]string) map[string]interface{} {
+	labels := copyStringMap(extraLabels)
+	if labels == nil {
+		labels = map[string]string{}
+	}
+	for k, v := range p.Metadata.Labels {
+		labels[k] = v
+	}
+	return universalDoc(p.Kind, p.Metadata.Name, p.Metadata.Labels[meshLabel], labels, p.Spec)
 }
 
 // buildObservabilityCRD builds a mesh-wide companion policy (MeshMetric,

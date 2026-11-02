@@ -389,12 +389,8 @@ Kong Mesh <code>AccessRole</code>:</p>
 <p>With <code>--to-latest v2</code> the <code>TrafficPermission</code> becomes a <code>from[]</code> policy; the other two are copied
 with advisories:</p>
 <div class="code"><pre class="chroma" data-lang="yaml"><code><span class="c"># zero-trust/MeshTrafficPermission-web-to-backend.yaml</span>
-<span class="nt">apiVersion</span><span class="p">:</span> <span class="l">kuma.io/v1alpha1</span>
-<span class="nt">kind</span><span class="p">:</span> <span class="l">MeshTrafficPermission</span>
-<span class="nt">metadata</span><span class="p">:</span>
-  <span class="nt">labels</span><span class="p">:</span>
-    <span class="nt">kuma.io/mesh</span><span class="p">:</span> <span class="l">default</span>
-  <span class="nt">name</span><span class="p">:</span> <span class="l">web-to-backend</span>
+<span class="nt">mesh</span><span class="p">:</span> <span class="l">default</span>
+<span class="nt">name</span><span class="p">:</span> <span class="l">web-to-backend</span>
 <span class="nt">spec</span><span class="p">:</span>
   <span class="nt">from</span><span class="p">:</span>
   - <span class="nt">default</span><span class="p">:</span>
@@ -408,6 +404,7 @@ with advisories:</p>
     <span class="nt">labels</span><span class="p">:</span>
       <span class="nt">app</span><span class="p">:</span> <span class="l">backend</span>
       <span class="nt">k8s.kuma.io/namespace</span><span class="p">:</span> <span class="l">demo</span>
+<span class="nt">type</span><span class="p">:</span> <span class="l">MeshTrafficPermission</span>
 </code></pre></div>
 <div class="code"><pre class="chroma" data-lang="text"><code><span class="o-warn">⚠</span>  spec.targetRef Dataplane labels use 'app: backend' as a best-guess pod label — verify this
    matches your actual pod labels before applying

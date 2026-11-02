@@ -277,12 +277,8 @@ backend is declared on a Universal <code>Mesh</code>:</p>
 </code></pre></div>
 <p>The <code>TrafficLog</code> becomes a <code>MeshAccessLog</code> with the backend inlined, on both targets:</p>
 <div class="code"><pre class="chroma" data-lang="yaml"><code><span class="c"># observability/MeshAccessLog-all-traffic.yaml</span>
-<span class="nt">apiVersion</span><span class="p">:</span> <span class="l">kuma.io/v1alpha1</span>
-<span class="nt">kind</span><span class="p">:</span> <span class="l">MeshAccessLog</span>
-<span class="nt">metadata</span><span class="p">:</span>
-  <span class="nt">labels</span><span class="p">:</span>
-    <span class="nt">kuma.io/mesh</span><span class="p">:</span> <span class="l">default</span>
-  <span class="nt">name</span><span class="p">:</span> <span class="l">all-traffic</span>
+<span class="nt">mesh</span><span class="p">:</span> <span class="l">default</span>
+<span class="nt">name</span><span class="p">:</span> <span class="l">all-traffic</span>
 <span class="nt">spec</span><span class="p">:</span>
   <span class="nt">targetRef</span><span class="p">:</span>
     <span class="nt">kind</span><span class="p">:</span> <span class="l">Mesh</span>
@@ -294,6 +290,7 @@ backend is declared on a Universal <code>Mesh</code>:</p>
         <span class="nt">type</span><span class="p">:</span> <span class="l">File</span>
     <span class="nt">targetRef</span><span class="p">:</span>
       <span class="nt">kind</span><span class="p">:</span> <span class="l">Mesh</span>
+<span class="nt">type</span><span class="p">:</span> <span class="l">MeshAccessLog</span>
 </code></pre></div>
 <p>The <code>Mesh.logging</code> block produces no <code>MeshAccessLog</code> of its own. The <code>Mesh</code> warning confirms the
 backend is carried by the converted <code>TrafficLog</code>:</p>

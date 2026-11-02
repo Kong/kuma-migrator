@@ -215,16 +215,13 @@ conf:
     kuma.io/service: '*'
 ```
 
-Output with `--to-latest v2`:
+Output with `--to-latest v2`. Universal input gives Universal output (`type`, `name`, `mesh`,
+`spec`); Kubernetes input gives Kubernetes resources:
 
 ```yaml
 # resiliency/MeshTimeout-backend-timeout.yaml
-apiVersion: kuma.io/v1alpha1
-kind: MeshTimeout
-metadata:
-  labels:
-    kuma.io/mesh: default
-  name: backend-timeout
+mesh: default
+name: backend-timeout
 spec:
   targetRef:
     kind: Mesh
@@ -238,16 +235,13 @@ spec:
       kind: MeshService
       name: backend
       namespace: demo
+type: MeshTimeout
 ```
 
 ```yaml
 # resiliency/MeshRetry-web-retry.yaml
-apiVersion: kuma.io/v1alpha1
-kind: MeshRetry
-metadata:
-  labels:
-    kuma.io/mesh: default
-  name: web-retry
+mesh: default
+name: web-retry
 spec:
   targetRef:
     kind: Dataplane
@@ -267,6 +261,7 @@ spec:
       kind: MeshService
       name: backend
       namespace: demo
+type: MeshRetry
 ```
 
 The `TrafficRoute` is copied to `routing/TrafficRoute-route-all.yaml` unchanged, with an error:
@@ -284,12 +279,8 @@ converted source gets a delete-before-upgrade advisory:
 
 ```yaml
 # resiliency/MeshRetry-web-retry.yaml (v3)
-apiVersion: kuma.io/v1alpha1
-kind: MeshRetry
-metadata:
-  labels:
-    kuma.io/mesh: default
-  name: web-retry
+mesh: default
+name: web-retry
 spec:
   targetRef:
     kind: Dataplane
@@ -310,6 +301,7 @@ spec:
       labels:
         k8s.kuma.io/namespace: demo
         kuma.io/display-name: backend
+type: MeshRetry
 ```
 
 A `HealthCheck` with `healthyPanicThreshold: 60` under `--to-latest v3` produces the
@@ -317,12 +309,8 @@ A `HealthCheck` with `healthyPanicThreshold: 60` under `--to-latest v3` produces
 
 ```yaml
 # resiliency/MeshCircuitBreaker-backend-hc-panic-threshold.yaml
-apiVersion: kuma.io/v1alpha1
-kind: MeshCircuitBreaker
-metadata:
-  labels:
-    kuma.io/mesh: default
-  name: backend-hc-panic-threshold
+mesh: default
+name: backend-hc-panic-threshold
 spec:
   targetRef:
     kind: Mesh
@@ -338,6 +326,7 @@ spec:
       labels:
         k8s.kuma.io/namespace: demo
         kuma.io/display-name: backend
+type: MeshCircuitBreaker
 ```
 
 3.0 reads the threshold only from an enabled outlier detection, which needs a detector, so the

@@ -51,14 +51,15 @@ order: 120
 - **Both YAML shapes are read.** Kubernetes format (`apiVersion`, `kind`, `metadata`) and
   Universal format (`type`, top-level `name`/`mesh`) are supported by `extract` and
   `migrate`.
-- **The output format depends on the transform.** Legacy policies, `ExternalService` and the
-  companion policies generated from a `Mesh` are written in Kubernetes format, even from
-  Universal input. `Mesh`, `rules[]` conversions, `OPAPolicy` and documents that pass through
-  keep their input format. Check the format of each file against the tool you apply it with.
-- **Companion policies are created in `kong-mesh-system`.** Policies generated from a `Mesh`
-  (`MeshMetric`, `MeshTrace`, `MeshAccessLog`, `MeshPassthrough`, `MeshTLS`) carry
-  `namespace: kong-mesh-system`. On Kuma OSS the system namespace is `kuma-system`; change the
-  namespace before applying.
+- **The output keeps the input format.** Universal input gives Universal output (`type`,
+  `name`, `mesh`, top-level `labels`, body under `spec`), including every generated companion
+  (`MeshCircuitBreaker` from a `HealthCheck`, `MeshOpenTelemetryBackend`, `MeshTLS`, ...).
+  Kubernetes input gives Kubernetes resources. Gateway API output (`Gateway`, `HTTPRoute`, ...)
+  is always Kubernetes: it exists only there.
+- **Companion policies go in the system namespace.** On Kubernetes, policies generated from a
+  `Mesh` (`MeshMetric`, `MeshPassthrough`, `MeshTLS`, `MeshOpenTelemetryBackend`) are placed in
+  the control-plane namespace: `systemNamespace` from the config file, else the namespace
+  inferred from the input, else `kuma-system`. See [Meshes](../topics/meshes.md#system-namespace).
 - **The skip list depends on the environment.** On Kubernetes, `Dataplane`, `ZoneIngress`,
   `ZoneEgress` and `Workload` are skipped: the control plane generates them. On Universal the
   first three are hand-written and are scanned. `migrate` uses the `environment` that

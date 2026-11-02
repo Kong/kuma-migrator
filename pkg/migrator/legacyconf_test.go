@@ -138,8 +138,9 @@ destinations:
 conf:
   interval: 5s
 `)
-	if got := at(t, out, "metadata", "labels", "kuma.io/mesh"); got != "prod" {
-		t.Errorf("metadata.labels[kuma.io/mesh] = %v, want prod", got)
+	// Universal input stays Universal: the mesh stays the top-level field.
+	if got := out["mesh"]; got != "prod" {
+		t.Errorf("mesh = %v, want prod", got)
 	}
 }
 

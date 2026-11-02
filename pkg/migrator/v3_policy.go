@@ -681,21 +681,18 @@ func fixHealthCheckPanicThresholdForV3(obj map[string]interface{}, name string) 
 		if tr, ok := spec["targetRef"]; ok {
 			mcbSpec["targetRef"] = tr
 		}
-		md := map[string]interface{}{"name": name + "-panic-threshold"}
+		// The snippet follows the format of the MeshHealthCheck it came from.
+		cm := companionMeta{Universal: isUniversalDoc(obj)}
 		if omd, ok := obj["metadata"].(map[string]interface{}); ok {
-			if ns, ok := omd["namespace"]; ok {
-				md["namespace"] = ns
-			}
+			cm.Namespace, _ = omd["namespace"].(string)
 		}
-		if mesh, ok := objLabels(obj)[meshLabel]; ok {
-			md["labels"] = map[string]interface{}{meshLabel: mesh}
+		if mesh, ok := objLabels(obj)[meshLabel].(string); ok {
+			cm.Mesh = mesh
 		}
-		snippet, _ := yaml.Marshal(map[string]interface{}{
-			"apiVersion": kumaAPIVersion,
-			"kind":       "MeshCircuitBreaker",
-			"metadata":   md,
-			"spec":       mcbSpec,
-		})
+		if mesh, ok := obj["mesh"].(string); ok && cm.Universal {
+			cm.Mesh = mesh
+		}
+		snippet, _ := yaml.Marshal(buildCompanion("MeshCircuitBreaker", name+"-panic-threshold", cm, mcbSpec))
 		warnings = append(warnings, fmt.Sprintf(
 			"MeshHealthCheck %q: removed to[].default.healthyPanicThreshold — Kuma 3.0 removes the field "+
 				"(it would be rejected or silently dropped, falling back to Envoy's 50%%). Apply this "+

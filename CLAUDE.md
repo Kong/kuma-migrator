@@ -313,6 +313,13 @@ instead of `metadata`. All migrate-side parsing must normalise these:
   the first keeps the original name with `rules[]` (inbound); the second appends `-outbound`
   to the name and carries `to[]` (outbound). A warning is emitted and both must be applied.
 - **`extractNameFromObj`**: checks `obj["metadata"]["name"]` first, falls back to `obj["name"]`.
+- **Universal in ⇒ Universal out, for every converter.** The legacy converters build `KubePolicy`
+  structs; `TransformDocumentWithOptions` re-renders them with `kubePolicyAsUniversal` when
+  `isUniversalShape(raw)` (top-level `type`/`name`/`mesh`, input top-level `labels` carried over,
+  `kuma.io/mesh` never a label, body under `spec`). Generated companions use `buildCompanion`
+  (`mesh.go`), whose Universal branch is the same `universalDoc` helper; the v3 MeshHealthCheck
+  panic-threshold snippet uses it too. Gateway API output is Kubernetes-only by nature.
+  `universal_output_test.go` pins every scenario × target.
 
 ### Kuma resource labels relevant to extraction and migration
 

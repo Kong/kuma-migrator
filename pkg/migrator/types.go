@@ -103,6 +103,9 @@ type UniversalPolicy struct {
 	Type         string          `json:"type"`
 	Name         string          `json:"name"`
 	Mesh         string          `json:"mesh,omitempty"`
+	// Labels are the top-level labels of a Universal document. They are carried
+	// over to Universal output; Kubernetes output does not use them.
+	Labels       map[string]string `json:"labels,omitempty"`
 	Sources      []OldSelector   `json:"sources,omitempty"`
 	Destinations []OldSelector   `json:"destinations,omitempty"`
 	// Selectors is the scoping field of the legacy policies that have no

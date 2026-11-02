@@ -172,11 +172,11 @@ conf:
 		t.Error("MeshHealthCheck must not carry healthyPanicThreshold under v3")
 	}
 	mcb := docs[1]
-	if mcb["kind"] != "MeshCircuitBreaker" || at(t, mcb, "metadata", "name") != "hc-panic-threshold" {
+	if mcb["type"] != "MeshCircuitBreaker" || mcb["name"] != "hc-panic-threshold" {
 		t.Errorf("companion = %v", mcb)
 	}
-	if at(t, mcb, "metadata", "labels", "kuma.io/mesh") != "prod" {
-		t.Error("companion must carry the mesh label")
+	if mcb["mesh"] != "prod" {
+		t.Error("companion must carry the mesh")
 	}
 	to := at(t, mcb, "spec", "to").([]interface{})[0].(map[string]interface{})
 	if at(t, to, "targetRef", "labels", "kuma.io/display-name") != "backend" {

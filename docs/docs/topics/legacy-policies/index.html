@@ -441,14 +441,11 @@ thresholds move to <code>MeshCircuitBreaker</code>.</li>
   <span class="nt">destination</span><span class="p">:</span>
     <span class="nt">kuma.io/service</span><span class="p">:</span> <span class="s1">'*'</span>
 </code></pre></div>
-<p>Output with <code>--to-latest v2</code>:</p>
+<p>Output with <code>--to-latest v2</code>. Universal input gives Universal output (<code>type</code>, <code>name</code>, <code>mesh</code>,
+<code>spec</code>); Kubernetes input gives Kubernetes resources:</p>
 <div class="code"><pre class="chroma" data-lang="yaml"><code><span class="c"># resiliency/MeshTimeout-backend-timeout.yaml</span>
-<span class="nt">apiVersion</span><span class="p">:</span> <span class="l">kuma.io/v1alpha1</span>
-<span class="nt">kind</span><span class="p">:</span> <span class="l">MeshTimeout</span>
-<span class="nt">metadata</span><span class="p">:</span>
-  <span class="nt">labels</span><span class="p">:</span>
-    <span class="nt">kuma.io/mesh</span><span class="p">:</span> <span class="l">default</span>
-  <span class="nt">name</span><span class="p">:</span> <span class="l">backend-timeout</span>
+<span class="nt">mesh</span><span class="p">:</span> <span class="l">default</span>
+<span class="nt">name</span><span class="p">:</span> <span class="l">backend-timeout</span>
 <span class="nt">spec</span><span class="p">:</span>
   <span class="nt">targetRef</span><span class="p">:</span>
     <span class="nt">kind</span><span class="p">:</span> <span class="l">Mesh</span>
@@ -462,14 +459,11 @@ thresholds move to <code>MeshCircuitBreaker</code>.</li>
       <span class="nt">kind</span><span class="p">:</span> <span class="l">MeshService</span>
       <span class="nt">name</span><span class="p">:</span> <span class="l">backend</span>
       <span class="nt">namespace</span><span class="p">:</span> <span class="l">demo</span>
+<span class="nt">type</span><span class="p">:</span> <span class="l">MeshTimeout</span>
 </code></pre></div>
 <div class="code"><pre class="chroma" data-lang="yaml"><code><span class="c"># resiliency/MeshRetry-web-retry.yaml</span>
-<span class="nt">apiVersion</span><span class="p">:</span> <span class="l">kuma.io/v1alpha1</span>
-<span class="nt">kind</span><span class="p">:</span> <span class="l">MeshRetry</span>
-<span class="nt">metadata</span><span class="p">:</span>
-  <span class="nt">labels</span><span class="p">:</span>
-    <span class="nt">kuma.io/mesh</span><span class="p">:</span> <span class="l">default</span>
-  <span class="nt">name</span><span class="p">:</span> <span class="l">web-retry</span>
+<span class="nt">mesh</span><span class="p">:</span> <span class="l">default</span>
+<span class="nt">name</span><span class="p">:</span> <span class="l">web-retry</span>
 <span class="nt">spec</span><span class="p">:</span>
   <span class="nt">targetRef</span><span class="p">:</span>
     <span class="nt">kind</span><span class="p">:</span> <span class="l">Dataplane</span>
@@ -489,6 +483,7 @@ thresholds move to <code>MeshCircuitBreaker</code>.</li>
       <span class="nt">kind</span><span class="p">:</span> <span class="l">MeshService</span>
       <span class="nt">name</span><span class="p">:</span> <span class="l">backend</span>
       <span class="nt">namespace</span><span class="p">:</span> <span class="l">demo</span>
+<span class="nt">type</span><span class="p">:</span> <span class="l">MeshRetry</span>
 </code></pre></div>
 <p>The <code>TrafficRoute</code> is copied to <code>routing/TrafficRoute-route-all.yaml</code> unchanged, with an error:</p>
 <div class="code"><pre class="chroma" data-lang="text"><code><span class="o-warn">⚠</span>  Retry "web-retry": conf.http.retriableStatusCodes ([503]) has no MeshRetry equivalent and was
@@ -500,12 +495,8 @@ thresholds move to <code>MeshCircuitBreaker</code>.</li>
 <p>With <code>--to-latest v3</code> the <code>to[]</code> selectors use labels too, the <code>TrafficRoute</code> goes to <code>_manual/</code>, and every
 converted source gets a delete-before-upgrade advisory:</p>
 <div class="code"><pre class="chroma" data-lang="yaml"><code><span class="c"># resiliency/MeshRetry-web-retry.yaml (v3)</span>
-<span class="nt">apiVersion</span><span class="p">:</span> <span class="l">kuma.io/v1alpha1</span>
-<span class="nt">kind</span><span class="p">:</span> <span class="l">MeshRetry</span>
-<span class="nt">metadata</span><span class="p">:</span>
-  <span class="nt">labels</span><span class="p">:</span>
-    <span class="nt">kuma.io/mesh</span><span class="p">:</span> <span class="l">default</span>
-  <span class="nt">name</span><span class="p">:</span> <span class="l">web-retry</span>
+<span class="nt">mesh</span><span class="p">:</span> <span class="l">default</span>
+<span class="nt">name</span><span class="p">:</span> <span class="l">web-retry</span>
 <span class="nt">spec</span><span class="p">:</span>
   <span class="nt">targetRef</span><span class="p">:</span>
     <span class="nt">kind</span><span class="p">:</span> <span class="l">Dataplane</span>
@@ -526,16 +517,13 @@ converted source gets a delete-before-upgrade advisory:</p>
       <span class="nt">labels</span><span class="p">:</span>
         <span class="nt">k8s.kuma.io/namespace</span><span class="p">:</span> <span class="l">demo</span>
         <span class="nt">kuma.io/display-name</span><span class="p">:</span> <span class="l">backend</span>
+<span class="nt">type</span><span class="p">:</span> <span class="l">MeshRetry</span>
 </code></pre></div>
 <p>A <code>HealthCheck</code> with <code>healthyPanicThreshold: 60</code> under <code>--to-latest v3</code> produces the
 <code>MeshHealthCheck</code> without the field and this companion:</p>
 <div class="code"><pre class="chroma" data-lang="yaml"><code><span class="c"># resiliency/MeshCircuitBreaker-backend-hc-panic-threshold.yaml</span>
-<span class="nt">apiVersion</span><span class="p">:</span> <span class="l">kuma.io/v1alpha1</span>
-<span class="nt">kind</span><span class="p">:</span> <span class="l">MeshCircuitBreaker</span>
-<span class="nt">metadata</span><span class="p">:</span>
-  <span class="nt">labels</span><span class="p">:</span>
-    <span class="nt">kuma.io/mesh</span><span class="p">:</span> <span class="l">default</span>
-  <span class="nt">name</span><span class="p">:</span> <span class="l">backend-hc-panic-threshold</span>
+<span class="nt">mesh</span><span class="p">:</span> <span class="l">default</span>
+<span class="nt">name</span><span class="p">:</span> <span class="l">backend-hc-panic-threshold</span>
 <span class="nt">spec</span><span class="p">:</span>
   <span class="nt">targetRef</span><span class="p">:</span>
     <span class="nt">kind</span><span class="p">:</span> <span class="l">Mesh</span>
@@ -551,6 +539,7 @@ converted source gets a delete-before-upgrade advisory:</p>
       <span class="nt">labels</span><span class="p">:</span>
         <span class="nt">k8s.kuma.io/namespace</span><span class="p">:</span> <span class="l">demo</span>
         <span class="nt">kuma.io/display-name</span><span class="p">:</span> <span class="l">backend</span>
+<span class="nt">type</span><span class="p">:</span> <span class="l">MeshCircuitBreaker</span>
 </code></pre></div>
 <p>3.0 reads the threshold only from an enabled outlier detection, which needs a detector, so the
 companion turns on outlier ejection for these destinations. If a <code>MeshCircuitBreaker</code> already

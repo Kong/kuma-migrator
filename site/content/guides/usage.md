@@ -210,9 +210,7 @@ kumactl apply -f migrated/konnect-global-prod-global-ctx/mesh-default/routing/Me
 kumactl apply -f migrated/konnect-global-prod-global-ctx/mesh-default/observability/MeshTrace-otel.yaml
 ```
 
-Converted legacy policies and `MeshExternalService` are written in Kubernetes format even from
-Universal input. Check that `kumactl apply` accepts each file before the real apply
-(`kumactl apply --dry-run -f <file>`), or convert it to Universal format by hand.
+The files are in Universal format, like the input, so `kumactl apply` takes them as they are.
 
 Zones attached to Konnect run their own control planes. Extract each zone with
 `--kube-context` (or `--kumactl-context` for a Universal zone) into the same directory to pick

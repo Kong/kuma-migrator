@@ -148,12 +148,8 @@ The `TrafficLog` becomes a `MeshAccessLog` with the backend inlined, on both tar
 
 ```yaml
 # observability/MeshAccessLog-all-traffic.yaml
-apiVersion: kuma.io/v1alpha1
-kind: MeshAccessLog
-metadata:
-  labels:
-    kuma.io/mesh: default
-  name: all-traffic
+mesh: default
+name: all-traffic
 spec:
   targetRef:
     kind: Mesh
@@ -165,6 +161,7 @@ spec:
         type: File
     targetRef:
       kind: Mesh
+type: MeshAccessLog
 ```
 
 The `Mesh.logging` block produces no `MeshAccessLog` of its own. The `Mesh` warning confirms the

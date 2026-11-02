@@ -72,12 +72,8 @@ printed alongside are summarised in prose. The full behaviour per kind is on the
   <span class="nt">connectTimeout</span><span class="p">:</span> <span class="l">5s</span>
 </code></pre></div>
 <div class="code"><pre class="chroma" data-lang="yaml"><code><span class="c"># After (--to-latest v2)</span>
-<span class="nt">apiVersion</span><span class="p">:</span> <span class="l">kuma.io/v1alpha1</span>
-<span class="nt">kind</span><span class="p">:</span> <span class="l">MeshTimeout</span>
-<span class="nt">metadata</span><span class="p">:</span>
-  <span class="nt">labels</span><span class="p">:</span>
-    <span class="nt">kuma.io/mesh</span><span class="p">:</span> <span class="l">default</span>
-  <span class="nt">name</span><span class="p">:</span> <span class="l">my-timeout</span>
+<span class="nt">mesh</span><span class="p">:</span> <span class="l">default</span>
+<span class="nt">name</span><span class="p">:</span> <span class="l">my-timeout</span>
 <span class="nt">spec</span><span class="p">:</span>
   <span class="nt">targetRef</span><span class="p">:</span>
     <span class="nt">kind</span><span class="p">:</span> <span class="l">Mesh</span>
@@ -88,16 +84,13 @@ printed alongside are summarised in prose. The full behaviour per kind is on the
       <span class="nt">kind</span><span class="p">:</span> <span class="l">MeshService</span>
       <span class="nt">name</span><span class="p">:</span> <span class="l">backend</span>
       <span class="nt">namespace</span><span class="p">:</span> <span class="l">demo</span>
+<span class="nt">type</span><span class="p">:</span> <span class="l">MeshTimeout</span>
 </code></pre></div>
 <p>Under <code>--to-latest v3</code> the destination is selected by labels, because 3.0 selects real
 resources by <code>labels</code> only:</p>
 <div class="code"><pre class="chroma" data-lang="yaml"><code><span class="c"># After (--to-latest v3)</span>
-<span class="nt">apiVersion</span><span class="p">:</span> <span class="l">kuma.io/v1alpha1</span>
-<span class="nt">kind</span><span class="p">:</span> <span class="l">MeshTimeout</span>
-<span class="nt">metadata</span><span class="p">:</span>
-  <span class="nt">labels</span><span class="p">:</span>
-    <span class="nt">kuma.io/mesh</span><span class="p">:</span> <span class="l">default</span>
-  <span class="nt">name</span><span class="p">:</span> <span class="l">my-timeout</span>
+<span class="nt">mesh</span><span class="p">:</span> <span class="l">default</span>
+<span class="nt">name</span><span class="p">:</span> <span class="l">my-timeout</span>
 <span class="nt">spec</span><span class="p">:</span>
   <span class="nt">targetRef</span><span class="p">:</span>
     <span class="nt">kind</span><span class="p">:</span> <span class="l">Mesh</span>
@@ -109,6 +102,7 @@ resources by <code>labels</code> only:</p>
       <span class="nt">labels</span><span class="p">:</span>
         <span class="nt">k8s.kuma.io/namespace</span><span class="p">:</span> <span class="l">demo</span>
         <span class="nt">kuma.io/display-name</span><span class="p">:</span> <span class="l">backend</span>
+<span class="nt">type</span><span class="p">:</span> <span class="l">MeshTimeout</span>
 </code></pre></div>
 <h2 id="scenario-subset">Scenario: Subset</h2>
 <div class="code"><pre class="chroma" data-lang="yaml"><code><span class="c"># Before</span>
@@ -350,12 +344,8 @@ advisories. See <a href="../../topics/meshes/">Meshes</a> and <a href="../../top
     <span class="nt">enabled</span><span class="p">:</span> <span class="kc">true</span>
 </code></pre></div>
 <div class="code"><pre class="chroma" data-lang="yaml"><code><span class="c"># After: MeshExternalService-httpbin.yaml</span>
-<span class="nt">apiVersion</span><span class="p">:</span> <span class="l">kuma.io/v1alpha1</span>
-<span class="nt">kind</span><span class="p">:</span> <span class="l">MeshExternalService</span>
-<span class="nt">metadata</span><span class="p">:</span>
-  <span class="nt">labels</span><span class="p">:</span>
-    <span class="nt">kuma.io/mesh</span><span class="p">:</span> <span class="l">default</span>
-  <span class="nt">name</span><span class="p">:</span> <span class="l">httpbin</span>
+<span class="nt">mesh</span><span class="p">:</span> <span class="l">default</span>
+<span class="nt">name</span><span class="p">:</span> <span class="l">httpbin</span>
 <span class="nt">spec</span><span class="p">:</span>
   <span class="nt">endpoints</span><span class="p">:</span>
   - <span class="nt">address</span><span class="p">:</span> <span class="l">httpbin.org</span>
@@ -368,6 +358,7 @@ advisories. See <a href="../../topics/meshes/">Meshes</a> and <a href="../../top
     <span class="nt">enabled</span><span class="p">:</span> <span class="kc">true</span>
     <span class="nt">verification</span><span class="p">:</span>
       <span class="nt">mode</span><span class="p">:</span> <span class="l">Secured</span>
+<span class="nt">type</span><span class="p">:</span> <span class="l">MeshExternalService</span>
 </code></pre></div>
 <p>The run warns that <code>verification.mode</code> defaults to <code>Secured</code>, that <code>match.port</code> copies the
 endpoint port, and that the hostname clients use now comes from a <code>HostnameGenerator</code>. Under

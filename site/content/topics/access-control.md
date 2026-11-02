@@ -210,12 +210,8 @@ with advisories:
 
 ```yaml
 # zero-trust/MeshTrafficPermission-web-to-backend.yaml
-apiVersion: kuma.io/v1alpha1
-kind: MeshTrafficPermission
-metadata:
-  labels:
-    kuma.io/mesh: default
-  name: web-to-backend
+mesh: default
+name: web-to-backend
 spec:
   from:
   - default:
@@ -229,6 +225,7 @@ spec:
     labels:
       app: backend
       k8s.kuma.io/namespace: demo
+type: MeshTrafficPermission
 ```
 
 ```text

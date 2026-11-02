@@ -319,8 +319,8 @@ destinations:
 				t.Fatalf("unexpected error: %v", err)
 			}
 			out := unmarshalDoc(t, docs[0])
-			if out["kind"] != tc.newKind {
-				t.Fatalf("kind = %v, want %s", out["kind"], tc.newKind)
+			if out["type"] != tc.newKind {
+				t.Fatalf("type = %v, want %s (Universal input stays Universal)", out["type"], tc.newKind)
 			}
 			from := at(t, out, "spec", "from").([]interface{})
 			first := at(t, from[0].(map[string]interface{}), "targetRef").(map[string]interface{})

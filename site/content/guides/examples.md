@@ -28,12 +28,8 @@ conf:
 
 ```yaml
 # After (--to-latest v2)
-apiVersion: kuma.io/v1alpha1
-kind: MeshTimeout
-metadata:
-  labels:
-    kuma.io/mesh: default
-  name: my-timeout
+mesh: default
+name: my-timeout
 spec:
   targetRef:
     kind: Mesh
@@ -44,6 +40,7 @@ spec:
       kind: MeshService
       name: backend
       namespace: demo
+type: MeshTimeout
 ```
 
 Under `--to-latest v3` the destination is selected by labels, because 3.0 selects real
@@ -51,12 +48,8 @@ resources by `labels` only:
 
 ```yaml
 # After (--to-latest v3)
-apiVersion: kuma.io/v1alpha1
-kind: MeshTimeout
-metadata:
-  labels:
-    kuma.io/mesh: default
-  name: my-timeout
+mesh: default
+name: my-timeout
 spec:
   targetRef:
     kind: Mesh
@@ -68,6 +61,7 @@ spec:
       labels:
         k8s.kuma.io/namespace: demo
         kuma.io/display-name: backend
+type: MeshTimeout
 ```
 
 ## Scenario: Subset
@@ -350,12 +344,8 @@ networking:
 
 ```yaml
 # After: MeshExternalService-httpbin.yaml
-apiVersion: kuma.io/v1alpha1
-kind: MeshExternalService
-metadata:
-  labels:
-    kuma.io/mesh: default
-  name: httpbin
+mesh: default
+name: httpbin
 spec:
   endpoints:
   - address: httpbin.org
@@ -368,6 +358,7 @@ spec:
     enabled: true
     verification:
       mode: Secured
+type: MeshExternalService
 ```
 
 The run warns that `verification.mode` defaults to `Secured`, that `match.port` copies the

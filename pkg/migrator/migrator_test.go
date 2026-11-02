@@ -168,8 +168,8 @@ conf:
 	if err := yaml.Unmarshal(data, &obj); err != nil {
 		t.Fatalf("unmarshal output: %v", err)
 	}
-	if obj["kind"] != "MeshTimeout" {
-		t.Errorf("expected kind MeshTimeout, got %v", obj["kind"])
+	if obj["type"] != "MeshTimeout" || obj["name"] != "my-timeout" || obj["mesh"] != "default" {
+		t.Errorf("expected Universal type/name/mesh MeshTimeout/my-timeout/default, got %v", obj)
 	}
 	spec := obj["spec"].(map[string]interface{})
 	tr := spec["targetRef"].(map[string]interface{})

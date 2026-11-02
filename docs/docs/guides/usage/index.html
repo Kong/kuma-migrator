@@ -227,9 +227,7 @@ plane, and reads meshes, zones and resources over HTTPS. The files are in Univer
 <span class="k-manual">kumactl</span> <span class="k-manual-b">apply</span> <span class="k-flag">-f</span> <span class="k-val">migrated/konnect-global-prod-global-ctx/mesh-default/routing/MeshExternalService-httpbin.yaml</span>
 <span class="k-manual">kumactl</span> <span class="k-manual-b">apply</span> <span class="k-flag">-f</span> <span class="k-val">migrated/konnect-global-prod-global-ctx/mesh-default/observability/MeshTrace-otel.yaml</span>
 </code></pre></div>
-<p>Converted legacy policies and <code>MeshExternalService</code> are written in Kubernetes format even from
-Universal input. Check that <code>kumactl apply</code> accepts each file before the real apply
-(<code>kumactl apply --dry-run -f &lt;file&gt;</code>), or convert it to Universal format by hand.</p>
+<p>The files are in Universal format, like the input, so <code>kumactl apply</code> takes them as they are.</p>
 <p>Zones attached to Konnect run their own control planes. Extract each zone with
 <code>--kube-context</code> (or <code>--kumactl-context</code> for a Universal zone) into the same directory to pick
 up zone-origin policies and gateway instances.</p>

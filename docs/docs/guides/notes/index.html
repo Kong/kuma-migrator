@@ -101,14 +101,15 @@ and a warning is printed. See <a href="../../topics/gateways/">Gateways</a>.</li
 <li><strong>Both YAML shapes are read.</strong> Kubernetes format (<code>apiVersion</code>, <code>kind</code>, <code>metadata</code>) and
 Universal format (<code>type</code>, top-level <code>name</code>/<code>mesh</code>) are supported by <code>extract</code> and
 <code>migrate</code>.</li>
-<li><strong>The output format depends on the transform.</strong> Legacy policies, <code>ExternalService</code> and the
-companion policies generated from a <code>Mesh</code> are written in Kubernetes format, even from
-Universal input. <code>Mesh</code>, <code>rules[]</code> conversions, <code>OPAPolicy</code> and documents that pass through
-keep their input format. Check the format of each file against the tool you apply it with.</li>
-<li><strong>Companion policies are created in <code>kong-mesh-system</code>.</strong> Policies generated from a <code>Mesh</code>
-(<code>MeshMetric</code>, <code>MeshTrace</code>, <code>MeshAccessLog</code>, <code>MeshPassthrough</code>, <code>MeshTLS</code>) carry
-<code>namespace: kong-mesh-system</code>. On Kuma OSS the system namespace is <code>kuma-system</code>; change the
-namespace before applying.</li>
+<li><strong>The output keeps the input format.</strong> Universal input gives Universal output (<code>type</code>,
+<code>name</code>, <code>mesh</code>, top-level <code>labels</code>, body under <code>spec</code>), including every generated companion
+(<code>MeshCircuitBreaker</code> from a <code>HealthCheck</code>, <code>MeshOpenTelemetryBackend</code>, <code>MeshTLS</code>, ...).
+Kubernetes input gives Kubernetes resources. Gateway API output (<code>Gateway</code>, <code>HTTPRoute</code>, ...)
+is always Kubernetes: it exists only there.</li>
+<li><strong>Companion policies go in the system namespace.</strong> On Kubernetes, policies generated from a
+<code>Mesh</code> (<code>MeshMetric</code>, <code>MeshPassthrough</code>, <code>MeshTLS</code>, <code>MeshOpenTelemetryBackend</code>) are placed in
+the control-plane namespace: <code>systemNamespace</code> from the config file, else the namespace
+inferred from the input, else <code>kuma-system</code>. See <a href="../../topics/meshes/#system-namespace">Meshes</a>.</li>
 <li><strong>The skip list depends on the environment.</strong> On Kubernetes, <code>Dataplane</code>, <code>ZoneIngress</code>,
 <code>ZoneEgress</code> and <code>Workload</code> are skipped: the control plane generates them. On Universal the
 first three are hand-written and are scanned. <code>migrate</code> uses the <code>environment</code> that
