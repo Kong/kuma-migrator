@@ -71,15 +71,21 @@
   <section class="target-card">
     <header><span class="target-label">--to-latest v2 (2.x)</span> <span class="status status-converted">converted</span></header>
     <p class="outputs">Output: <code>Gateway</code></p>
-    <div class="notes"><p>Converted to a Gateway API <code>Gateway</code>:</p>
+    <div class="notes"><p>Converted to a Gateway API <code>Gateway</code> named after the <code>MeshGateway</code>:</p>
 <ul>
-<li><code>conf.listeners[]</code> → <code>spec.listeners[]</code> (<code>name</code> from the <code>port</code> tag or
-<code>&lt;protocol&gt;-&lt;port&gt;</code>, <code>hostname</code>, <code>tls.mode</code> recased, <code>certificates[].secret</code> →
-<code>certificateRefs[]</code>).</li>
-<li><code>spec.gatewayClassName</code> is the name of the GatewayClass generated from the companion
+<li><code>conf.listeners[]</code> → <code>spec.listeners[]</code> (<code>name</code> is <code>&lt;protocol&gt;-&lt;port&gt;</code>, with a <code>-2</code>,
+<code>-3</code>, … suffix when two listeners share protocol and port; <code>hostname</code>, <code>tls.mode</code>
+recased, <code>certificates[].secret</code> → <code>certificateRefs[]</code>).</li>
+<li><code>metadata.namespace</code> is the namespace of the companion
 <a href="../meshgatewayinstance/">MeshGatewayInstance</a>, matched on the shared
-<code>kuma.io/service</code> tag. Several matches pick the first and warn; none leaves
-<code>REPLACE-WITH-YOUR-GATEWAYCLASS</code> and warns.</li>
+<code>kuma.io/service</code> tag. <code>MeshGateway</code> is cluster-scoped, the gateway pods run in the
+instance's namespace, and Kuma creates a Gateway's instance in the Gateway's own
+namespace. Instances in several namespaces pick the first and warn; none omits the
+field and warns (apply with <code>-n</code>). An empty namespace is never emitted.</li>
+<li><code>spec.gatewayClassName</code> is the name of the GatewayClass generated from the same
+instance. An instance without <code>spec.tags[&quot;kuma.io/service&quot;]</code> matches on the
+<code>&lt;name&gt;_&lt;namespace&gt;_svc</code> tag Kuma gives it. Several matches pick the first and warn;
+none leaves <code>REPLACE-WITH-YOUR-GATEWAYCLASS</code> and warns.</li>
 <li><code>spec.selectors</code> has no Gateway API equivalent and is reported.</li>
 </ul>
 </div>
@@ -87,8 +93,8 @@
   <section class="target-card">
     <header><span class="target-label">--to-latest v3 (3.0)</span> <span class="status status-converted">converted</span></header>
     <p class="outputs">Output: <code>Gateway</code></p>
-    <div class="notes"><p>The listener block is converted as on v2, but <code>gatewayClassName</code> is always
-<code>REPLACE-WITH-YOUR-GATEWAYCLASS</code>: 3.0 has no Gateway or GatewayClass reconciler. Set it to
+    <div class="notes"><p>The listener block and <code>metadata.namespace</code> are converted as on v2, but
+<code>gatewayClassName</code> is always <code>REPLACE-WITH-YOUR-GATEWAYCLASS</code>: 3.0 has no Gateway or GatewayClass reconciler. Set it to
 the class of the gateway implementation you adopt, and rejoin the workload as a delegated
 gateway (<code>traffic.kuma.io/exclude-inbound-ports</code> on the pod, <code>kuma.io/ignore: &quot;true&quot;</code> on
 its Service).</p>

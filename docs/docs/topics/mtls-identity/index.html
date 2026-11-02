@@ -138,8 +138,18 @@ underneath it: on 3.0 that is <code>MeshIdentity</code>. Moving to <code>MeshIde
 <td>Companion <code>MeshTLS</code> <code>&lt;mesh&gt;-tls-permissive</code> with <code>rules[].default.mode: Permissive</code></td>
 </tr>
 <tr>
+<td><code>builtin</code> backend</td>
+<td>Advisory: the CA is in the <code>&lt;mesh&gt;.ca-builtin-cert/key-&lt;backend&gt;</code> Secrets; a <code>Bundled</code> <code>MeshIdentity</code> with <code>autogenerate</code> mints a new CA, or reuses the current one through <code>spec.provider.bundled.ca.certificate</code>/<code>privateKey</code></td>
+<td>Same, in the blocking warning, plus: delete the <code>ca-builtin</code> Secrets yourself after the upgrade</td>
+</tr>
+<tr>
+<td><code>provided</code> backend</td>
+<td>Advisory: reference the same <code>conf.cert</code>/<code>conf.key</code> material from <code>spec.provider.bundled.ca</code></td>
+<td>Same, in the blocking warning</td>
+</tr>
+<tr>
 <td>Kong Mesh <code>vault</code> / <code>acmpca</code> / <code>certmanager</code> backend</td>
-<td>Advisory names the <code>MeshIdentity</code> <code>Extension</code> provider</td>
+<td>Advisory names the <code>MeshIdentity</code> <code>Extension</code> provider; the CA stays in the external system, so no new CA is generated</td>
 <td>Same, in the blocking warning</td>
 </tr>
 <tr>
@@ -172,8 +182,11 @@ value is fixed at creation.</li>
 Kubernetes and <code>/workload/{{ .Workload }}</code> on Universal. Neither the service accounts nor the
 <code>kuma.io/workload</code> labels are in the <code>Mesh</code> manifest.</li>
 <li><strong>CA material.</strong> A <code>builtin</code> backend's CA lives in a control-plane Secret; a <code>provided</code> backend
-references Secrets or files. A generated <code>Bundled</code> identity with <code>autogenerate</code> would mint a
-new CA, which is a new trust root, not a translation.</li>
+references Secrets or files; a Kong Mesh <code>vault</code>/<code>acmpca</code>/<code>certmanager</code> backend keeps it in the
+external system. For <code>builtin</code> and <code>provided</code>, a generated <code>Bundled</code> identity with
+<code>autogenerate</code> would mint a new CA, which is a new trust root, not a translation. The warning
+text is specific to each backend type, so builtin-only advice (new CA, <code>ca-builtin</code> Secrets) is
+not given for the others.</li>
 <li><strong>Rollout order.</strong> Which workloads move first, and when <code>MeshTrafficPermission</code> <code>rules[]</code> (which
 match SPIFFE IDs) replace <code>from[]</code>, depends on the mesh. See <a href="../access-control/">Access control</a>.</li>
 </ul>
@@ -278,14 +291,14 @@ instead of <code>autogenerate</code>; for Vault, ACM Private CA or cert-manager 
   <span class="nt">meshServices</span><span class="p">:</span>
     <span class="nt">mode</span><span class="p">:</span> <span class="l">Exclusive</span>
 </code></pre></div>
-<div class="code"><pre class="chroma" data-lang="yaml"><code><span class="c"># zero-trust/MeshTLS-kong-mesh-system-default-tls-permissive.yaml</span>
+<div class="code"><pre class="chroma" data-lang="yaml"><code><span class="c"># zero-trust/MeshTLS-kuma-system-default-tls-permissive.yaml</span>
 <span class="nt">apiVersion</span><span class="p">:</span> <span class="l">kuma.io/v1alpha1</span>
 <span class="nt">kind</span><span class="p">:</span> <span class="l">MeshTLS</span>
 <span class="nt">metadata</span><span class="p">:</span>
   <span class="nt">labels</span><span class="p">:</span>
     <span class="nt">kuma.io/mesh</span><span class="p">:</span> <span class="l">default</span>
   <span class="nt">name</span><span class="p">:</span> <span class="l">default-tls-permissive</span>
-  <span class="nt">namespace</span><span class="p">:</span> <span class="l">kong-mesh-system</span>
+  <span class="nt">namespace</span><span class="p">:</span> <span class="l">kuma-system</span>
 <span class="nt">spec</span><span class="p">:</span>
   <span class="nt">rules</span><span class="p">:</span>
   - <span class="nt">default</span><span class="p">:</span>

@@ -75,6 +75,9 @@
 no <code>to[]</code>). <code>conf.backend</code> is resolved against <code>Mesh.spec.tracing.backends</code> in the input
 set and written inline: <code>zipkin</code>/<code>datadog</code> backends become <code>spec.default.backends[]</code>,
 <code>sampling</code> becomes <code>sampling.overall</code>. An unresolved backend is reported by name.</p>
+<p>The <code>TrafficTrace</code> is what turns tracing on. The <code>Mesh</code> conversion does not generate a
+mesh-wide <code>MeshTrace</code> from <code>spec.tracing</code>; this conversion is the only place a tracing
+backend ends up in the output. See <a href="../../topics/meshes/#logging-and-tracing">Meshes</a>.</p>
 </div>
   </section>
   <section class="target-card">

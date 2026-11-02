@@ -71,12 +71,18 @@
   <section class="target-card">
     <header><span class="target-label">--to-latest v2 (2.x)</span> <span class="status status-converted">converted</span></header>
     <p class="outputs">Output: <code>GatewayClass</code>, <a href="../meshgatewayconfig/"><code>MeshGatewayConfig</code></a></p>
-    <div class="notes"><p>Converted to a cluster-scoped <code>GatewayClass</code> named after the instance
+    <div class="notes"><p>Converted to a <code>GatewayClass</code> named after the instance
 (<code>controllerName: gateways.kuma.io/controller</code>) whose <code>parametersRef</code> points at a
 <code>MeshGatewayConfig</code> carrying the instance <code>spec</code> (<code>replicas</code>, <code>serviceType</code>, <code>tags</code>).
-Set <code>gatewayClassName</code> on your Gateways to this name; the converted
-<a href="../meshgateway/">MeshGateway</a> does so automatically when the <code>kuma.io/service</code>
-tags match.</p>
+Both are cluster-scoped, so neither the <code>MeshGatewayConfig</code> nor the <code>parametersRef</code>
+has a namespace: Kuma marks a class whose <code>parametersRef</code> names a namespace as
+<code>InvalidParameters</code> and ignores its Gateways.</p>
+<p><code>tags[&quot;kuma.io/service&quot;]</code> is dropped from the <code>MeshGatewayConfig</code>, with a warning: Kuma
+copies those tags onto the instance it creates for each Gateway, which must keep the
+generated <code>&lt;gateway&gt;_&lt;namespace&gt;_svc</code> value.</p>
+<p>Set <code>gatewayClassName</code> on your Gateways to this name and create them in the instance's
+namespace; the converted <a href="../meshgateway/">MeshGateway</a> does both automatically
+when the <code>kuma.io/service</code> tags match.</p>
 </div>
   </section>
   <section class="target-card">

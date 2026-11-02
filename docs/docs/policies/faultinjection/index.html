@@ -71,8 +71,11 @@
   <section class="target-card">
     <header><span class="target-label">--to-latest v2 (2.x)</span> <span class="status status-converted">converted</span></header>
     <p class="outputs">Output: <a href="../meshfaultinjection/"><code>MeshFaultInjection</code></a></p>
-    <div class="notes"><p>Inbound shape: <code>destinations</code> → <code>spec.targetRef</code>, <code>sources</code> → <code>from[]</code>. The single legacy
-<code>conf</code> becomes a one-element <code>default.http[]</code> list (<code>delay</code>, <code>abort</code>,
+    <div class="notes"><p>Inbound shape: <code>destinations</code> → <code>spec.targetRef</code> (<code>Dataplane</code> labels), <code>sources</code> →
+<code>from[]</code> as <code>kind: MeshSubset</code> with the source's tags (<code>kind: Mesh</code> for
+<code>kuma.io/service: '*'</code>), not the 2.7-deprecated <code>MeshService</code>. Reserved tags such as
+<code>kuma.io/protocol</code> are dropped from the <code>Dataplane</code> labels, with a warning. The single
+legacy <code>conf</code> becomes a one-element <code>default.http[]</code> list (<code>delay</code>, <code>abort</code>,
 <code>responseBandwidth</code>). Percentages are numbers when whole and strings when fractional.
 The scanner then warns that <code>from[]</code> is deprecated in favour of <code>rules[]</code>.</p>
 </div>

@@ -101,9 +101,12 @@ A policy with several specific sources is split into one <code>MeshTimeout</code
 </tbody>
 </table></div>
 <p>Any <code>conf</code> leaf no rule consumed is reported as a warning. A <code>kuma.io/service: '*'</code>
-selector becomes <code>kind: Mesh</code>. A specific service becomes <code>kind: Dataplane</code> at the top
-level and <code>kind: MeshService</code> in <code>to[]</code>; <code>&lt;name&gt;_&lt;ns&gt;_svc_&lt;port&gt;</code> values are decoded
-into name and namespace. A selector with only non-service tags stays a <code>MeshSubset</code>.</p>
+selector becomes <code>kind: Mesh</code>. A specific service becomes
+<code>kind: Dataplane, labels: {app: &lt;name&gt;, k8s.kuma.io/namespace: &lt;ns&gt;}</code> at the top level
+(<code>app</code> is a best guess, warned) and <code>kind: MeshService</code> in <code>to[]</code>;
+<code>&lt;name&gt;_&lt;ns&gt;_svc_&lt;port&gt;</code> values are decoded into name and namespace. Reserved tags that
+are not labels (<code>kuma.io/protocol</code>, …) are dropped from label selectors, with a warning.
+A selector with only non-service tags stays a <code>MeshSubset</code>.</p>
 </div>
   </section>
   <section class="target-card">

@@ -71,16 +71,19 @@
   <section class="target-card">
     <header><span class="target-label">--to-latest v2 (2.x)</span> <span class="status status-passthrough">passthrough</span></header>
     <p class="outputs">Output: <a href="./"><code>MeshGatewayConfig</code></a></p>
-    <div class="notes"><p>Copied unchanged when found in the input. Also emitted from a
-<a href="../meshgatewayinstance/">MeshGatewayInstance</a> conversion.</p>
+    <div class="notes"><p>Copied unchanged when found in the input. Also emitted, cluster-scoped and without a
+namespace, from a <a href="../meshgatewayinstance/">MeshGatewayInstance</a> conversion.</p>
 </div>
   </section>
   <section class="target-card">
-    <header><span class="target-label">--to-latest v3 (3.0)</span> <span class="status status-passthrough">passthrough</span></header>
-    <p class="outputs">Output: <a href="./"><code>MeshGatewayConfig</code></a></p>
-    <div class="notes"><p>Copied unchanged into the apply tree. 3.0 removes <code>MeshGatewayConfig</code> with the rest of
-the built-in gateway API; the migrator does not report it yet. Delete it before
-upgrading.</p>
+    <header><span class="target-label">--to-latest v3 (3.0)</span> <span class="status status-removed">removed</span></header>
+    <p class="outputs muted">No output kind.</p>
+    <div class="notes"><p>Copied to <code>_manual/</code> (file labelled <code>MANUAL</code>), never to the apply tree, with a warning:
+3.0 removes <code>MeshGatewayConfig</code> with the rest of the built-in gateway API, and the Helm
+upgrade deletes the <code>meshgatewayconfigs.kuma.io</code> CRD and every object stored under it.
+Carry its settings (replicas, service type, resources) over to the Deployment and Service
+of the gateway you run. Listed under &quot;Delete Before Upgrading to 3.0&quot; with a
+<code>kubectl delete</code> command (it is a cluster-scoped Kubernetes-only CRD, so never <code>kumactl</code>).</p>
 </div>
   </section>
 </div>

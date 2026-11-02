@@ -131,8 +131,7 @@ including in Global → Zone sync (<a href="https://github.com/kumahq/kuma/blob/
 <p>A <code>Mesh</code> is handled by the Mesh scenario
 (<a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/mesh.go"><code>mesh.go</code></a>,
 <a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/v3_mesh.go"><code>v3_mesh.go</code></a>).
-Companion policies are named <code>&lt;mesh&gt;-metrics</code>, <code>&lt;mesh&gt;-trace</code>, <code>&lt;mesh&gt;-accesslog</code>,
-<code>&lt;mesh&gt;-passthrough</code>, <code>&lt;mesh&gt;-tls-permissive</code>.</p>
+Companion policies are named <code>&lt;mesh&gt;-metrics</code>, <code>&lt;mesh&gt;-passthrough</code>, <code>&lt;mesh&gt;-tls-permissive</code>.</p>
 <div class="table-wrap"><table>
 <thead>
 <tr>
@@ -144,17 +143,17 @@ Companion policies are named <code>&lt;mesh&gt;-metrics</code>, <code>&lt;mesh&g
 <tbody>
 <tr>
 <td><code>metrics</code></td>
-<td>Extracted to a mesh-wide <code>MeshMetric</code></td>
+<td>The <code>enabledBackend</code> becomes a mesh-wide <code>MeshMetric</code>; backends that are not enabled are dropped; no <code>enabledBackend</code> means no <code>MeshMetric</code></td>
 <td>Same</td>
 </tr>
 <tr>
 <td><code>tracing</code></td>
-<td>Extracted to a mesh-wide <code>MeshTrace</code></td>
+<td>Removed, no companion. Backends travel with each converted <code>TrafficTrace</code> (see below)</td>
 <td>Same</td>
 </tr>
 <tr>
 <td><code>logging</code></td>
-<td>Extracted to a mesh-wide <code>MeshAccessLog</code></td>
+<td>Removed, no companion. Backends travel with each converted <code>TrafficLog</code> (see below)</td>
 <td>Same</td>
 </tr>
 <tr>
@@ -204,6 +203,39 @@ Companion policies are named <code>&lt;mesh&gt;-metrics</code>, <code>&lt;mesh&g
 </tr>
 </tbody>
 </table></div>
+<h3 id="logging-and-tracing">Logging and tracing</h3>
+<p>On 2.x the <code>Mesh.logging</code> and <code>Mesh.tracing</code> backends only declare destinations. Nothing is
+logged or traced until a <code>TrafficLog</code> or <code>TrafficTrace</code> selects traffic and names a backend, or
+falls back to <code>defaultBackend</code>
+(<a href="https://kuma.io/docs/latest/policies/traffic-log/">traffic log docs</a>). No default <code>TrafficLog</code>
+or <code>TrafficTrace</code> is created with a mesh. A mesh-wide <code>MeshAccessLog</code> or <code>MeshTrace</code> would turn
+logging or tracing on for every proxy, so none is generated.</p>
+<p>Each <a href="../../policies/trafficlog/">TrafficLog</a> and <a href="../../policies/traffictrace/">TrafficTrace</a> is converted on its
+own, with the backend it references (or the Mesh <code>defaultBackend</code>) copied inline from the <code>Mesh</code>
+in the same input. The <code>Mesh</code> warning lists, per backend, how many <code>TrafficLog</code>/<code>TrafficTrace</code>
+resources in the input reference it. A backend nothing references was inactive, so dropping it
+loses nothing. If the <code>TrafficLog</code>/<code>TrafficTrace</code> resources were not extracted with the <code>Mesh</code>,
+add them to the input.</p>
+<p><code>metrics</code> is different: <code>metrics.enabledBackend</code> turns Prometheus metrics on for every proxy in
+the mesh, so the enabled backend becomes a mesh-wide <code>MeshMetric</code>.</p>
+<h3 id="system-namespace">System namespace</h3>
+<p>On Kubernetes the generated mesh-scoped resources (<code>MeshMetric</code>, <code>MeshPassthrough</code>, <code>MeshTLS</code>,
+<code>MeshOpenTelemetryBackend</code>, and the <code>MeshExternalService</code> converted from an <code>ExternalService</code>)
+go in the control-plane namespace. The pre-pass over the input directory picks it:</p>
+<ol>
+<li><code>systemNamespace</code> in the config file (<code>~/.config/kuma-migrator.yaml</code> or
+<code>$KUMA_MIGRATOR_CONFIG</code>), when set.</li>
+<li><code>kong-mesh-system</code> when any input document has <code>namespace: kong-mesh-system</code>.</li>
+<li><code>kuma-system</code> when any input document has <code>namespace: kuma-system</code>.</li>
+<li><code>kong-mesh-system</code> when the input holds a Kong Mesh-only kind (<code>OPAPolicy</code>, <code>MeshOPA</code>,
+<code>MeshGlobalRateLimit</code>, <code>AccessRole</code>, <code>AccessRoleBinding</code>, <code>AccessAudit</code>).</li>
+<li><code>kuma-system</code> otherwise.</li>
+</ol>
+<div class="code"><pre class="chroma" data-lang="yaml"><code><span class="c"># ~/.config/kuma-migrator.yaml</span>
+<span class="nt">systemNamespace</span><span class="p">:</span> <span class="l">my-mesh-system</span>
+</code></pre></div>
+<p>A Universal <code>Mesh</code> (<code>type: Mesh</code>) gets Universal companions: <code>type</code>, <code>name</code> and <code>mesh</code> at the top
+level, no namespace.</p>
 <h2 id="what-it-cannot-do">What it cannot do</h2>
 <ul>
 <li><strong>Write the <code>MeshIdentity</code>.</strong> The trust domain, the CA material and the per-workload SPIFFE
@@ -211,18 +243,9 @@ paths are not in the <code>Mesh</code> manifest. See <a href="../mtls-identity/"
 <li><strong>Generate the cross-zone <code>MeshLoadBalancingStrategy</code>.</strong> On 3.0 <code>crossZone</code> is accepted only on
 a <code>to[]</code> entry that targets a <code>MeshMultiZoneService</code>, and the manifest does not say which
 services need one. See <a href="../multizone/">Multizone</a>.</li>
-<li><strong>Scope the observability companions.</strong> The generated <code>MeshMetric</code>, <code>MeshTrace</code> and
-<code>MeshAccessLog</code> target <code>kind: Mesh</code> and carry every backend the <code>Mesh</code> declared.</li>
-</ul>
-<blockquote class="callout callout-warning"><p><strong>Warning:</strong> On 2.x the <code>Mesh.logging</code> and <code>Mesh.tracing</code> backends only declare destinations;
-nothing is logged or traced until a <code>TrafficLog</code> or <code>TrafficTrace</code> selects traffic
-(<a href="https://kuma.io/docs/latest/policies/traffic-log/">traffic log docs</a>). The generated
-mesh-wide <code>MeshAccessLog</code> and <code>MeshTrace</code> enable logging and tracing for every proxy and every
-declared backend. If the mesh also has <code>TrafficLog</code>/<code>TrafficTrace</code> policies, they are converted
-separately (see <a href="../observability/">Observability</a>) and both sets apply. Review the companions
-before applying them.</p>
-</blockquote>
-<ul>
+<li><strong>Resolve a backend whose <code>Mesh</code> is not in the input.</strong> A <code>TrafficLog</code>/<code>TrafficTrace</code> whose
+<code>Mesh</code> was not extracted with it is converted without a backend, and the warning names the
+backend to write by hand.</li>
 <li><strong>Carry <code>constraints</code>.</strong> <code>Mesh.spec.constraints</code> (Dataplane admission requirements) is a
 <code>reserved</code> field in <code>mesh.proto</code> on 3.0 and has no successor. The tool copies it through
 unchanged on both targets without a warning.</li>
@@ -232,8 +255,8 @@ unchanged on both targets without a warning.</li>
 <li>Run <code>migrate --dry-run --to-latest v2</code> and read the <code>Mesh</code> warnings.</li>
 <li>Set <code>meshServices.mode: Exclusive</code> on every mesh once its policies and workloads are migrated
 (see <a href="../meshservice/">MeshService</a>). This must be done before the Global CP upgrade.</li>
-<li>Apply the <code>v2</code> companions (<code>MeshMetric</code>, <code>MeshTrace</code>, <code>MeshAccessLog</code>, <code>MeshPassthrough</code>) after
-reviewing their scope.</li>
+<li>Apply the <code>v2</code> companions (<code>MeshMetric</code>, <code>MeshPassthrough</code>) and the <code>MeshAccessLog</code>/<code>MeshTrace</code>
+converted from each <code>TrafficLog</code>/<code>TrafficTrace</code>.</li>
 <li>Migrate identity to <code>MeshIdentity</code> on 2.14 (see <a href="../mtls-identity/">mTLS and workload identity</a>).</li>
 <li>Add a <code>MeshTLS</code> <code>Permissive</code> policy for meshes that rely on <code>PERMISSIVE</code>, and a
 <code>MeshPassthrough</code> for meshes whose transparent-proxy workloads reach external destinations.</li>
@@ -289,14 +312,14 @@ warnings; <code>passthrough: true</code> is dropped as the 2.x default:</p>
     <span class="nt">localityAwareLoadBalancing</span><span class="p">:</span> <span class="kc">true</span>
     <span class="nt">zoneEgress</span><span class="p">:</span> <span class="kc">true</span>
 </code></pre></div>
-<div class="code"><pre class="chroma" data-lang="yaml"><code><span class="c"># observability/MeshMetric-kong-mesh-system-default-metrics.yaml</span>
+<div class="code"><pre class="chroma" data-lang="yaml"><code><span class="c"># observability/MeshMetric-kuma-system-default-metrics.yaml</span>
 <span class="nt">apiVersion</span><span class="p">:</span> <span class="l">kuma.io/v1alpha1</span>
 <span class="nt">kind</span><span class="p">:</span> <span class="l">MeshMetric</span>
 <span class="nt">metadata</span><span class="p">:</span>
   <span class="nt">labels</span><span class="p">:</span>
     <span class="nt">kuma.io/mesh</span><span class="p">:</span> <span class="l">default</span>
   <span class="nt">name</span><span class="p">:</span> <span class="l">default-metrics</span>
-  <span class="nt">namespace</span><span class="p">:</span> <span class="l">kong-mesh-system</span>
+  <span class="nt">namespace</span><span class="p">:</span> <span class="l">kuma-system</span>
 <span class="nt">spec</span><span class="p">:</span>
   <span class="nt">default</span><span class="p">:</span>
     <span class="nt">backends</span><span class="p">:</span>
@@ -318,28 +341,28 @@ generated, plus a <code>MeshPassthrough</code> and a <code>MeshTLS</code>:</p>
   <span class="nt">meshServices</span><span class="p">:</span>
     <span class="nt">mode</span><span class="p">:</span> <span class="l">Exclusive</span>
 </code></pre></div>
-<div class="code"><pre class="chroma" data-lang="yaml"><code><span class="c"># routing/MeshPassthrough-kong-mesh-system-default-passthrough.yaml</span>
+<div class="code"><pre class="chroma" data-lang="yaml"><code><span class="c"># routing/MeshPassthrough-kuma-system-default-passthrough.yaml</span>
 <span class="nt">apiVersion</span><span class="p">:</span> <span class="l">kuma.io/v1alpha1</span>
 <span class="nt">kind</span><span class="p">:</span> <span class="l">MeshPassthrough</span>
 <span class="nt">metadata</span><span class="p">:</span>
   <span class="nt">labels</span><span class="p">:</span>
     <span class="nt">kuma.io/mesh</span><span class="p">:</span> <span class="l">default</span>
   <span class="nt">name</span><span class="p">:</span> <span class="l">default-passthrough</span>
-  <span class="nt">namespace</span><span class="p">:</span> <span class="l">kong-mesh-system</span>
+  <span class="nt">namespace</span><span class="p">:</span> <span class="l">kuma-system</span>
 <span class="nt">spec</span><span class="p">:</span>
   <span class="nt">default</span><span class="p">:</span>
     <span class="nt">passthroughMode</span><span class="p">:</span> <span class="l">All</span>
   <span class="nt">targetRef</span><span class="p">:</span>
     <span class="nt">kind</span><span class="p">:</span> <span class="l">Mesh</span>
 </code></pre></div>
-<div class="code"><pre class="chroma" data-lang="yaml"><code><span class="c"># zero-trust/MeshTLS-kong-mesh-system-default-tls-permissive.yaml</span>
+<div class="code"><pre class="chroma" data-lang="yaml"><code><span class="c"># zero-trust/MeshTLS-kuma-system-default-tls-permissive.yaml</span>
 <span class="nt">apiVersion</span><span class="p">:</span> <span class="l">kuma.io/v1alpha1</span>
 <span class="nt">kind</span><span class="p">:</span> <span class="l">MeshTLS</span>
 <span class="nt">metadata</span><span class="p">:</span>
   <span class="nt">labels</span><span class="p">:</span>
     <span class="nt">kuma.io/mesh</span><span class="p">:</span> <span class="l">default</span>
   <span class="nt">name</span><span class="p">:</span> <span class="l">default-tls-permissive</span>
-  <span class="nt">namespace</span><span class="p">:</span> <span class="l">kong-mesh-system</span>
+  <span class="nt">namespace</span><span class="p">:</span> <span class="l">kuma-system</span>
 <span class="nt">spec</span><span class="p">:</span>
   <span class="nt">rules</span><span class="p">:</span>
   - <span class="nt">default</span><span class="p">:</span>
@@ -373,7 +396,7 @@ generated, plus a <code>MeshPassthrough</code> and a <code>MeshTLS</code>:</p>
   </main>
   <nav class="toc" aria-label="On this page">
     <p class="toc-title">On this page</p>
-    <ul><li class="toc-l2"><a href="#what-changed-upstream">What changed upstream</a></li><li class="toc-l2"><a href="#what-kuma-migrator-does">What kuma-migrator does</a></li><li class="toc-l2"><a href="#what-it-cannot-do">What it cannot do</a></li><li class="toc-l2"><a href="#manual-steps">Manual steps</a></li><li class="toc-l2"><a href="#example">Example</a></li><li class="toc-l2"><a href="#related">Related</a></li></ul>
+    <ul><li class="toc-l2"><a href="#what-changed-upstream">What changed upstream</a></li><li class="toc-l2"><a href="#what-kuma-migrator-does">What kuma-migrator does</a></li><li class="toc-l3"><a href="#logging-and-tracing">Logging and tracing</a></li><li class="toc-l3"><a href="#system-namespace">System namespace</a></li><li class="toc-l2"><a href="#what-it-cannot-do">What it cannot do</a></li><li class="toc-l2"><a href="#manual-steps">Manual steps</a></li><li class="toc-l2"><a href="#example">Example</a></li><li class="toc-l2"><a href="#related">Related</a></li></ul>
   </nav>
 </div>
 <footer class="site-footer">

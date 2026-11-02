@@ -206,13 +206,13 @@ applies to every client, so <code>from[]</code> entries that all use <code>kind:
 <tbody>
 <tr>
 <td>Legacy <code>TrafficPermission</code></td>
-<td><code>MeshTrafficPermission</code> with <code>from[]</code> and <code>action: Allow</code>. <code>destinations</code> → <code>spec.targetRef</code>, <code>sources</code> → <code>from[]</code></td>
+<td><code>MeshTrafficPermission</code> with <code>from[]</code> and <code>action: Allow</code>. <code>destinations</code> → <code>spec.targetRef</code> (<code>Dataplane</code> labels), <code>sources</code> → <code>from[]</code> as <code>MeshSubset</code> with the source's <code>kuma.io/service</code> tag (the form 2.7+ documents)</td>
 <td><strong>Error</strong>. Original written to <code>_manual/</code>. Re-run with <code>v2</code> for the <code>from[]</code> form</td>
 </tr>
 <tr>
 <td><code>MeshTrafficPermission</code> with <code>from[]</code></td>
 <td>Warning: deprecated, not converted, manual steps listed</td>
-<td>Warning: rejected by 3.0 as it stands</td>
+<td><strong>Error</strong>: rejected by 3.0 as it stands, written to <code>_manual/</code> instead of the apply tree</td>
 </tr>
 <tr>
 <td><code>MeshTrafficPermission</code> <code>rules[]</code> with an empty match entry</td>
@@ -236,17 +236,17 @@ applies to every client, so <code>from[]</code> entries that all use <code>kind:
 </tr>
 <tr>
 <td>Legacy <code>FaultInjection</code></td>
-<td><code>MeshFaultInjection</code> with <code>from[]</code></td>
+<td><code>MeshFaultInjection</code> with <code>from[]</code> (<code>MeshSubset</code> sources, as for <code>TrafficPermission</code>)</td>
 <td><code>rules[]</code> when every source is <code>kuma.io/service: '*'</code>; error otherwise</td>
 </tr>
 <tr>
 <td><code>MeshFaultInjection</code> with <code>from[]</code></td>
 <td>Warning</td>
-<td><code>rules[]</code> when every entry is <code>kind: Mesh</code>; warning otherwise</td>
+<td><code>rules[]</code> when every entry is <code>kind: Mesh</code>; otherwise <strong>error</strong>, written to <code>_manual/</code></td>
 </tr>
 <tr>
 <td><code>OPAPolicy</code></td>
-<td><code>MeshOPA</code>: <code>conf.policies[]</code> → <code>default.appendPolicies[].rego</code>, <code>conf.agentConfig</code> → <code>default.agentConfig</code>, <code>targetRef</code> kept, with 3.0 advisories</td>
+<td><code>MeshOPA</code>: <code>conf.policies[]</code> → <code>default.appendPolicies[].rego</code>, <code>conf.agentConfig</code> → <code>default.agentConfig</code>, each keeping its <code>inlineString</code>/<code>inline</code>/<code>secret</code> key; an entry with none of them is left out with a &quot;NOT migrated&quot; warning, never emitted as an empty <code>rego</code>. <code>targetRef</code> kept, with 3.0 advisories</td>
 <td>Same, plus the 3.0 rewrites below</td>
 </tr>
 <tr>
@@ -400,26 +400,29 @@ with advisories:</p>
   - <span class="nt">default</span><span class="p">:</span>
       <span class="nt">action</span><span class="p">:</span> <span class="l">Allow</span>
     <span class="nt">targetRef</span><span class="p">:</span>
-      <span class="nt">kind</span><span class="p">:</span> <span class="l">MeshService</span>
-      <span class="nt">name</span><span class="p">:</span> <span class="l">web</span>
-      <span class="nt">namespace</span><span class="p">:</span> <span class="l">demo</span>
+      <span class="nt">kind</span><span class="p">:</span> <span class="l">MeshSubset</span>
+      <span class="nt">tags</span><span class="p">:</span>
+        <span class="nt">kuma.io/service</span><span class="p">:</span> <span class="l">web_demo_svc_8080</span>
   <span class="nt">targetRef</span><span class="p">:</span>
     <span class="nt">kind</span><span class="p">:</span> <span class="l">Dataplane</span>
-    <span class="nt">name</span><span class="p">:</span> <span class="l">backend</span>
-    <span class="nt">namespace</span><span class="p">:</span> <span class="l">demo</span>
+    <span class="nt">labels</span><span class="p">:</span>
+      <span class="nt">app</span><span class="p">:</span> <span class="l">backend</span>
+      <span class="nt">k8s.kuma.io/namespace</span><span class="p">:</span> <span class="l">demo</span>
 </code></pre></div>
-<div class="code"><pre class="chroma" data-lang="text"><code><span class="o-warn">⚠</span>  MeshTrafficPermission "web-to-backend": from[].targetRef.kind MeshService is deprecated in
-   Kuma 2.7+ — use kind: Dataplane with labels instead.
+<div class="code"><pre class="chroma" data-lang="text"><code><span class="o-warn">⚠</span>  spec.targetRef Dataplane labels use 'app: backend' as a best-guess pod label — verify this
+   matches your actual pod labels before applying
 <span class="o-warn">⚠</span>  MeshTrafficPermission "web-to-backend": the from[] field is deprecated in favour of the rules[]
    API (Kuma 2.14, removed in 3.0) and is NOT auto-converted. …
 </code></pre></div>
-<blockquote class="callout callout-warning"><p><strong>Warning:</strong> In this output <code>spec.targetRef</code> is <code>kind: Dataplane</code> with <code>name: backend</code>, which
-selects the single <code>Dataplane</code> resource named <code>backend</code>. On Kubernetes a <code>Dataplane</code> is named
-after its pod, so check that it selects the proxies you expect, or replace it with <code>labels</code>.</p>
-</blockquote>
+<p><code>from[]</code> keeps the source's <code>kuma.io/service</code> tag in a <code>MeshSubset</code>, the form the 2.7 upgrade notes
+give in place of the deprecated <code>kind: MeshService</code>
+(<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#deprecation-of-fromtargetrefkind-meshservice">UPGRADE</a>).
+<code>spec.targetRef</code> selects <code>Dataplane</code> labels, never a <code>name</code>: a <code>Dataplane</code> name is its pod's name.
+<code>app</code> comes from the pod labels and <code>k8s.kuma.io/namespace</code> is set by the control plane; check
+that your pods carry <code>app: backend</code>.</p>
 <p>With <code>--to-latest v3</code> the <code>TrafficPermission</code> is refused and written to <code>_manual/</code>, the
-<code>MeshTrafficPermission</code> is copied with a &quot;rejected by 3.0&quot; warning, and the <code>AccessRole</code> is
-rewritten:</p>
+<code>MeshTrafficPermission</code> is rejected by 3.0 as it stands (it still has <code>from[]</code>) and is also
+written to <code>_manual/</code>, and the <code>AccessRole</code> is rewritten:</p>
 <div class="code"><pre class="chroma" data-lang="yaml"><code><span class="c"># other/AccessRole-team-a-policies.yaml (v3)</span>
 <span class="nt">name</span><span class="p">:</span> <span class="l">team-a-policies</span>
 <span class="nt">rules</span><span class="p">:</span>

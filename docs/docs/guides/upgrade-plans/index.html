@@ -198,9 +198,10 @@ convert it. Rewrite <code>MeshTrafficPermission</code> <code>from[]</code> to <c
 upgraded. A 2.x zone reads a missing field as <code>Disabled</code> and stops serving <code>MeshService</code>
 outbounds and DNS
 (<a href="https://github.com/kumahq/kuma/blob/v3.0.1/UPGRADE.md#meshservices-removed-from-the-mesh-schema">Kuma <code>UPGRADE.md</code></a>).
-The <code>Mesh</code> files in <code>./migrated-v2</code> set it; apply them last, as the checklist says, once
-every workload and policy uses <code>MeshService</code> names. See
-<a href="../../topics/meshservice/">MeshService</a>.</p>
+The <code>v3</code> Apply Checklist prints the command for each mesh (<code>kubectl patch</code>, or
+<code>kumactl get | yq | kumactl apply</code>), which changes only <code>meshServices</code>. Run it once every
+workload and policy uses <code>MeshService</code> names. Do not apply the <code>v3</code> <code>Mesh</code> files here: they
+drop <code>spec.mtls</code>. See <a href="../../topics/meshservice/">MeshService</a>.</p>
 </li>
 <li>
 <p><strong>Migrate to v3</strong> and review the report.</p>
@@ -277,9 +278,10 @@ order are described in <a href="../apply/">Apply</a>. Two points matter for an u
 <ul>
 <li>The checklist always contains the &quot;Upgrade the Global Control Plane&quot; and &quot;Upgrade Zone
 Control Planes&quot; steps. In a <code>v2</code> run used to prepare on the current version, skip them.</li>
-<li>In a <code>v3</code> run, the checklist orders the steps as: fix errors, delete the removed kinds,
-upgrade, apply policies, apply <code>Mesh</code> last. The <code>Mesh</code> step there comes after the upgrade,
-but <code>meshServices.mode: Exclusive</code> must already be set before it (step 6 above).</li>
+<li>In a <code>v3</code> run, the checklist orders the steps as: fix errors, finish the <code>MeshIdentity</code>
+cutover (when a <code>Mesh</code> sets <code>spec.mtls</code>), set <code>meshServices.mode: Exclusive</code> on every mesh,
+delete the removed kinds, upgrade, apply backends then policies, apply the <code>Mesh</code> files. The
+first four run on 2.14; the <code>Mesh</code> files, which drop <code>spec.mtls</code>, are applied only on 3.0.</li>
 </ul>
 <h2 id="read-delete-before-upgrading-to-30">Read Delete Before Upgrading to 3.0</h2>
 <p>This section is written by <code>--to-latest v3</code> runs only. One row per source object of a kind
@@ -306,8 +308,9 @@ but <code>meshServices.mode: Exclusive</code> must already be set before it (ste
 </tr>
 </tbody>
 </table></div>
-<p>The collapsed block under the table holds the delete commands, <code>kubectl delete</code> or
-<code>kumactl delete</code> depending on how the context was extracted. 3.0 rejects these kinds and does
+<p>The collapsed block under the table holds the delete commands: <code>kumactl delete</code> for a
+context extracted with <code>kumactl</code> from a Universal or Konnect control plane, <code>kubectl delete</code>
+otherwise (a Kubernetes-backed control plane refuses <code>kumactl</code> writes). 3.0 rejects these kinds and does
 not migrate stored objects, so they must be deleted on 2.14. For a row marked <code>converted</code>,
 the replacement must come from the <code>v2</code> output applied in step 4: the <code>v3</code> replacement is
 not valid on 2.14.</p>

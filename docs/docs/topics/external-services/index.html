@@ -190,6 +190,10 @@ were <code>true</code>. The newer one (&quot;Outbound passthrough defaults to <c
 <p>Code: <a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/externalservice.go"><code>externalservice.go</code></a>,
 <a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/v3_mes.go"><code>v3_mes.go</code></a>,
 <a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/v3_scan.go"><code>v3_scan.go</code></a>.</p>
+<p>The converted <code>MeshExternalService</code> keeps the input format. A Universal <code>ExternalService</code> gives a
+Universal <code>MeshExternalService</code> (<code>type</code>, <code>name</code>, <code>mesh</code>). A Kubernetes one gives a CRD in the
+control-plane namespace, inferred from the input or set with <code>systemNamespace</code> in the config file
+(see <a href="../meshes/#system-namespace">Meshes</a>).</p>
 <p>The <code>MeshIdentity</code> check looks only at the input directory. If the <code>MeshIdentity</code> exists on the
 control plane but was not extracted, ignore the warning.</p>
 <h2 id="what-it-cannot-do">What it cannot do</h2>
@@ -243,14 +247,14 @@ the endpoints.</li>
       <span class="nt">serverName</span><span class="p">:</span> <span class="l">httpbin.org</span>
 </code></pre></div>
 <p>Output with <code>--to-latest v2</code>:</p>
-<div class="code"><pre class="chroma" data-lang="yaml"><code><span class="c"># routing/MeshExternalService-kong-mesh-system-httpbin.yaml</span>
+<div class="code"><pre class="chroma" data-lang="yaml"><code><span class="c"># routing/MeshExternalService-kuma-system-httpbin.yaml</span>
 <span class="nt">apiVersion</span><span class="p">:</span> <span class="l">kuma.io/v1alpha1</span>
 <span class="nt">kind</span><span class="p">:</span> <span class="l">MeshExternalService</span>
 <span class="nt">metadata</span><span class="p">:</span>
   <span class="nt">labels</span><span class="p">:</span>
     <span class="nt">kuma.io/mesh</span><span class="p">:</span> <span class="l">default</span>
   <span class="nt">name</span><span class="p">:</span> <span class="l">httpbin</span>
-  <span class="nt">namespace</span><span class="p">:</span> <span class="l">kong-mesh-system</span>
+  <span class="nt">namespace</span><span class="p">:</span> <span class="l">kuma-system</span>
 <span class="nt">spec</span><span class="p">:</span>
   <span class="nt">endpoints</span><span class="p">:</span>
   - <span class="nt">address</span><span class="p">:</span> <span class="l">httpbin.org</span>

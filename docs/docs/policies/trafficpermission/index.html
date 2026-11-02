@@ -72,9 +72,12 @@
     <header><span class="target-label">--to-latest v2 (2.x)</span> <span class="status status-converted">converted</span></header>
     <p class="outputs">Output: <a href="../meshtrafficpermission/"><code>MeshTrafficPermission</code></a></p>
     <div class="notes"><p>Inbound shape: <code>destinations</code> → <code>spec.targetRef</code>, <code>sources</code> → <code>from[]</code> with
-<code>default.action: Allow</code>. A specific source becomes <code>from[].targetRef.kind: MeshService</code>,
-which the scanner then reports as deprecated since 2.7, and every <code>from[]</code> is reported as
-deprecated in favour of the <code>rules[]</code> API (removed in 3.0).</p>
+<code>default.action: Allow</code>. A specific source becomes
+<code>from[].targetRef: {kind: MeshSubset, tags: &lt;the source's tags&gt;}</code>, the form 2.7+ documents
+in place of the deprecated <code>kind: MeshService</code>; a <code>kuma.io/service: '*'</code> source becomes
+<code>kind: Mesh</code>. The destination becomes <code>kind: Dataplane</code> with
+<code>labels: {app: &lt;name&gt;, k8s.kuma.io/namespace: &lt;ns&gt;}</code> (<code>app</code> is a best guess, warned).
+Every <code>from[]</code> is reported as deprecated in favour of the <code>rules[]</code> API (removed in 3.0).</p>
 </div>
   </section>
   <section class="target-card">

@@ -133,6 +133,7 @@ namespace.</p>
 <div class="code"><pre class="chroma" data-lang="text"><code>migrated/
   konnect-global-prod-global-ctx/
     mesh-default/
+      backends/                      <span class="o-dim">← MeshOpenTelemetryBackend, applied first</span>
       resiliency/
         MeshTimeout-my-timeout.yaml
       routing/
@@ -175,7 +176,7 @@ namespace.</p>
 <td><code>&lt;ctx&gt;/global-scoped-resources/&lt;sub&gt;/</code>, even when the source came from a mesh directory. <code>ReferenceGrant</code> has no kind subfolder of its own and lands in <code>other/</code></td>
 </tr>
 <tr>
-<td>Documents a 3.0 control plane cannot accept (<code>--to-latest v3</code>)</td>
+<td>Documents a 3.0 control plane cannot accept (<code>--to-latest v3</code>), and converted output the target rejects as written (either target)</td>
 <td><code>&lt;ctx&gt;/_manual/&lt;same relative path&gt;</code></td>
 </tr>
 <tr>
@@ -218,7 +219,7 @@ See <a href="../../topics/gateways/">Gateways</a>.</p>
 </tr>
 <tr>
 <td>Inline OpenTelemetry endpoint under <code>--to-latest v3</code></td>
-<td><code>MeshOpenTelemetryBackend</code> in <code>other/</code></td>
+<td><code>MeshOpenTelemetryBackend</code> in <code>backends/</code>, which the Apply Checklist applies before the policies that select it</td>
 </tr>
 <tr>
 <td><code>MeshGatewayRoute</code> with a cross-namespace backend</td>
@@ -232,7 +233,9 @@ See <a href="../../topics/gateways/">Gateways</a>.</p>
 </table></div>
 <p>Errored documents are copied unchanged. Under <code>--to-latest v2</code> the copy stays in the apply
 tree, since applying it back to the 2.x control plane it came from changes nothing. Under
-<code>--to-latest v3</code> it goes to <code>_manual/</code>, which no apply step uses.</p>
+<code>--to-latest v3</code> it goes to <code>_manual/</code>, which no apply step uses. When a transform knowingly
+produces output the target rejects, that output (not the original) goes to <code>_manual/</code> on
+either target, and the report lists it under <strong>Action Items → Errors</strong> with the reason.</p>
 <h2 id="scenarios">Scenarios</h2>
 <p>Each document is classified into one scenario, which decides the transform:</p>
 <div class="table-wrap"><table>

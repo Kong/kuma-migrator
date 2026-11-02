@@ -70,20 +70,31 @@
 <div class="targets">
   <section class="target-card">
     <header><span class="target-label">--to-latest v2 (2.x)</span> <span class="status status-rewritten">rewritten</span></header>
-    <p class="outputs">Output: <a href="./"><code>Mesh</code></a>, <a href="../meshmetric/"><code>MeshMetric</code></a>, <a href="../meshtrace/"><code>MeshTrace</code></a>, <a href="../meshaccesslog/"><code>MeshAccessLog</code></a></p>
+    <p class="outputs">Output: <a href="./"><code>Mesh</code></a>, <a href="../meshmetric/"><code>MeshMetric</code></a>, <a href="../meshpassthrough/"><code>MeshPassthrough</code></a></p>
     <div class="notes"><p>Rewritten when it has observability sections, sets <code>networking.outbound.passthrough</code>, or
 does not set <code>meshServices.mode: Exclusive</code>:</p>
 <ul>
-<li><code>spec.metrics</code>, <code>spec.tracing</code>, <code>spec.logging</code> are removed and turned into companion
-<code>MeshMetric</code>, <code>MeshTrace</code> and <code>MeshAccessLog</code> policies with <code>targetRef: Mesh</code>.</li>
+<li><code>spec.metrics</code> is removed. Its <code>enabledBackend</code> turns metrics on for every proxy, so
+that backend becomes a companion <code>MeshMetric</code> <code>&lt;mesh&gt;-metrics</code> with <code>targetRef: Mesh</code>.
+Backends that are not enabled are dropped; no <code>enabledBackend</code> means no <code>MeshMetric</code>.</li>
+<li><code>spec.tracing</code> and <code>spec.logging</code> are removed <strong>without</strong> a companion. On 2.x they only
+declare backends: a <a href="../traffictrace/">TrafficTrace</a> or <a href="../trafficlog/">TrafficLog</a>
+activates one, and its conversion carries the backend inline. A mesh-wide
+<code>MeshTrace</code>/<code>MeshAccessLog</code> would turn tracing/logging on for every proxy. The warning
+lists which backends a <code>TrafficLog</code>/<code>TrafficTrace</code> in the input references and which
+none does (those were inactive, nothing is lost).</li>
+<li><code>networking.outbound.passthrough: false</code> becomes a <code>MeshPassthrough</code> <code>&lt;mesh&gt;-passthrough</code>
+with <code>passthroughMode: None</code>.</li>
 <li><code>spec.meshServices.mode: Exclusive</code> is injected: 3.0 requires it, and a 2.x zone reads
 a missing field as <code>Disabled</code>.</li>
 <li><code>networking.outbound.passthrough: true</code> is removed (it is the 2.x default) with a
 warning to add a <code>MeshPassthrough</code> with <code>passthroughMode: All</code> before 3.0.</li>
 </ul>
 <p>Kept, with advisories: <code>spec.mtls</code> (the move to <code>MeshIdentity</code> + <code>MeshTrust</code> is a CA
-cutover, not a rewrite; Kong Mesh <code>vault</code>/<code>acmpca</code>/<code>cert-manager</code> backends name their
-<code>MeshIdentity</code> provider), a <code>PERMISSIVE</code> mTLS backend,
+cutover, not a rewrite; the advisory is specific to the backend type: <code>builtin</code> names the
+<code>ca-builtin-*</code> Secrets to reuse from a <code>Bundled</code> <code>MeshIdentity</code>, <code>provided</code> names its
+<code>conf.cert</code>/<code>conf.key</code> DataSources, and Kong Mesh <code>vault</code>/<code>acmpca</code>/<code>cert-manager</code> name
+their <code>Extension</code> provider), a <code>PERMISSIVE</code> mTLS backend,
 <code>routing.defaultForbidMeshExternalServiceAccess</code>, <code>routing.zoneEgress</code>,
 <code>routing.localityAwareLoadBalancing</code>, <code>skipCreatingInitialPolicies</code>. Names that are not
 RFC 1035 labels are reported.</p>
@@ -91,7 +102,7 @@ RFC 1035 labels are reported.</p>
   </section>
   <section class="target-card">
     <header><span class="target-label">--to-latest v3 (3.0)</span> <span class="status status-rewritten">rewritten</span></header>
-    <p class="outputs">Output: <a href="./"><code>Mesh</code></a>, <a href="../meshmetric/"><code>MeshMetric</code></a>, <a href="../meshtrace/"><code>MeshTrace</code></a>, <a href="../meshaccesslog/"><code>MeshAccessLog</code></a>, <a href="../meshtls/"><code>MeshTLS</code></a>, <a href="../meshpassthrough/"><code>MeshPassthrough</code></a></p>
+    <p class="outputs">Output: <a href="./"><code>Mesh</code></a>, <a href="../meshmetric/"><code>MeshMetric</code></a>, <a href="../meshtls/"><code>MeshTLS</code></a>, <a href="../meshpassthrough/"><code>MeshPassthrough</code></a></p>
     <div class="notes"><p>v2 rewrites, plus:</p>
 <ul>
 <li><code>spec.mtls</code> is <strong>removed</strong> with a blocking warning: create a <code>MeshIdentity</code> (and
@@ -107,8 +118,9 @@ to <code>None</code>.</li>
 deleted.</li>
 <li>The <code>meshServices</code> warning adds: drop the field once every zone runs 3.0.</li>
 </ul>
-<p>Companion policies are written as Kubernetes-format documents in the mesh's namespace
-(default <code>kong-mesh-system</code>).</p>
+<p>Companion policies keep the format of the <code>Mesh</code>: Universal input gives Universal
+documents (<code>type</code>/<code>name</code>/<code>mesh</code>), Kubernetes input gives CRDs in the system namespace
+(see <a href="../../topics/meshes/#system-namespace">Meshes</a>).</p>
 </div>
   </section>
 </div>

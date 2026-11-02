@@ -78,6 +78,9 @@ backend into <code>to[].default.backends[]</code> (<code>file</code> → <code>t
 <p>If the Mesh is not in the input set, or the name is not found, the policy is emitted
 without the backend and a warning names the backend you must write by hand. With no
 <code>conf.backend</code>, the Mesh <code>defaultBackend</code> is used.</p>
+<p>The <code>TrafficLog</code> is what turns access logging on. The <code>Mesh</code> conversion does not
+generate a mesh-wide <code>MeshAccessLog</code> from <code>spec.logging</code>; this conversion is the only
+place a logging backend ends up in the output. See <a href="../../topics/meshes/#logging-and-tracing">Meshes</a>.</p>
 </div>
   </section>
   <section class="target-card">

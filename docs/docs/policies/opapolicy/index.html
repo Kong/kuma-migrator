@@ -80,12 +80,12 @@
 </thead>
 <tbody>
 <tr>
-<td><code>conf.policies[].inlineString</code> / <code>.secret</code></td>
-<td><code>spec.default.appendPolicies[].rego.*</code></td>
+<td><code>conf.policies[].inlineString</code> / <code>.inline</code> / <code>.secret</code></td>
+<td><code>spec.default.appendPolicies[].rego.*</code> (same key)</td>
 </tr>
 <tr>
-<td><code>conf.agentConfig</code></td>
-<td><code>spec.default.agentConfig</code></td>
+<td><code>conf.agentConfig.inlineString</code> / <code>.inline</code> / <code>.secret</code></td>
+<td><code>spec.default.agentConfig.*</code> (same key)</td>
 </tr>
 <tr>
 <td>other <code>conf</code> fields</td>
@@ -101,15 +101,19 @@
 </tr>
 </tbody>
 </table></div>
-<p>The output keeps the flat DataSource shape and gets the <a href="../meshopa/">MeshOPA</a> v2
-advisories.</p>
+<p>The output keeps the flat DataSource shape, which the 2.x <code>MeshOPA</code> accepts for all three
+keys (<code>inline</code> stays base64). A <code>policies[]</code> entry or <code>agentConfig</code> with none of the three
+keys is left out with a &quot;NOT migrated&quot; warning instead of being emitted as an empty
+<code>rego: {}</code>; unrecognised extra keys are reported as dropped. The output then gets the
+<a href="../meshopa/">MeshOPA</a> v2 advisories.</p>
 </div>
   </section>
   <section class="target-card">
     <header><span class="target-label">--to-latest v3 (3.0)</span> <span class="status status-converted">converted</span></header>
     <p class="outputs">Output: <a href="../meshopa/"><code>MeshOPA</code></a></p>
     <div class="notes"><p>Same conversion, then the <a href="../meshopa/">MeshOPA</a> v3 rewrites: DataSources to
-<code>SecureDataSource</code>, <code>targetRef.name</code>/<code>namespace</code>/<code>mesh</code> to labels. The source object is
+<code>SecureDataSource</code> (a base64 <code>inline</code> is decoded into <code>insecureInline.value</code>),
+<code>targetRef.name</code>/<code>namespace</code>/<code>mesh</code> to labels. The source object is
 listed under &quot;Delete Before Upgrading to 3.0&quot;.</p>
 </div>
   </section>

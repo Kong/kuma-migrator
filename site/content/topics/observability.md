@@ -170,7 +170,7 @@ spec:
 The `Mesh.logging` block produces no `MeshAccessLog` of its own. The `Mesh` warning confirms the
 backend is carried by the converted `TrafficLog`:
 
-```
+```text
 ⚠  Mesh "default": spec.logging removed from the Mesh output. … No mesh-wide MeshAccessLog was
    generated, because that would enable logging for every proxy in the mesh. Referenced backends,
    carried inline into the MeshAccessLog generated from each TrafficLog: file-log (1 TrafficLog).

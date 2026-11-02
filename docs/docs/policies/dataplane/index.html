@@ -71,7 +71,8 @@
   <section class="target-card">
     <header><span class="target-label">--to-latest v2 (2.x)</span> <span class="status status-warned">warned</span></header>
     <p class="outputs">Output: <a href="./"><code>Dataplane</code></a></p>
-    <div class="notes"><p>Skipped on Kubernetes (CP-generated). On Universal it is scanned and copied unchanged:</p>
+    <div class="notes"><p>Skipped on Kubernetes (CP-generated). On Universal it is scanned and copied unchanged;
+a Dataplane with a finding is labelled <code>SCANNED</code>, one without <code>SKIP</code>:</p>
 <ul>
 <li><code>transparentProxying.redirectPortInboundV6</code> is reported (removed in 2.9).</li>
 <li><code>transparentProxying.reachableServices</code> is reported: in <code>Exclusive</code> mode the names must
@@ -83,7 +84,8 @@ be MeshService display names, and 3.0 removes the field.</li>
   <section class="target-card">
     <header><span class="target-label">--to-latest v3 (3.0)</span> <span class="status status-rewritten">rewritten</span></header>
     <p class="outputs">Output: <a href="./"><code>Dataplane</code></a></p>
-    <div class="notes"><p>Universal only. Rewrites:</p>
+    <div class="notes"><p>Universal only. The file is labelled <code>SCANNED</code> (&quot;rewritten by the deprecation scan&quot;)
+on stdout and listed under <strong>Scanned Non-Policy Resources</strong> in the report. Rewrites:</p>
 <ul>
 <li><code>networking.gateway</code> (any type) removed; its non-reserved tags move to labels.</li>
 <li>Inbound <code>kuma.io/protocol</code> tag → <code>inbound[].protocol</code>.</li>

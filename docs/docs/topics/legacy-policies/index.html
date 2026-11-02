@@ -169,15 +169,19 @@ the policy to the wrong proxy.</p>
 </tr>
 <tr>
 <td><code>kuma.io/service: backend_demo_svc_3001</code> (top level)</td>
-<td><code>kind: Dataplane</code> (see below)</td>
+<td><code>kind: Dataplane</code>, <code>labels: {app: backend, k8s.kuma.io/namespace: demo}</code> (see below)</td>
 </tr>
 <tr>
-<td><code>kuma.io/service: backend_demo_svc_3001</code> (<code>to[]</code>/<code>from[]</code>)</td>
+<td><code>kuma.io/service: backend_demo_svc_3001</code> (<code>to[]</code>)</td>
 <td><code>kind: MeshService</code>, <code>name: backend</code>, <code>namespace: demo</code> (v2) or <code>labels</code> (v3)</td>
 </tr>
 <tr>
+<td><code>kuma.io/service: web_demo_svc_8080</code> (<code>from[]</code> of <code>TrafficPermission</code>/<code>FaultInjection</code>, v2)</td>
+<td><code>kind: MeshSubset</code>, <code>tags: {kuma.io/service: web_demo_svc_8080}</code></td>
+</tr>
+<tr>
 <td>Service tag plus other tags</td>
-<td>Other tags kept as <code>labels</code></td>
+<td>Other tags kept as <code>labels</code>, except Kuma-reserved tags that are not labels (<code>kuma.io/protocol</code>, <code>kuma.io/instance</code>, <code>k8s.kuma.io/service-port</code>, …), which are dropped with a warning</td>
 </tr>
 <tr>
 <td>Empty <code>destinations</code></td>
@@ -258,8 +262,8 @@ them <code>anyOf: [integer, string]</code>.</p>
 <tbody>
 <tr>
 <td>Outbound-shape kinds</td>
-<td>Converted. Top-level specific service → <code>Dataplane</code> <code>name</code>/<code>namespace</code>; destinations → <code>MeshService</code> <code>name</code>/<code>namespace</code></td>
-<td>Converted. Top-level → <code>Dataplane</code> <code>labels: {app, k8s.kuma.io/namespace}</code> (warned as a best guess); destinations → <code>MeshService</code> labels. Delete-before-upgrade advisory</td>
+<td>Converted. Top-level specific service → <code>Dataplane</code> <code>labels: {app, k8s.kuma.io/namespace}</code> (warned as a best guess); destinations → <code>MeshService</code> <code>name</code>/<code>namespace</code></td>
+<td>Converted. Top-level → <code>Dataplane</code> labels, as for v2; destinations → <code>MeshService</code> labels. Delete-before-upgrade advisory</td>
 </tr>
 <tr>
 <td><code>HealthCheck</code> with <code>healthyPanicThreshold</code></td>
@@ -268,12 +272,12 @@ them <code>anyOf: [integer, string]</code>.</p>
 </tr>
 <tr>
 <td><code>TrafficPermission</code></td>
-<td><code>MeshTrafficPermission</code> with <code>from[]</code></td>
+<td><code>MeshTrafficPermission</code> with <code>from[]</code> of <code>MeshSubset</code> source tags</td>
 <td><strong>Error</strong>, original to <code>_manual/</code>. See <a href="../access-control/">Access control</a></td>
 </tr>
 <tr>
 <td><code>FaultInjection</code></td>
-<td><code>MeshFaultInjection</code> with <code>from[]</code></td>
+<td><code>MeshFaultInjection</code> with <code>from[]</code> of <code>MeshSubset</code> source tags</td>
 <td><code>rules[]</code> when every source is <code>kuma.io/service: '*'</code>; error otherwise</td>
 </tr>
 <tr>
@@ -311,12 +315,18 @@ them <code>anyOf: [integer, string]</code>.</p>
 <p>Code: <a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/transform.go"><code>transform.go</code></a>
 (<code>legacyShapes</code>), <a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/legacyconf.go"><code>legacyconf.go</code></a>,
 <a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/legacybackend.go"><code>legacybackend.go</code></a>.</p>
-<blockquote class="callout callout-warning"><p><strong>Warning:</strong> Under <code>v2</code>, a top-level <code>kuma.io/service</code> selector becomes
-<code>kind: Dataplane</code> with <code>name</code> and <code>namespace</code>. A <code>Dataplane</code> <code>name</code> selects one <code>Dataplane</code>
-resource by name, and on Kubernetes a <code>Dataplane</code> is named after its pod
-(<code>web-6d4f8c-xk2pq</code>), not after the service. Check what it selects, or replace it with <code>labels</code>
-before applying. The <code>v3</code> output already uses labels.</p>
-</blockquote>
+<p>A top-level <code>kuma.io/service</code> selector never becomes <code>Dataplane</code> <code>name</code>/<code>namespace</code>: a <code>Dataplane</code>
+<code>name</code> selects one <code>Dataplane</code> by name, and on Kubernetes a <code>Dataplane</code> is named after its pod
+(<code>web-6d4f8c-xk2pq</code>), not after the service. Both targets emit <code>labels</code>. On Kubernetes a
+<code>Dataplane</code> carries its pod's labels plus <code>k8s.kuma.io/namespace</code>, which the control plane sets;
+<code>app: &lt;service&gt;</code> is a guess at the pod label, so each conversion warns. On Universal a <code>Dataplane</code>
+carries only the labels in its own <code>labels</code> field. <code>kind: Dataplane</code> with <code>labels</code> at the top level
+is accepted since 2.10
+(<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#new-kind-dataplane-for-targetref-in-policies">UPGRADE</a>).</p>
+<p><code>TrafficPermission</code> and <code>FaultInjection</code> sources become <code>from[]</code> <code>kind: MeshSubset</code> with the
+source's tags: the 2.7 upgrade notes deprecate <code>from[].targetRef.kind: MeshService</code> for these two
+policies and give that form instead
+(<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#deprecation-of-fromtargetrefkind-meshservice">UPGRADE</a>).</p>
 <h2 id="what-it-cannot-do">What it cannot do</h2>
 <h3 id="trafficroute">TrafficRoute</h3>
 <p>A <code>TrafficRoute</code> splits or redirects traffic by tag. Whether its successor is a <code>MeshHTTPRoute</code>
@@ -463,8 +473,9 @@ thresholds move to <code>MeshCircuitBreaker</code>.</li>
 <span class="nt">spec</span><span class="p">:</span>
   <span class="nt">targetRef</span><span class="p">:</span>
     <span class="nt">kind</span><span class="p">:</span> <span class="l">Dataplane</span>
-    <span class="nt">name</span><span class="p">:</span> <span class="l">web</span>
-    <span class="nt">namespace</span><span class="p">:</span> <span class="l">demo</span>
+    <span class="nt">labels</span><span class="p">:</span>
+      <span class="nt">app</span><span class="p">:</span> <span class="l">web</span>
+      <span class="nt">k8s.kuma.io/namespace</span><span class="p">:</span> <span class="l">demo</span>
   <span class="nt">to</span><span class="p">:</span>
   - <span class="nt">default</span><span class="p">:</span>
       <span class="nt">http</span><span class="p">:</span>
@@ -482,9 +493,11 @@ thresholds move to <code>MeshCircuitBreaker</code>.</li>
 <p>The <code>TrafficRoute</code> is copied to <code>routing/TrafficRoute-route-all.yaml</code> unchanged, with an error:</p>
 <div class="code"><pre class="chroma" data-lang="text"><code><span class="o-warn">⚠</span>  Retry "web-retry": conf.http.retriableStatusCodes ([503]) has no MeshRetry equivalent and was
    dropped — MeshRetry cannot retry on specific status codes. …
+<span class="o-warn">⚠</span>  spec.targetRef Dataplane labels use 'app: web' as a best-guess pod label — verify this matches
+   your actual pod labels before applying
 <span class="o-err">✗</span>  TrafficRoute requires manual migration to MeshHTTPRoute or MeshTCPRoute
 </code></pre></div>
-<p>With <code>--to-latest v3</code> the selectors use labels, the <code>TrafficRoute</code> goes to <code>_manual/</code>, and every
+<p>With <code>--to-latest v3</code> the <code>to[]</code> selectors use labels too, the <code>TrafficRoute</code> goes to <code>_manual/</code>, and every
 converted source gets a delete-before-upgrade advisory:</p>
 <div class="code"><pre class="chroma" data-lang="yaml"><code><span class="c"># resiliency/MeshRetry-web-retry.yaml (v3)</span>
 <span class="nt">apiVersion</span><span class="p">:</span> <span class="l">kuma.io/v1alpha1</span>

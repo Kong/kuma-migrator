@@ -134,11 +134,13 @@ providers; in the API they are one provider type, <code>Extension</code>, select
 <tbody>
 <tr>
 <td><code>Mesh</code> with a <code>vault</code>, <code>acmpca</code>/<code>acm</code> or <code>certmanager</code>/<code>cert-manager</code> backend</td>
-<td><code>mtls</code> kept. Advisory names <code>spec.provider.type: Extension</code> and the <code>extension.name</code> to use</td>
+<td><code>mtls</code> kept. Advisory names <code>spec.provider.type: Extension</code> and the <code>extension.name</code> to use, and says the CA stays in the external system</td>
 <td><code>mtls</code> removed, <strong>blocking</strong> warning with the same mapping</td>
 </tr>
 </tbody>
 </table></div>
+<p>The warning is built per backend type: the <code>builtin</code>-only advice (a <code>Bundled</code> identity mints a new
+CA, delete the <code>ca-builtin-*</code> Secrets) appears only when the <code>Mesh</code> has a <code>builtin</code> backend.</p>
 <p>The mapping is <code>caBackendExtensionMap</code> in
 <a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/deprecation.go"><code>deprecation.go</code></a>.</p>
 <h2 id="what-it-cannot-do">What it cannot do</h2>

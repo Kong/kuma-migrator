@@ -203,17 +203,17 @@ entries accept only the three service kinds (no <code>Mesh</code>). The full per
 <tbody>
 <tr>
 <td><code>MeshGateway</code></td>
-<td><code>Gateway</code> (<code>gateway.networking.k8s.io/v1</code>). Listeners keep port, protocol, hostname, TLS <code>certificateRefs</code>; a bare <code>*</code> hostname is omitted. <code>gatewayClassName</code> resolved to the <code>GatewayClass</code> generated from the <code>MeshGatewayInstance</code> sharing its <code>kuma.io/service</code> tag</td>
-<td>Same listeners. <code>gatewayClassName: REPLACE-WITH-YOUR-GATEWAYCLASS</code> with a warning. Advisory: delete the source <code>MeshGateway</code> before upgrading</td>
+<td><code>Gateway</code> (<code>gateway.networking.k8s.io/v1</code>) named after the <code>MeshGateway</code>, in the namespace of the <code>MeshGatewayInstance</code> sharing its <code>kuma.io/service</code> tag. Listeners keep port, protocol, hostname, TLS <code>certificateRefs</code>; a bare <code>*</code> hostname is omitted; names are <code>&lt;protocol&gt;-&lt;port&gt;</code>, made unique. <code>gatewayClassName</code> resolved to the <code>GatewayClass</code> generated from that same instance</td>
+<td>Same name, namespace and listeners. <code>gatewayClassName: REPLACE-WITH-YOUR-GATEWAYCLASS</code> with a warning. Advisory: delete the source <code>MeshGateway</code> before upgrading</td>
 </tr>
 <tr>
 <td><code>MeshGatewayInstance</code></td>
-<td><code>GatewayClass</code> (named after the instance, <code>controllerName: gateways.kuma.io/controller</code>) + <code>MeshGatewayConfig</code> carrying <code>replicas</code>, <code>serviceType</code>, <code>tags</code></td>
+<td><code>GatewayClass</code> (named after the instance, <code>controllerName: gateways.kuma.io/controller</code>) + <code>MeshGatewayConfig</code> carrying <code>replicas</code>, <code>serviceType</code>, <code>tags</code> minus <code>kuma.io/service</code>. Both cluster-scoped: no namespace on the <code>MeshGatewayConfig</code> or the <code>parametersRef</code></td>
 <td><strong>Error</strong>. Original written to <code>_manual/</code>. The message lists the settings to carry over to your own <code>Deployment</code>/<code>Service</code> and the delegated-gateway annotations</td>
 </tr>
 <tr>
 <td><code>MeshGatewayRoute</code> (HTTP)</td>
-<td><code>HTTPRoute</code> with <code>parentRefs</code> to the <code>Gateway</code>, <code>kuma.io/mesh</code> as a <strong>label</strong>, integer <code>port</code>. A backend in another namespace gets a <code>ReferenceGrant</code>; a route with no namespace gets a warning instead</td>
+<td><code>HTTPRoute</code> whose <code>parentRefs</code> name the converted <code>Gateway</code> (resolved through the <code>MeshGateway</code> selecting the route's <code>kuma.io/service</code> tag) and, from the other selector tags, its listener as <code>sectionName</code>. The route is placed in the Gateway's namespace. <code>kuma.io/mesh</code> as a <strong>label</strong>, integer <code>port</code>. A backend in another namespace gets a <code>ReferenceGrant</code>; a route whose namespace stays unknown gets a warning instead</td>
 <td>Same, plus the delete-before-upgrade advisory and a note that Kuma 3.0 ignores Gateway-parented routes (your gateway implementation reconciles them)</td>
 </tr>
 <tr>
@@ -273,8 +273,9 @@ is a routing decision. The tool reports routes without a catch-all; you add the 
 <ol>
 <li>Choose the gateway implementation and install it on 2.14 next to the built-in gateway.</li>
 <li>Apply the converted <code>Gateway</code> and <code>HTTPRoute</code>/<code>TCPRoute</code> objects with the new
-<code>gatewayClassName</code>, plus the generated <code>ReferenceGrant</code>s. Set <code>metadata.namespace</code> on routes
-that have none.</li>
+<code>gatewayClassName</code>, plus the generated <code>ReferenceGrant</code>s. Set <code>metadata.namespace</code> on any
+<code>Gateway</code> or route the tool left without one (it warns when the <code>MeshGatewayInstance</code> was not
+in the input).</li>
 <li>Deploy the gateway workload as a delegated gateway: <code>traffic.kuma.io/exclude-inbound-ports</code> on
 the pod, <code>kuma.io/ignore: &quot;true&quot;</code> on its <code>Service</code>, settings from the <code>MeshGatewayInstance</code>
 (replicas, service type).</li>
@@ -300,8 +301,9 @@ objects, the <code>Gateway</code>/<code>ReferenceGrant</code> objects you create
           <span class="nt">port</span><span class="p">:</span> <span class="m">80</span>
 </code></pre></div>
 <h2 id="example">Example</h2>
-<p>Input — four files: a built-in gateway, its instance, a route, and a <code>MeshHTTPRoute</code> that only
-matches <code>/api</code>:</p>
+<p>Input — four documents: a built-in gateway, its instance, a route, and a <code>MeshHTTPRoute</code> that only
+matches <code>/api</code>. <code>MeshGateway</code> and <code>MeshGatewayRoute</code> are cluster-scoped, so they have no
+namespace:</p>
 <div class="code"><pre class="chroma" data-lang="yaml"><code><span class="nt">apiVersion</span><span class="p">:</span> <span class="l">kuma.io/v1alpha1</span>
 <span class="nt">kind</span><span class="p">:</span> <span class="l">MeshGateway</span>
 <span class="nt">metadata</span><span class="p">:</span>
@@ -337,7 +339,6 @@ matches <code>/api</code>:</p>
 <span class="nt">kind</span><span class="p">:</span> <span class="l">MeshGatewayRoute</span>
 <span class="nt">metadata</span><span class="p">:</span>
   <span class="nt">name</span><span class="p">:</span> <span class="l">edge-route</span>
-  <span class="nt">namespace</span><span class="p">:</span> <span class="l">kong-mesh-system</span>
   <span class="nt">labels</span><span class="p">:</span>
     <span class="nt">kuma.io/mesh</span><span class="p">:</span> <span class="l">default</span>
 <span class="nt">spec</span><span class="p">:</span>
@@ -381,12 +382,12 @@ matches <code>/api</code>:</p>
                 <span class="nt">port</span><span class="p">:</span> <span class="m">3001</span>
 </code></pre></div>
 <p>Output with <code>--to-latest v2</code> (the <code>MeshHTTPRoute</code> is copied unchanged):</p>
-<div class="code"><pre class="chroma" data-lang="yaml"><code><span class="c"># routing/Gateway-edge-gateway.yaml</span>
+<div class="code"><pre class="chroma" data-lang="yaml"><code><span class="c"># routing/Gateway-kong-mesh-system-edge-gateway.yaml</span>
 <span class="nt">apiVersion</span><span class="p">:</span> <span class="l">gateway.networking.k8s.io/v1</span>
 <span class="nt">kind</span><span class="p">:</span> <span class="l">Gateway</span>
 <span class="nt">metadata</span><span class="p">:</span>
   <span class="nt">name</span><span class="p">:</span> <span class="l">edge-gateway</span>
-  <span class="nt">namespace</span><span class="p">:</span> <span class="s2">""</span>
+  <span class="nt">namespace</span><span class="p">:</span> <span class="l">kong-mesh-system</span>
 <span class="nt">spec</span><span class="p">:</span>
   <span class="nt">gatewayClassName</span><span class="p">:</span> <span class="l">edge-gateway</span>
   <span class="nt">listeners</span><span class="p">:</span>
@@ -406,21 +407,17 @@ matches <code>/api</code>:</p>
     <span class="nt">group</span><span class="p">:</span> <span class="l">kuma.io</span>
     <span class="nt">kind</span><span class="p">:</span> <span class="l">MeshGatewayConfig</span>
     <span class="nt">name</span><span class="p">:</span> <span class="l">edge-gateway</span>
-    <span class="nt">namespace</span><span class="p">:</span> <span class="l">kong-mesh-system</span>
 </code></pre></div>
-<div class="code"><pre class="chroma" data-lang="yaml"><code><span class="c"># routing/MeshGatewayConfig-kong-mesh-system-edge-gateway.yaml</span>
+<div class="code"><pre class="chroma" data-lang="yaml"><code><span class="c"># routing/MeshGatewayConfig-edge-gateway.yaml</span>
 <span class="nt">apiVersion</span><span class="p">:</span> <span class="l">kuma.io/v1alpha1</span>
 <span class="nt">kind</span><span class="p">:</span> <span class="l">MeshGatewayConfig</span>
 <span class="nt">metadata</span><span class="p">:</span>
   <span class="nt">labels</span><span class="p">:</span>
     <span class="nt">kuma.io/mesh</span><span class="p">:</span> <span class="l">default</span>
   <span class="nt">name</span><span class="p">:</span> <span class="l">edge-gateway</span>
-  <span class="nt">namespace</span><span class="p">:</span> <span class="l">kong-mesh-system</span>
 <span class="nt">spec</span><span class="p">:</span>
   <span class="nt">replicas</span><span class="p">:</span> <span class="m">2</span>
   <span class="nt">serviceType</span><span class="p">:</span> <span class="l">LoadBalancer</span>
-  <span class="nt">tags</span><span class="p">:</span>
-    <span class="nt">kuma.io/service</span><span class="p">:</span> <span class="l">edge-gateway_kong-mesh-system_svc</span>
 </code></pre></div>
 <div class="code"><pre class="chroma" data-lang="yaml"><code><span class="c"># routing/HTTPRoute-kong-mesh-system-edge-route.yaml</span>
 <span class="nt">apiVersion</span><span class="p">:</span> <span class="l">gateway.networking.k8s.io/v1</span>
@@ -463,9 +460,13 @@ matches <code>/api</code>:</p>
     <span class="nt">kind</span><span class="p">:</span> <span class="l">Service</span>
     <span class="nt">name</span><span class="p">:</span> <span class="l">backend</span>
 </code></pre></div>
-<blockquote class="callout callout-note"><p><strong>Note:</strong> <code>MeshGateway</code> is cluster-scoped, so the generated <code>Gateway</code> has an empty namespace.
-Set <code>metadata.namespace</code> to the namespace the <code>HTTPRoute</code> <code>parentRefs</code> expect before applying.</p>
-</blockquote>
+<p>The <code>Gateway</code> and the <code>HTTPRoute</code> both land in <code>kong-mesh-system</code>, the namespace of the
+<code>MeshGatewayInstance</code> whose <code>kuma.io/service</code> tag the <code>MeshGateway</code> and the route select. A
+Gateway listener accepts routes only from its own namespace by default, and Kuma 2.x creates the
+instance for a Gateway in the Gateway's namespace. <code>MeshGatewayConfig</code> is cluster-scoped, and
+Kuma rejects a <code>GatewayClass</code> whose <code>parametersRef</code> names a namespace, so neither carries one.
+<code>kuma.io/service</code> is dropped from the <code>MeshGatewayConfig</code> tags: Kuma generates
+<code>&lt;gateway&gt;_&lt;namespace&gt;_svc</code> for each Gateway of the class.</p>
 <p>With <code>--to-latest v3</code>:</p>
 <ul>
 <li>the <code>Gateway</code> is the same except <code>gatewayClassName: REPLACE-WITH-YOUR-GATEWAYCLASS</code>;</li>

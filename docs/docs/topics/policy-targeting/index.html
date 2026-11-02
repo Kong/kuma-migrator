@@ -332,10 +332,17 @@ selects a <code>MeshService</code> or <code>MeshHTTPRoute</code> with <strong>ex
 <code>kuma.io/display-name</code>, <code>k8s.kuma.io/namespace</code> equal to the policy's namespace, and
 <code>kuma.io/zone</code> equal to the local zone. A policy mixing producer and consumer items is
 rejected (<a href="https://github.com/kumahq/kuma/blob/master/pkg/core/resources/labels/compute.go"><code>compute.go</code></a>).
-The <code>v3</code> conversion of <code>{name, namespace}</code> writes <code>kuma.io/zone</code> only when the input policy
-carries a <code>kuma.io/zone</code> label (policies extracted from a Zone CP do). For a hand-written
-producer policy, add <code>kuma.io/zone</code> to every <code>to[]</code> selector or it becomes a consumer policy
-that only applies to clients in its own namespace.</p>
+The policy's own zone is the <code>kuma.io/zone</code> the control plane computes for it, so a
+producer policy only exists on a Zone CP.</p>
+<p><code>--to-latest v3</code> treats a policy as a producer when its <code>kuma.io/policy-role</code> label says
+<code>producer</code>, or, with no role label, when it is in an app namespace and every <code>to[]</code> item names
+a <code>MeshService</code> or <code>MeshHTTPRoute</code> in that same namespace. For such a policy it adds
+<code>kuma.io/zone</code> to every <code>to[]</code> label selector, using the policy's own <code>kuma.io/zone</code> label
+(policies extracted from a Zone CP carry it). When the policy has no <code>kuma.io/zone</code> label the
+zone is not in the manifest: the warning names each <code>to[]</code> selector to which you must add
+<code>kuma.io/zone: &lt;zone-name&gt;</code>, the zone CP you apply the policy to. Without it the policy becomes
+a consumer policy that only applies to clients in its own namespace. A selector with labels
+beyond the three is also warned, because it makes the policy a consumer.</p>
 </blockquote>
 <h2 id="control-plane-owned-labels">Control-plane-owned labels</h2>
 <p>The control plane computes these labels on every write: <code>kuma.io/origin</code>, <code>kuma.io/zone</code>,
@@ -356,43 +363,53 @@ renames, splits or moves a policy (a split policy changes role, for example).</p
 <tbody>
 <tr>
 <td>Top-level <code>MeshSubset</code> with a service tag</td>
-<td><code>Dataplane</code> with labels (see <a href="../meshservice/">MeshService</a>)</td>
+<td><code>Dataplane</code> with <code>labels: {app: &lt;name&gt;, k8s.kuma.io/namespace: &lt;ns&gt;}</code>, never <code>name</code> (see <a href="../meshservice/">MeshService</a>)</td>
+<td>Same</td>
+</tr>
+<tr>
+<td>Tags copied into a label selector</td>
+<td>Kuma-reserved tags that are not labels (<code>kuma.io/protocol</code>, <code>kuma.io/instance</code>, <code>k8s.kuma.io/service-port</code>, …) are dropped, with a warning naming them</td>
 <td>Same</td>
 </tr>
 <tr>
 <td>Top-level <code>MeshSubset</code> without a service tag</td>
-<td>Warning</td>
-<td>Warning: rejected by 3.0</td>
+<td><code>Dataplane</code> with the tags as labels</td>
+<td>Same</td>
 </tr>
 <tr>
 <td>Top-level <code>MeshService</code> / <code>MeshServiceSubset</code></td>
 <td>Warning</td>
-<td>Warning: rejected by 3.0. <code>name</code> → labels, kind unchanged</td>
+<td>Error: written to <code>_manual/</code>. <code>name</code> → labels, kind unchanged</td>
 </tr>
 <tr>
 <td>Top-level <code>MeshHTTPRoute</code></td>
 <td>Warning: move to <code>to[].targetRef</code></td>
-<td>Warning</td>
+<td>Error: written to <code>_manual/</code></td>
 </tr>
 <tr>
 <td>Top-level <code>MeshGateway</code></td>
 <td>Nothing (valid on 2.14 for system-role policies)</td>
-<td>Warning: rejected by 3.0</td>
+<td>Error: written to <code>_manual/</code></td>
 </tr>
 <tr>
 <td>Any other top-level kind</td>
 <td>—</td>
-<td>Generic warning</td>
+<td>Error: written to <code>_manual/</code></td>
 </tr>
 <tr>
 <td><code>to[]</code> kind not accepted by that policy on 3.0 (matrix above)</td>
 <td>—</td>
-<td>Warning naming the accepted kinds</td>
+<td>Error naming the accepted kinds; written to <code>_manual/</code></td>
 </tr>
 <tr>
 <td><code>targetRef</code>, <code>to[].targetRef</code>, route <code>backendRefs</code> with <code>name</code>/<code>namespace</code>/<code>mesh</code></td>
 <td>Kept</td>
-<td>Rewritten to labels; <code>Dataplane{name}</code> warned (a Dataplane name is not a label)</td>
+<td>Rewritten to labels. <code>Dataplane{name}</code> cannot be (a Dataplane name is not a label): error, written to <code>_manual/</code></td>
+</tr>
+<tr>
+<td>Producer policy (<code>to[]</code> names services in its own namespace)</td>
+<td>Kept</td>
+<td><code>kuma.io/zone</code> added to each <code>to[]</code> selector from the policy's own <code>kuma.io/zone</code> label; warning naming the selectors when that label is absent</td>
 </tr>
 <tr>
 <td><code>from[]</code> on <code>MeshTimeout</code>/<code>MeshCircuitBreaker</code>/<code>MeshRateLimit</code>/<code>MeshAccessLog</code>/<code>MeshTLS</code></td>
@@ -411,8 +428,15 @@ renames, splits or moves a policy (a split policy changes role, for example).</p
 </tr>
 </tbody>
 </table></div>
-<p>Code: <a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/v3_policy.go"><code>v3_policy.go</code></a>
-(<code>stripControlPlaneLabels</code>, <code>fixRealResourceTargetRefsForV3</code>, <code>warnV3ToTargetRefKinds</code>),
+<p>A document that 3.0 would reject as written is never put in the apply tree: the run reports it as
+an error and writes it under <code>_manual/</code>, the same as a conversion that failed.</p>
+<p>Code: <a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/convert.go"><code>convert.go</code></a>
+(<code>convertTargetRef</code>, <code>selectorLabelsFromTags</code>),
+<a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/v3_policy.go"><code>v3_policy.go</code></a>
+(<code>stripControlPlaneLabels</code>, <code>fixRealResourceTargetRefsForV3</code>, <code>pinProducerZoneForV3</code>,
+<code>warnV3ToTargetRefKinds</code>),
+<a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/rejected.go"><code>rejected.go</code></a>
+(<code>RejectedByTargetError</code>),
 <a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/deprecation.go"><code>deprecation.go</code></a>
 (<code>warnDeprecatedTopLevelTargetRef</code>),
 <a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/rulesapi.go"><code>rulesapi.go</code></a>.</p>
@@ -433,7 +457,8 @@ carries them. Each rewrite is warned.</li>
 <code>Dataplane</code> + <code>labels</code>, and top-level <code>MeshHTTPRoute</code> to <code>to[].targetRef</code>. Verify coverage in
 every zone before upgrading zone control planes.</li>
 <li>Fix <code>to[]</code> entries the matrix rejects.</li>
-<li>For producer policies, add <code>kuma.io/zone</code> to the generated label selectors.</li>
+<li>For producer policies without a <code>kuma.io/zone</code> label, add <code>kuma.io/zone: &lt;zone-name&gt;</code> to the
+<code>to[]</code> label selectors the warning names.</li>
 <li>Apply the <code>v3</code> output, which strips control-plane-owned labels.</li>
 </ol>
 <h2 id="example">Example</h2>
@@ -485,8 +510,9 @@ every zone before upgrading zone control planes.</li>
 <div class="code"><pre class="chroma" data-lang="text"><code><span class="o-warn">⚠</span>  MeshTimeout "backend-timeouts": spec.targetRef.kind MeshService is deprecated as a top-level
    target in Kuma 2.10+ — use kind: Dataplane with labels instead.
 </code></pre></div>
-<p><code>--to-latest v3</code>:</p>
-<div class="code"><pre class="chroma" data-lang="yaml"><code><span class="c"># resiliency/MeshTimeout-demo-backend-timeouts.yaml</span>
+<p><code>--to-latest v3</code> converts both, but 3.0 rejects both as converted (the top-level kinds), so the run
+reports each as an error and writes it under <code>_manual/</code> instead of the apply tree:</p>
+<div class="code"><pre class="chroma" data-lang="yaml"><code><span class="c"># _manual/resiliency/MeshTimeout-demo-backend-timeouts.yaml</span>
 <span class="nt">apiVersion</span><span class="p">:</span> <span class="l">kuma.io/v1alpha1</span>
 <span class="nt">kind</span><span class="p">:</span> <span class="l">MeshTimeout</span>
 <span class="nt">metadata</span><span class="p">:</span>
@@ -513,7 +539,7 @@ every zone before upgrading zone control planes.</li>
         <span class="nt">kuma.io/zone</span><span class="p">:</span> <span class="l">zone-1</span>
       <span class="nt">sectionName</span><span class="p">:</span> <span class="l">http</span>
 </code></pre></div>
-<div class="code"><pre class="chroma" data-lang="yaml"><code><span class="c"># resiliency/MeshCircuitBreaker-kong-mesh-system-cb.yaml</span>
+<div class="code"><pre class="chroma" data-lang="yaml"><code><span class="c"># _manual/resiliency/MeshCircuitBreaker-kong-mesh-system-cb.yaml</span>
 <span class="nt">apiVersion</span><span class="p">:</span> <span class="l">kuma.io/v1alpha1</span>
 <span class="nt">kind</span><span class="p">:</span> <span class="l">MeshCircuitBreaker</span>
 <span class="nt">metadata</span><span class="p">:</span>
@@ -535,8 +561,9 @@ every zone before upgrading zone control planes.</li>
         <span class="nt">k8s.kuma.io/namespace</span><span class="p">:</span> <span class="l">kong-mesh-system</span>
         <span class="nt">kuma.io/display-name</span><span class="p">:</span> <span class="l">some-route</span>
 </code></pre></div>
-<p>The control-plane-owned labels are gone and selectors use labels. Both policies are still invalid
-on 3.0, and the warnings say why (shortened):</p>
+<p>The control-plane-owned labels are gone and selectors use labels. The <code>MeshTimeout</code> producer
+selector keeps <code>kuma.io/zone: zone-1</code> from the policy's own label, so it stays a producer policy.
+The warnings say why each policy is still invalid on 3.0 (shortened):</p>
 <div class="code"><pre class="chroma" data-lang="text"><code><span class="o-warn">⚠</span>  MeshTimeout "backend-timeouts": spec.targetRef.kind MeshService is deprecated as a top-level
    target … Kuma 3.0 rejects it outright: Mesh and Dataplane are the only top-level targetRef kinds
    any policy accepts.

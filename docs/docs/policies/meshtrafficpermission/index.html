@@ -83,22 +83,26 @@ a mechanical rewrite would fail or widen access.</li>
 <code>Dataplane</code> with labels.</li>
 </ul>
 <p>A policy whose refs still use <code>MeshSubset</code> with <code>kuma.io/service</code> tags, or old
-<code>&lt;name&gt;_&lt;ns&gt;_svc_&lt;port&gt;</code> names, is rewritten first (Subset scenario): top level to
-<code>Dataplane</code>, <code>from[]</code> to <code>MeshService</code>.</p>
+<code>&lt;name&gt;_&lt;ns&gt;_svc_&lt;port&gt;</code> names, is rewritten first (Subset scenario): the top level
+becomes <code>Dataplane</code> with labels. <code>from[]</code> keeps <code>MeshSubset</code> with the <code>kuma.io/service</code>
+tag (the 2.7+ form); a <code>from[]</code> <code>MeshService</code> with an old <code>_svc_</code> name is turned back
+into that <code>MeshSubset</code>.</p>
 </div>
   </section>
   <section class="target-card">
-    <header><span class="target-label">--to-latest v3 (3.0)</span> <span class="status status-warned">warned</span></header>
+    <header><span class="target-label">--to-latest v3 (3.0)</span> <span class="status status-error">error</span></header>
     <p class="outputs">Output: <a href="./"><code>MeshTrafficPermission</code></a></p>
-    <div class="notes"><p>The v2 checks apply, and the <code>from[]</code> warning states that 3.0 rejects the policy as it
-stands (<code>spec.from: unknown field</code>, then &quot;policy must define rules&quot;). The policy is still
-written to the apply tree, so translate <code>from[]</code> to <code>rules[]</code> before applying.</p>
+    <div class="notes"><p>The v2 checks apply. A policy that keeps <code>from[]</code> is rejected by 3.0 as it stands
+(<code>spec.from: unknown field</code>, then &quot;policy must define rules&quot;), so it is written to
+<code>_manual/</code> instead of the apply tree and listed under <strong>Action Items → Errors</strong> with the
+reason. Translate <code>from[]</code> to <code>rules[]</code>, then apply it.</p>
 <p>Also under v3:</p>
 <ul>
 <li>Empty match entries (<code>{}</code>) in <code>rules[].default.{allow,deny,allowWithShadowDeny}</code> are
 reported; 3.0 rejects them.</li>
 <li>A top-level <code>MeshService</code> ref is rewritten from <code>name</code>/<code>namespace</code> to labels, but the
-kind stays and 3.0 accepts only <code>Mesh</code> and <code>Dataplane</code> there, so it is also reported.</li>
+kind stays and 3.0 accepts only <code>Mesh</code> and <code>Dataplane</code> there, so the policy is
+reported as an error and written to <code>_manual/</code>.</li>
 <li>Control-plane-owned labels are removed.</li>
 </ul>
 </div>
@@ -108,14 +112,14 @@ kind stays and 3.0 accepts only <code>Mesh</code> and <code>Dataplane</code> the
 <h2 id="timeline">Timeline</h2>
 <div class="table-wrap"><table>
   <thead><tr><th>Version</th><th>Change</th></tr></thead>
-  <tbody><tr><td class="version">2.7</td><td><code>from[].targetRef.kind: MeshService</code> deprecated.</td></tr><tr><td class="version">2.14</td><td><code>from[]</code> deprecated in favour of the SPIFFE-based <code>rules[]</code> API.</td></tr><tr><td class="version">3.0</td><td><code>spec.from</code> removed. Empty match entries rejected. Top-level <code>targetRef</code> limited to <code>Mesh</code> and <code>Dataplane</code>.</td></tr></tbody>
+  <tbody><tr><td class="version">2.7</td><td><code>from[].targetRef.kind: MeshService</code> deprecated; use <code>MeshSubset</code> with the <code>kuma.io/service</code> tag.</td></tr><tr><td class="version">2.14</td><td><code>from[]</code> deprecated in favour of the SPIFFE-based <code>rules[]</code> API.</td></tr><tr><td class="version">3.0</td><td><code>spec.from</code> removed. Empty match entries rejected. Top-level <code>targetRef</code> limited to <code>Mesh</code> and <code>Dataplane</code>.</td></tr></tbody>
 </table></div>
 
 <h2 id="related-topics">Related topics</h2>
 <ul class="link-list"><li><a href="../../topics/access-control/">Access control</a> — MeshTrafficPermission from[] versus SPIFFE rules[], MeshOPA, and the Kong Mesh RBAC changes in 3.0 — what kuma-migrator converts and what stays manual.</li><li><a href="../../topics/mtls-identity/">mTLS and workload identity</a> — Moving a mesh from Mesh.mtls to MeshIdentity and MeshTrust before Kuma 3.0, and why kuma-migrator reports it instead of rewriting it.</li><li><a href="../../topics/policy-targeting/">Policy targeting</a> — Which targetRef kinds each policy accepts at each position on 2.14 and 3.0, labels-only selection, policy roles, and control-plane-owned labels.</li></ul>
 
 <h2 id="source-files">Source files</h2>
-<ul class="link-list"><li><a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/deprecation.go"><code>pkg/migrator/deprecation.go</code></a></li><li><a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/v3_policy.go"><code>pkg/migrator/v3_policy.go</code></a></li></ul>
+<ul class="link-list"><li><a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/deprecation.go"><code>pkg/migrator/deprecation.go</code></a></li><li><a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/v3_policy.go"><code>pkg/migrator/v3_policy.go</code></a></li><li><a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/rejected.go"><code>pkg/migrator/rejected.go</code></a></li></ul>
 
     </article>
     <nav class="pager" aria-label="Previous and next page">

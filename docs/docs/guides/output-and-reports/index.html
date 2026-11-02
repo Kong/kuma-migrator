@@ -102,11 +102,19 @@ Report written to: migrated/migration-plan.md
 </tr>
 <tr>
 <td><code>ALREADY MIGRATED</code></td>
-<td>Passed through unchanged; already uses the current API</td>
+<td>Passed through; already uses the current API</td>
+</tr>
+<tr>
+<td><code>SCANNED</code></td>
+<td>Not a policy (<code>Dataplane</code>, <code>Deployment</code>, ...), but the deprecation scan rewrote it or warned about it. Written to the output tree. The detail says <code>rewritten by the deprecation scan</code> or <code>copied unchanged, see warnings</code></td>
+</tr>
+<tr>
+<td><code>MANUAL</code></td>
+<td>Every document is a kind the target removes, with no conversion (<code>MeshGatewayConfig</code>, <code>MeshGlobalRateLimit</code>, Universal <code>ZoneIngress</code>/<code>ZoneEgress</code> under <code>v3</code>). Written to <code>_manual/</code> only</td>
 </tr>
 <tr>
 <td><code>SKIP</code></td>
-<td>Not a Kuma policy, or a kind in the skip list</td>
+<td>Not a policy and nothing to change: <code>not a Kuma policy; copied unchanged</code>, or <code>on the skip list; not written</code></td>
 </tr>
 <tr>
 <td><code>ERROR</code></td>
@@ -118,11 +126,12 @@ Report written to: migrated/migration-plan.md
 </tr>
 </tbody>
 </table></div>
-<p>A file labelled <code>SKIP</code> or <code>ALREADY MIGRATED</code> can still carry warnings: the label reflects
-scenario detection, while the deprecation scan runs on every document. A Kubernetes
-<code>Deployment</code> is not a Kuma policy (<code>SKIP</code>), but a deprecated <code>kuma.io/*</code> annotation on it is
-still reported. A <code>HostnameGenerator</code> passes through (<code>ALREADY MIGRATED</code>), but its
-<code>spec.template</code> is still checked against the 2.14 validation.</p>
+<p>The deprecation scan runs on every document, whatever its label. A Kubernetes <code>Deployment</code>
+with a deprecated <code>kuma.io/*</code> annotation is labelled <code>SCANNED</code> rather than <code>SKIP</code>, and a
+Universal <code>Dataplane</code> whose inbound tags <code>--to-latest v3</code> rewrites is labelled <code>SCANNED</code> with
+<code>rewritten by the deprecation scan</code>. A <code>HostnameGenerator</code> passes through (<code>ALREADY MIGRATED</code>),
+but its <code>spec.template</code> is still checked against the 2.14 validation.</p>
+<p>The summary line adds <code>N scanned</code> and <code>N manual</code> when those counts are not zero.</p>
 <h2 id="report-sections">Report sections</h2>
 <p><code>migrate --dry-run</code> writes <code>migration-plan.md</code>; <code>migrate</code> writes <code>migration-report.md</code>. Both
 are written to <code>--output-dir</code> by
@@ -141,7 +150,7 @@ are written to <code>--output-dir</code> by
 </tr>
 <tr>
 <td>Summary</td>
-<td>Files processed, migrated, already migrated, skipped, errors</td>
+<td>Files processed, migrated, already migrated, scanned, kept under <code>_manual/</code> (when any), skipped, errors</td>
 </tr>
 <tr>
 <td>Files That Would Be Migrated (<code>--dry-run</code>) / Migrated Files</td>
@@ -152,12 +161,20 @@ are written to <code>--output-dir</code> by
 <td>Files passed through unchanged, with their warnings</td>
 </tr>
 <tr>
+<td>Scanned Non-Policy Resources</td>
+<td>Non-policy files the deprecation scan rewrote or flagged, with their warnings</td>
+</tr>
+<tr>
+<td>Kept Under <code>_manual/</code></td>
+<td>Files whose kind the target removes, with the <code>_manual/</code> path of each</td>
+</tr>
+<tr>
 <td>Skipped</td>
-<td>Non-policy files, with their warnings</td>
+<td>Non-policy files with nothing to change, and whether they were copied or skip-listed</td>
 </tr>
 <tr>
 <td>Action Items</td>
-<td>Errors, workload service address mappings, deprecated annotations. Present only when one of them is non-empty</td>
+<td>Errors, workload service address mappings, deprecated annotations. Present only when one of them is non-empty. A document the target rejects as written is listed under Errors with the <code>_manual/</code> path of its converted output</td>
 </tr>
 <tr>
 <td>Apply Checklist</td>
@@ -175,9 +192,13 @@ are written to <code>--output-dir</code> by
 </table></div>
 <h3 id="delete-before-upgrading-to-30">Delete Before Upgrading to 3.0</h3>
 <p>Under <code>--to-latest v3</code> this section lists every source object of a kind 3.0 removes: the
-legacy policies, <code>ExternalService</code>, <code>OPAPolicy</code>, <code>MeshGlobalRateLimit</code>, <code>MeshGateway*</code>, and
-<code>ZoneIngress</code>/<code>ZoneEgress</code>. For each it shows whether it was converted, where its <code>_manual/</code>
-copy is if it was not, and the delete command for the tool the context was extracted with.</p>
+legacy policies, <code>ExternalService</code>, <code>OPAPolicy</code>, <code>MeshGlobalRateLimit</code>, <code>MeshGateway</code>,
+<code>MeshGatewayRoute</code>, <code>MeshGatewayInstance</code>, <code>MeshGatewayConfig</code>, and <code>ZoneIngress</code>/<code>ZoneEgress</code>.
+For each it shows whether it was converted, where its <code>_manual/</code> copy is if it was not, and
+the delete command. The command uses <code>kumactl</code> for contexts extracted with <code>kumactl</code> from a
+Universal or Konnect control plane, and <code>kubectl</code> otherwise, including <code>kumactl</code> extracts of a
+Kubernetes-backed control plane (<code>kumactl</code> cannot delete there) and the Kubernetes-only kinds
+<code>MeshGatewayInstance</code> and <code>MeshGatewayConfig</code>.</p>
 <div class="code"><pre class="chroma" data-lang="markdown"><code>| Source file | Kind | Name | Namespace / mesh | Replacement |
 |---|---|---|---|---|
 | <span class="sb">`kind-global-global-ctx/mesh-default/resiliency/timeout-default.yaml`</span> | <span class="sb">`Timeout`</span> | <span class="sb">`backend-timeout`</span> | mesh <span class="sb">`default`</span> | converted (see the apply steps) |

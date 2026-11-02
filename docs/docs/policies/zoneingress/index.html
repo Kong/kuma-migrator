@@ -77,8 +77,8 @@
   <section class="target-card">
     <header><span class="target-label">--to-latest v3 (3.0)</span> <span class="status status-removed">removed</span></header>
     <p class="outputs muted">No output kind.</p>
-    <div class="notes"><p>Universal input is copied to <code>_manual/</code> with a blocking warning: deploy mesh-scoped zone
-proxies (a regular <code>Dataplane</code> with a <code>ZoneIngress</code> listener, token reissued without
+    <div class="notes"><p>Universal input is copied to <code>_manual/</code> (file labelled <code>MANUAL</code>, never in the apply tree)
+with a blocking warning: deploy mesh-scoped zone proxies (a regular <code>Dataplane</code> with a <code>ZoneIngress</code> listener, token reissued without
 <code>--proxy-type</code>) before upgrading the zone control plane. A second warning gives the
 <code>MeshZoneAddress</code> to apply with the old <code>advertisedAddress</code>/<code>advertisedPort</code>; without it
 cross-zone traffic to the zone stops. Listed under &quot;Delete Before Upgrading to 3.0&quot;.</p>

@@ -82,6 +82,14 @@ It is written by <code>writeApplyChecklist</code> in
 <td><code>&quot;yes&quot;</code>/<code>&quot;no&quot;</code> values were found on <code>kuma.io/*</code> annotations</td>
 </tr>
 <tr>
+<td>Finish the <code>MeshIdentity</code> cutover</td>
+<td><code>--to-latest v3</code> and a <code>Mesh</code> in the input sets <code>spec.mtls</code></td>
+</tr>
+<tr>
+<td>Set <code>meshServices.mode: Exclusive</code> on every mesh</td>
+<td><code>--to-latest v3</code> (always)</td>
+</tr>
+<tr>
 <td>Delete the resources 3.0 removes</td>
 <td><code>--to-latest v3</code> and the report has a <strong>Delete Before Upgrading to 3.0</strong> section</td>
 </tr>
@@ -98,11 +106,11 @@ It is written by <code>writeApplyChecklist</code> in
 <td>a <code>MeshGateway</code>, <code>MeshGatewayInstance</code> or <code>MeshGatewayRoute</code> was converted</td>
 </tr>
 <tr>
-<td>Apply policies</td>
+<td>Apply backends, then policies</td>
 <td>always, per context and kind subfolder</td>
 </tr>
 <tr>
-<td>Apply <code>Mesh</code> CRs last</td>
+<td>Apply <code>Mesh</code> CRs last (<code>v2</code>) / Apply the <code>Mesh</code> CRs (<code>v3</code>)</td>
 <td>a <code>Mesh</code> is in the output</td>
 </tr>
 <tr>
@@ -127,6 +135,30 @@ document and the reason; the original is in the output tree (<code>v2</code>) or
 <code>backend_demo_svc_3001</code>) stop resolving once the mesh runs <code>meshServices.mode: Exclusive</code>. The
 report lists each env var with its replacement address. Annotation values <code>&quot;yes&quot;</code>/<code>&quot;no&quot;</code> on
 <code>kuma.io/*</code> annotations must become <code>&quot;true&quot;</code>/<code>&quot;false&quot;</code>.</p>
+<h3 id="finish-the-meshidentity-cutover">Finish the MeshIdentity cutover</h3>
+<p><code>--to-latest v3</code> only, when a <code>Mesh</code> in the input sets <code>spec.mtls</code>. 3.0 no longer produces
+mTLS from <code>Mesh.mtls</code> and drops the legacy CA from the trust bundle, so a mesh without a
+<code>MeshIdentity</code> serves plaintext after the upgrade, with no rolling path back. Create a
+<code>MeshIdentity</code> and <code>MeshTrust</code> that select every proxy of the mesh on the 2.x control plane and
+confirm traffic uses them. See <a href="../../topics/mtls-identity/">mTLS and workload identity</a>.</p>
+<p>Do not apply the <code>--to-latest v3</code> <code>Mesh</code> files at this point: they drop <code>spec.mtls</code>, which
+turns mTLS off on a 2.x control plane.</p>
+<h3 id="set-meshservicesmode-exclusive">Set meshServices.mode: Exclusive</h3>
+<p><code>--to-latest v3</code> only. 3.0 makes unified naming unconditional: a 2.x zone reads a missing
+<code>meshServices</code> field as <code>Disabled</code> and deletes every generated <code>MeshService</code>, and a 3.0 zone
+rejects a mesh with any other mode
+(<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md">Kuma <code>UPGRADE.md</code></a>, &quot;<code>meshServices</code>
+removed from the <code>Mesh</code> schema&quot;). The mode must therefore be set on the 2.x Global control
+plane <strong>before</strong> it is upgraded. The checklist prints one command per <code>Mesh</code> of the input that
+changes only <code>meshServices</code> and keeps <code>spec.mtls</code>:</p>
+<div class="code"><pre class="chroma" data-lang="bash"><code><span class="c1"># kubectl contexts</span>
+<span class="k-manual">kubectl</span> <span class="k-manual-b">patch</span> <span class="k-manual-b">mesh</span> <span class="k-manual-b">default</span> <span class="k-flag">--type</span> <span class="k-val">merge</span> <span class="k-flag">-p</span> <span class="s1">'{"spec":{"meshServices":{"mode":"Exclusive"}}}'</span>
+<span class="c1"># kumactl contexts (Universal, Konnect); kumactl has no patch command, so this needs yq v4</span>
+<span class="k-manual">kumactl</span> <span class="k-manual-b">get</span> <span class="k-manual-b">mesh</span> <span class="k-manual-b">default</span> <span class="k-flag">-o</span> <span class="k-val">yaml</span> <span class="p">|</span> <span class="k-cmd">yq</span> <span class="s1">'.meshServices.mode = "Exclusive"'</span> <span class="p">|</span> <span class="k-manual">kumactl</span> <span class="k-manual-b">apply</span> <span class="k-flag">-f</span> <span class="k-val">-</span>
+</code></pre></div>
+<p>It also prints the command to list meshes, for meshes that were not in the input.
+<code>Exclusive</code> turns off routing by <code>kuma.io/service</code> tags, so workload env vars must already use
+the new addresses (the earlier step).</p>
 <h3 id="delete-the-resources-30-removes">Delete the resources 3.0 removes</h3>
 <p><code>--to-latest v3</code> only. Delete these on the 2.x control plane: 3.0 rejects these kinds and
 does not migrate stored objects. If one still serves traffic (<code>ExternalService</code>,
@@ -147,15 +179,22 @@ standard):</p>
 <div class="code"><pre class="chroma" data-lang="bash"><code><span class="k-manual">kubectl</span> <span class="k-manual-b">apply</span> <span class="k-flag">-f</span> <span class="k-val">https://github.com/kubernetes-sigs/gateway-api/releases/latest/download/experimental-install.yaml</span>
 </code></pre></div>
 <p>See <a href="../../topics/gateways/">Gateways</a>.</p>
-<h3 id="apply-policies">Apply policies</h3>
+<h3 id="apply-backends-then-policies">Apply backends, then policies</h3>
 <p>One context at a time, in the order the report lists: Global and standalone contexts before
-Zone contexts, and within a context <code>resiliency</code>, <code>routing</code>, <code>zero-trust</code>, <code>observability</code>,
-then <code>other</code>. The command depends on how the context was extracted, which the report reads
-from <code>.kuma-migrator.json</code>:</p>
+Zone contexts, and within a context <code>backends</code>, <code>resiliency</code>, <code>routing</code>, <code>zero-trust</code>,
+<code>observability</code>, then <code>other</code>.</p>
+<p><code>backends/</code> holds <code>MeshOpenTelemetryBackend</code> objects, including the ones <code>--to-latest v3</code>
+generates from inline <code>openTelemetry.endpoint</code> values. <code>MeshTrace</code>, <code>MeshAccessLog</code> and
+<code>MeshMetric</code> select them by label. The control plane accepts a policy whose <code>backendRef</code>
+matches nothing (the validators check only the shape of the reference) and skips that backend
+until it exists, so applying the policy first loses telemetry in between.</p>
+<p>The command depends on how the context was extracted and on the control plane's environment,
+both read from <code>.kuma-migrator.json</code>:</p>
 <ul>
 <li>
-<p><strong><code>extract --kumactl-context</code></strong>, including Konnect. <code>kumactl</code> does not accept a directory
-for <code>-f</code>, so the report lists one command per file, after a reminder to select the context:</p>
+<p><strong><code>extract --kumactl-context</code></strong> from a Universal control plane, or from Konnect. <code>kumactl</code>
+does not accept a directory for <code>-f</code>, so the report lists one command per file, after a
+reminder to select the context:</p>
 <div class="code"><pre class="chroma" data-lang="bash"><code><span class="k-manual">kumactl</span> <span class="k-manual-b">config</span> <span class="k-manual-b">use-context</span> <span class="k-manual-b">konnect-global-prod</span>
 <span class="k-manual">kumactl</span> <span class="k-manual-b">apply</span> <span class="k-flag">-f</span> <span class="k-val">./migrated/konnect-global-prod-global-ctx/mesh-default/resiliency/MeshTimeout-my-timeout.yaml</span>
 <span class="k-manual">kumactl</span> <span class="k-manual-b">apply</span> <span class="k-flag">-f</span> <span class="k-val">./migrated/konnect-global-prod-global-ctx/mesh-default/resiliency/MeshRetry-my-retry.yaml</span>
@@ -166,25 +205,30 @@ for <code>-f</code>, so the report lists one command per file, after a reminder 
 <div class="code"><pre class="chroma" data-lang="bash"><code><span class="k-manual">kubectl</span> <span class="k-manual-b">apply</span> <span class="k-flag">-f</span> <span class="k-val">./migrated/zone-eu-west1-prod-zone-ctx/mesh-default/resiliency/</span>
 </code></pre></div>
 </li>
+<li>
+<p><strong><code>extract --kumactl-context</code></strong> from a Kubernetes-backed control plane
+(<code>&quot;environment&quot;: &quot;kubernetes&quot;</code>). <code>kumactl</code> cannot create, update or delete resources there:
+they are CRDs owned by the Kubernetes API. The report uses <code>kubectl</code> directory applies, says
+why, and names the kumactl context so you can point <code>kubectl</code> at the cluster that runs that
+control plane. If the files are in Universal format (the <code>extract</code> default), <code>kubectl</code>
+cannot apply them either and the report says to re-extract with <code>--output-format kubernetes</code>.
+The same rule picks the tool for the delete commands of <strong>Delete Before Upgrading to 3.0</strong>.</p>
+</li>
 </ul>
 <p>Without <code>.kuma-migrator.json</code> (a hand-built input tree), the report uses <code>kubectl</code>.</p>
 <p><code>global-scoped-resources/</code> holds both Kuma global resources and the Gateway API output.
 Gateway API objects go to the Kubernetes cluster that runs the gateway: a Zone cluster.
 A gateway that was created directly on a Zone control plane is extracted into that zone's
 context, and its Gateway API output lands in <code>&lt;zone-ctx&gt;/global-scoped-resources/routing/</code>.</p>
-<h3 id="apply-mesh-crs-last">Apply Mesh CRs last</h3>
-<p>The migrated <code>Mesh</code> sets <code>spec.meshServices.mode: Exclusive</code>. That turns off routing by
-<code>kuma.io/service</code> tags, so applying it before every policy and workload is migrated breaks
-any workload still addressed by a tag. If a <code>Mesh</code> was not in the input, set the mode by hand:</p>
-<div class="code"><pre class="chroma" data-lang="bash"><code><span class="k-manual">kubectl</span> <span class="k-manual-b">patch</span> <span class="k-manual-b">mesh</span> <span class="k-manual-b">&lt;name&gt;</span> <span class="k-flag">--type</span> <span class="k-val">merge</span> <span class="k-flag">-p</span> <span class="s1">'{"spec":{"meshServices":{"mode":"Exclusive"}}}'</span>
-</code></pre></div>
-<blockquote class="callout callout-v3"><p><strong>v3:</strong> <code>meshServices.mode: Exclusive</code> must be set on every mesh <strong>before</strong> the Global
-control plane is upgraded to 3.0: a 2.x zone reads a missing field as <code>Disabled</code> and stops
-serving <code>MeshService</code> outbounds
-(<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md">Kuma <code>UPGRADE.md</code></a>). The checklist
-places this step after the upgrade steps, so apply it from a <code>--to-latest v2</code> run on 2.14
-first. <a href="../upgrade-plans/">Upgrade plans</a> gives the full sequence.</p>
-</blockquote>
+<h3 id="apply-mesh-crs">Apply Mesh CRs</h3>
+<p><strong><code>v2</code>: last.</strong> The migrated <code>Mesh</code> sets <code>spec.meshServices.mode: Exclusive</code>. That turns off
+routing by <code>kuma.io/service</code> tags, so applying it before every policy and workload is migrated
+breaks any workload still addressed by a tag. If a <code>Mesh</code> was not in the input, set the mode
+by hand (<code>kubectl patch</code>, or the <code>kumactl get | yq | kumactl apply</code> form above).</p>
+<p><strong><code>v3</code>: after the upgrade.</strong> The mode is already set by the pre-upgrade step. The v3 <code>Mesh</code>
+files drop <code>spec.mtls</code> and the other fields 3.0 removed; 3.0 ignores those fields, so applying
+the files once every control plane runs 3.0 and the <code>MeshIdentity</code> cutover is done only makes
+the stored <code>Mesh</code> match what 3.0 uses. Applied on 2.x, they would turn mTLS off.</p>
 <h3 id="verify-then-clean-up">Verify, then clean up</h3>
 <p>Check service-to-service traffic in every mesh and watch your observability stack. Then
 delete the original input files; <code>migrate</code> never modifies them. Resources whose kind changed
@@ -233,13 +277,16 @@ delete the originals of every resource whose kind changed:</p>
 commands. Under <code>--to-latest v3</code> the kinds 3.0 removes are listed in <strong>Delete Before Upgrading
 to 3.0</strong> instead, because they must go before the upgrade, not after it.</p>
 <h2 id="manual-subtree">Manual subtree</h2>
-<p>Under <code>--to-latest v3</code>, two kinds of documents go to a <code>_manual/</code> subtree instead of the apply
-tree:</p>
+<p>Under <code>--to-latest v3</code>, these documents go to a <code>_manual/</code> subtree instead of the apply tree:</p>
 <ul>
 <li>originals whose conversion failed (<code>TrafficRoute</code>, <code>VirtualOutbound</code>, <code>MeshGatewayInstance</code>,
 legacy <code>TrafficPermission</code>, …);</li>
-<li>documents that pass through as a kind 3.0 removes (<code>MeshGlobalRateLimit</code>, Universal
-<code>ZoneIngress</code>/<code>ZoneEgress</code>).</li>
+<li>documents that pass through as a kind 3.0 removes (<code>MeshGlobalRateLimit</code>,
+<code>MeshGatewayConfig</code>, Universal <code>ZoneIngress</code>/<code>ZoneEgress</code>). Their file is labelled <code>MANUAL</code>
+on stdout and listed under <strong>Kept Under <code>_manual/</code></strong> in the report;</li>
+<li>converted output the target control plane rejects as written (the transform reports it
+with a &quot;rejected by --to-latest …&quot; reason). The converted document is kept, not the
+original. This applies under <code>v2</code> as well.</li>
 </ul>
 <div class="code"><pre class="chroma" data-lang="text"><code>migrated/
   &lt;context&gt;-global-ctx/
@@ -250,9 +297,9 @@ legacy <code>TrafficPermission</code>, …);</li>
 </code></pre></div>
 <p>No checklist step applies <code>_manual/</code>: <code>kubectl apply -f &lt;dir&gt;/</code> is not recursive, and the
 <code>kumactl</code> file list never includes these paths. Each file is listed in <strong>Action Items →
-Errors</strong> or in <strong>Delete Before Upgrading to 3.0</strong> with what to do about it. Under <code>v2</code> there is
-no <code>_manual/</code> subtree: errored originals stay in the apply tree, since they came from the 2.x
-control plane they are applied back to.</p>
+Errors</strong> or in <strong>Delete Before Upgrading to 3.0</strong> with what to do about it. Under <code>v2</code>
+errored originals stay in the apply tree, since they came from the 2.x control plane they are
+applied back to; only rejected output goes to <code>_manual/</code>.</p>
 
     </article>
     <nav class="pager" aria-label="Previous and next page">
@@ -262,7 +309,7 @@ control plane they are applied back to.</p>
   </main>
   <nav class="toc" aria-label="On this page">
     <p class="toc-title">On this page</p>
-    <ul><li class="toc-l2"><a href="#apply-checklist-steps">Apply Checklist steps</a></li><li class="toc-l3"><a href="#fix-errors">Fix errors</a></li><li class="toc-l3"><a href="#update-workload-env-vars-and-annotations">Update workload env vars and annotations</a></li><li class="toc-l3"><a href="#delete-the-resources-30-removes">Delete the resources 3.0 removes</a></li><li class="toc-l3"><a href="#upgrade-the-control-planes">Upgrade the control planes</a></li><li class="toc-l3"><a href="#install-gateway-api-crds">Install Gateway API CRDs</a></li><li class="toc-l3"><a href="#apply-policies">Apply policies</a></li><li class="toc-l3"><a href="#apply-mesh-crs-last">Apply Mesh CRs last</a></li><li class="toc-l3"><a href="#verify-then-clean-up">Verify, then clean up</a></li><li class="toc-l2"><a href="#remove-originals-whose-kind-changed">Remove originals whose kind changed</a></li><li class="toc-l2"><a href="#manual-subtree">Manual subtree</a></li></ul>
+    <ul><li class="toc-l2"><a href="#apply-checklist-steps">Apply Checklist steps</a></li><li class="toc-l3"><a href="#fix-errors">Fix errors</a></li><li class="toc-l3"><a href="#update-workload-env-vars-and-annotations">Update workload env vars and annotations</a></li><li class="toc-l3"><a href="#finish-the-meshidentity-cutover">Finish the MeshIdentity cutover</a></li><li class="toc-l3"><a href="#set-meshservicesmode-exclusive">Set meshServices.mode: Exclusive</a></li><li class="toc-l3"><a href="#delete-the-resources-30-removes">Delete the resources 3.0 removes</a></li><li class="toc-l3"><a href="#upgrade-the-control-planes">Upgrade the control planes</a></li><li class="toc-l3"><a href="#install-gateway-api-crds">Install Gateway API CRDs</a></li><li class="toc-l3"><a href="#apply-backends-then-policies">Apply backends, then policies</a></li><li class="toc-l3"><a href="#apply-mesh-crs">Apply Mesh CRs</a></li><li class="toc-l3"><a href="#verify-then-clean-up">Verify, then clean up</a></li><li class="toc-l2"><a href="#remove-originals-whose-kind-changed">Remove originals whose kind changed</a></li><li class="toc-l2"><a href="#manual-subtree">Manual subtree</a></li></ul>
   </nav>
 </div>
 <footer class="site-footer">
