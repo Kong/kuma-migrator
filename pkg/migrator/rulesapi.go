@@ -70,46 +70,55 @@ func TransformFromToRulesForTarget(raw []byte, target TargetVersion) ([][]byte, 
 
 	// After from[]→rules[] conversion: check if to[] is still present.
 	// Kuma 2.10+ forbids rules[] and to[] coexisting in the same spec — split.
+	objs, splitWarn, err := splitRulesAndToMap(obj, kind, name)
+	if err != nil {
+		return nil, warnings, err
+	}
+	if splitWarn != "" {
+		warnings = append(warnings, splitWarn)
+	}
+	docs := make([][]byte, 0, len(objs))
+	for _, o := range objs {
+		b, err := yaml.Marshal(o)
+		if err != nil {
+			return nil, warnings, fmt.Errorf("marshal policy: %w", err)
+		}
+		docs = append(docs, b)
+	}
+	return docs, warnings, nil
+}
+
+// splitRulesAndToMap splits a policy carrying both rules[] and to[] into an
+// inbound policy (rules[], original name — obj itself) and an outbound one (to[],
+// "<name>-outbound"). Returns just obj, and no warning, when the spec does not
+// hold both. Works on Kubernetes and Universal layouts alike.
+//
+// kuma.io/display-name is not copied onto the outbound half: the control plane
+// derives it from the resource name, so the copied value would name the wrong
+// resource (and 3.0 rejects a supplied value that differs from the computed one).
+func splitRulesAndToMap(obj map[string]interface{}, kind, name string) ([]map[string]interface{}, string, error) {
 	spec, _ := obj["spec"].(map[string]interface{})
 	if spec == nil {
-		spec = obj
+		return []map[string]interface{}{obj}, "", nil
 	}
-	if _, hasTo := spec["to"]; hasTo {
-		outboundObj, err := deepCopyObjViaYAML(obj)
-		if err != nil {
-			return nil, warnings, fmt.Errorf("deep copy for split: %w", err)
-		}
-		outboundSpec, _ := outboundObj["spec"].(map[string]interface{})
-		if outboundSpec == nil {
-			outboundSpec = outboundObj
-		}
-		delete(outboundSpec, "rules")
-		outboundName := name + "-outbound"
-		setObjName(outboundObj, outboundName)
-		// The control plane derives kuma.io/display-name from the resource name, so the
-		// copied value names the inbound half (and 3.0 rejects the mismatch on create).
-		deleteObjLabel(outboundObj, displayNameLabel)
-
-		delete(spec, "to")
-
-		warnings = append(warnings, splitWarning(kind, name, outboundName))
-
-		b1, err := yaml.Marshal(obj)
-		if err != nil {
-			return nil, warnings, fmt.Errorf("marshal rules policy: %w", err)
-		}
-		b2, err := yaml.Marshal(outboundObj)
-		if err != nil {
-			return nil, warnings, fmt.Errorf("marshal outbound policy: %w", err)
-		}
-		return [][]byte{b1, b2}, warnings, nil
+	rules, _ := spec["rules"].([]interface{})
+	to, _ := spec["to"].([]interface{})
+	if len(rules) == 0 || len(to) == 0 {
+		return []map[string]interface{}{obj}, "", nil
 	}
-
-	b, err := yaml.Marshal(obj)
+	outboundObj, err := deepCopyObjViaYAML(obj)
 	if err != nil {
-		return nil, warnings, fmt.Errorf("marshal policy: %w", err)
+		return nil, "", fmt.Errorf("deep copy for split: %w", err)
 	}
-	return [][]byte{b}, warnings, nil
+	outboundSpec, _ := outboundObj["spec"].(map[string]interface{})
+	delete(outboundSpec, "rules")
+	delete(outboundSpec, "from")
+	outboundName := name + "-outbound"
+	setObjName(outboundObj, outboundName)
+	deleteObjLabel(outboundObj, displayNameLabel)
+
+	delete(spec, "to")
+	return []map[string]interface{}{obj, outboundObj}, splitWarning(kind, name, outboundName), nil
 }
 
 // deepCopyObjViaYAML performs a deep copy of a map via YAML marshal/unmarshal.
@@ -205,62 +214,6 @@ func applyFromToRulesMap(obj map[string]interface{}, kind, name string) (warning
 		kind, name))
 
 	return warnings, true
-}
-
-// applyFromToRules converts policy.Spec.From → policy.Spec.Rules in-place and
-// returns any warnings.  Called from transformScenarioSubset when a Kubernetes-style
-// Scenario-B policy also needs the from→rules migration applied as a second pass.
-func applyFromToRules(policy *KubePolicy, target TargetVersion) []string {
-	if len(policy.Spec.From) == 0 {
-		return nil
-	}
-
-	var warnings []string
-	name := policy.Metadata.Name
-	kind := policy.Kind
-
-	var widening []string
-	if target.IsV3() {
-		kinds := make([]string, 0, len(policy.Spec.From))
-		for _, entry := range policy.Spec.From {
-			kinds = append(kinds, entry.TargetRef.Kind)
-		}
-		widening = fromScopeWideningWarnings(kind, name, kinds)
-	}
-
-	if len(policy.Spec.From) > 1 {
-		distinctKinds := map[string]bool{}
-		for _, entry := range policy.Spec.From {
-			distinctKinds[entry.TargetRef.Kind] = true
-		}
-		if len(distinctKinds) > 1 {
-			warnings = append(warnings, fmt.Sprintf(
-				"%s %q: from[] has %d entries with different source kinds (%v) — "+
-					"rules[] has no source discrimination; all rules will apply to ALL "+
-					"inbound traffic regardless of source. Review and consolidate manually.",
-				kind, name, len(policy.Spec.From), sortedKeys(distinctKinds)))
-		} else {
-			warnings = append(warnings, fmt.Sprintf(
-				"%s %q: from[] had %d entries — merged into %d rules[] entries. "+
-					"Verify that the intended per-source behaviour is preserved.",
-				kind, name, len(policy.Spec.From), len(policy.Spec.From)))
-		}
-	}
-
-	rules := make([]RuleEntry, 0, len(policy.Spec.From))
-	for _, entry := range policy.Spec.From {
-		rules = append(rules, RuleEntry{Default: entry.Default})
-	}
-	policy.Spec.Rules = rules
-	policy.Spec.From = nil
-
-	warnings = append(warnings, fmt.Sprintf(
-		"%s %q: from[] migrated to rules[] (Kuma 2.10+). "+
-			"Source-based targeting inside from[] is no longer supported — "+
-			"policies in rules[] apply to all inbound traffic matching spec.targetRef.",
-		kind, name))
-
-	return append(warnings, widening...)
 }
 
 // fromSourceKinds returns the targetRef.kind of every from[] entry ("" when absent).

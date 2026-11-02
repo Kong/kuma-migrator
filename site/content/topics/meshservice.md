@@ -52,9 +52,12 @@ namespace and port; a Universal value is used as the name.
 | Input | `--to-latest v2` | `--to-latest v3` |
 |---|---|---|
 | `spec.targetRef` `MeshSubset` with `kuma.io/service: '*'` | `kind: Mesh` | Same |
-| `spec.targetRef` `MeshSubset` with a service tag | `kind: Dataplane` with `labels: {app: <name>, k8s.kuma.io/namespace: <ns>}` plus other tags; `app` is a best guess and warned | Same |
+| `spec.targetRef` `MeshSubset` with a service tag | `kind: Dataplane` with `labels: {app: <name>, k8s.kuma.io/namespace: <ns>}` plus other tags, in every namespace (never `name`: a `Dataplane` name is its pod's name); `app` is a best guess and warned | Same |
+| Kuma-reserved tag that is not a label (`kuma.io/protocol`, `kuma.io/instance`, `k8s.kuma.io/service-port`, …) next to a service tag | Dropped from the generated `labels`, with a warning naming it. `kuma.io/zone`, `kuma.io/env`, `kuma.io/mesh`, `kuma.io/origin`, `k8s.kuma.io/namespace` are labels and are kept | Same |
 | `to[]`/`from[]` `MeshSubset` with a service tag | `kind: MeshService` with `name`/`namespace` (same namespace as the policy) or `labels` (system namespace, other tags) | `kind: MeshService` with `labels` only |
-| `MeshService` ref with a Kuma-internal name (`backend_demo_svc_3001`) | Decoded: `to[]`/`from[]` → `MeshService` name/namespace; top level → `Dataplane` | Same, with labels |
+| `from[]` `MeshSubset` with a service tag on `MeshTrafficPermission`/`MeshFaultInjection` | Kept: it is the form the 2.7 notes give in place of the deprecated `MeshService` | As above; a policy still carrying `from[]` is rejected by 3.0 and written to `_manual/` |
+| `MeshService` ref with a Kuma-internal name (`backend_demo_svc_3001`) | Decoded: `to[]`/`from[]` → `MeshService` name/namespace (`sectionName` kept); top level → `Dataplane` labels. On `MeshTrafficPermission`/`MeshFaultInjection` `from[]` → `MeshSubset` with that `kuma.io/service` tag | Same, with labels |
+| Universal-format policy (`type`/`name`/`mesh` at the root) | Converted in place: the Universal layout and every unrelated field are kept | Same |
 | `rules[]` and `to[]` in one policy | Split: `rules[]` keeps the name, `to[]` goes to `<name>-outbound` | Same |
 | `Mesh` | `meshServices.mode: Exclusive` injected, with a warning to migrate policies and workloads first | Same, with the mixed-version note |
 | `MeshService` `ports[].protocol` | Renamed to `appProtocol` | Same |
@@ -199,7 +202,10 @@ spec:
 ```
 
 With `--to-latest v3` the `MeshTimeout` is identical (it already uses labels) and the `MeshRetry`
-destination becomes a label selector:
+destination becomes a label selector. The `MeshRetry` is a producer policy (its `to[]` names a
+service in its own namespace), and 3.0 keeps it one only if the selector also carries
+`kuma.io/zone`; the input has no `kuma.io/zone` label, so a warning names the selector to add
+`kuma.io/zone: <zone-name>` to (see [Policy targeting](policy-targeting.md#policy-roles)):
 
 ```yaml
 # resiliency/MeshRetry-demo-web-retry.yaml (v3)

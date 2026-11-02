@@ -101,10 +101,18 @@ consumer policy applies to clients in its own namespace and wins over a producer
 > `kuma.io/display-name`, `k8s.kuma.io/namespace` equal to the policy's namespace, and
 > `kuma.io/zone` equal to the local zone. A policy mixing producer and consumer items is
 > rejected ([`compute.go`](https://github.com/kumahq/kuma/blob/master/pkg/core/resources/labels/compute.go)).
-> The `v3` conversion of `{name, namespace}` writes `kuma.io/zone` only when the input policy
-> carries a `kuma.io/zone` label (policies extracted from a Zone CP do). For a hand-written
-> producer policy, add `kuma.io/zone` to every `to[]` selector or it becomes a consumer policy
-> that only applies to clients in its own namespace.
+> The policy's own zone is the `kuma.io/zone` the control plane computes for it, so a
+> producer policy only exists on a Zone CP.
+>
+> `--to-latest v3` treats a policy as a producer when its `kuma.io/policy-role` label says
+> `producer`, or, with no role label, when it is in an app namespace and every `to[]` item names
+> a `MeshService` or `MeshHTTPRoute` in that same namespace. For such a policy it adds
+> `kuma.io/zone` to every `to[]` label selector, using the policy's own `kuma.io/zone` label
+> (policies extracted from a Zone CP carry it). When the policy has no `kuma.io/zone` label the
+> zone is not in the manifest: the warning names each `to[]` selector to which you must add
+> `kuma.io/zone: <zone-name>`, the zone CP you apply the policy to. Without it the policy becomes
+> a consumer policy that only applies to clients in its own namespace. A selector with labels
+> beyond the three is also warned, because it makes the policy a consumer.
 
 ## Control-plane-owned labels
 
@@ -119,20 +127,30 @@ renames, splits or moves a policy (a split policy changes role, for example).
 
 | Input | `--to-latest v2` | `--to-latest v3` |
 |---|---|---|
-| Top-level `MeshSubset` with a service tag | `Dataplane` with labels (see [MeshService](meshservice.md)) | Same |
-| Top-level `MeshSubset` without a service tag | Warning | Warning: rejected by 3.0 |
-| Top-level `MeshService` / `MeshServiceSubset` | Warning | Warning: rejected by 3.0. `name` → labels, kind unchanged |
-| Top-level `MeshHTTPRoute` | Warning: move to `to[].targetRef` | Warning |
-| Top-level `MeshGateway` | Nothing (valid on 2.14 for system-role policies) | Warning: rejected by 3.0 |
-| Any other top-level kind | — | Generic warning |
-| `to[]` kind not accepted by that policy on 3.0 (matrix above) | — | Warning naming the accepted kinds |
-| `targetRef`, `to[].targetRef`, route `backendRefs` with `name`/`namespace`/`mesh` | Kept | Rewritten to labels; `Dataplane{name}` warned (a Dataplane name is not a label) |
+| Top-level `MeshSubset` with a service tag | `Dataplane` with `labels: {app: <name>, k8s.kuma.io/namespace: <ns>}`, never `name` (see [MeshService](meshservice.md)) | Same |
+| Tags copied into a label selector | Kuma-reserved tags that are not labels (`kuma.io/protocol`, `kuma.io/instance`, `k8s.kuma.io/service-port`, …) are dropped, with a warning naming them | Same |
+| Top-level `MeshSubset` without a service tag | `Dataplane` with the tags as labels | Same |
+| Top-level `MeshService` / `MeshServiceSubset` | Warning | Error: written to `_manual/`. `name` → labels, kind unchanged |
+| Top-level `MeshHTTPRoute` | Warning: move to `to[].targetRef` | Error: written to `_manual/` |
+| Top-level `MeshGateway` | Nothing (valid on 2.14 for system-role policies) | Error: written to `_manual/` |
+| Any other top-level kind | — | Error: written to `_manual/` |
+| `to[]` kind not accepted by that policy on 3.0 (matrix above) | — | Error naming the accepted kinds; written to `_manual/` |
+| `targetRef`, `to[].targetRef`, route `backendRefs` with `name`/`namespace`/`mesh` | Kept | Rewritten to labels. `Dataplane{name}` cannot be (a Dataplane name is not a label): error, written to `_manual/` |
+| Producer policy (`to[]` names services in its own namespace) | Kept | `kuma.io/zone` added to each `to[]` selector from the policy's own `kuma.io/zone` label; warning naming the selectors when that label is absent |
 | `from[]` on `MeshTimeout`/`MeshCircuitBreaker`/`MeshRateLimit`/`MeshAccessLog`/`MeshTLS` | `rules[]` (Rules scenario). A source that is not `kind: Mesh` is collapsed, with a warning | Same |
 | `rules[]` and `to[]` in one policy | Split into `<name>` and `<name>-outbound` | Same |
 | Control-plane-owned labels on the resource's own `metadata.labels` | Kept | Removed (`kuma.io/mesh` stays). Selectors are not touched |
 
-Code: [`v3_policy.go`](https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/v3_policy.go)
-(`stripControlPlaneLabels`, `fixRealResourceTargetRefsForV3`, `warnV3ToTargetRefKinds`),
+A document that 3.0 would reject as written is never put in the apply tree: the run reports it as
+an error and writes it under `_manual/`, the same as a conversion that failed.
+
+Code: [`convert.go`](https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/convert.go)
+(`convertTargetRef`, `selectorLabelsFromTags`),
+[`v3_policy.go`](https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/v3_policy.go)
+(`stripControlPlaneLabels`, `fixRealResourceTargetRefsForV3`, `pinProducerZoneForV3`,
+`warnV3ToTargetRefKinds`),
+[`rejected.go`](https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/rejected.go)
+(`RejectedByTargetError`),
 [`deprecation.go`](https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/deprecation.go)
 (`warnDeprecatedTopLevelTargetRef`),
 [`rulesapi.go`](https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/rulesapi.go).
@@ -154,7 +172,8 @@ Code: [`v3_policy.go`](https://github.com/Kong/kuma-migrator/blob/main/pkg/migra
    `Dataplane` + `labels`, and top-level `MeshHTTPRoute` to `to[].targetRef`. Verify coverage in
    every zone before upgrading zone control planes.
 3. Fix `to[]` entries the matrix rejects.
-4. For producer policies, add `kuma.io/zone` to the generated label selectors.
+4. For producer policies without a `kuma.io/zone` label, add `kuma.io/zone: <zone-name>` to the
+   `to[]` label selectors the warning names.
 5. Apply the `v3` output, which strips control-plane-owned labels.
 
 ## Example
@@ -213,10 +232,11 @@ spec:
    target in Kuma 2.10+ — use kind: Dataplane with labels instead.
 ```
 
-`--to-latest v3`:
+`--to-latest v3` converts both, but 3.0 rejects both as converted (the top-level kinds), so the run
+reports each as an error and writes it under `_manual/` instead of the apply tree:
 
 ```yaml
-# resiliency/MeshTimeout-demo-backend-timeouts.yaml
+# _manual/resiliency/MeshTimeout-demo-backend-timeouts.yaml
 apiVersion: kuma.io/v1alpha1
 kind: MeshTimeout
 metadata:
@@ -245,7 +265,7 @@ spec:
 ```
 
 ```yaml
-# resiliency/MeshCircuitBreaker-kong-mesh-system-cb.yaml
+# _manual/resiliency/MeshCircuitBreaker-kong-mesh-system-cb.yaml
 apiVersion: kuma.io/v1alpha1
 kind: MeshCircuitBreaker
 metadata:
@@ -268,8 +288,9 @@ spec:
         kuma.io/display-name: some-route
 ```
 
-The control-plane-owned labels are gone and selectors use labels. Both policies are still invalid
-on 3.0, and the warnings say why (shortened):
+The control-plane-owned labels are gone and selectors use labels. The `MeshTimeout` producer
+selector keeps `kuma.io/zone: zone-1` from the policy's own label, so it stays a producer policy.
+The warnings say why each policy is still invalid on 3.0 (shortened):
 
 ```
 ⚠  MeshTimeout "backend-timeouts": spec.targetRef.kind MeshService is deprecated as a top-level

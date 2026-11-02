@@ -52,9 +52,10 @@ Selector values:
 | Legacy match | New reference |
 |---|---|
 | `kuma.io/service: '*'` | `kind: Mesh` |
-| `kuma.io/service: backend_demo_svc_3001` (top level) | `kind: Dataplane` (see below) |
-| `kuma.io/service: backend_demo_svc_3001` (`to[]`/`from[]`) | `kind: MeshService`, `name: backend`, `namespace: demo` (v2) or `labels` (v3) |
-| Service tag plus other tags | Other tags kept as `labels` |
+| `kuma.io/service: backend_demo_svc_3001` (top level) | `kind: Dataplane`, `labels: {app: backend, k8s.kuma.io/namespace: demo}` (see below) |
+| `kuma.io/service: backend_demo_svc_3001` (`to[]`) | `kind: MeshService`, `name: backend`, `namespace: demo` (v2) or `labels` (v3) |
+| `kuma.io/service: web_demo_svc_8080` (`from[]` of `TrafficPermission`/`FaultInjection`, v2) | `kind: MeshSubset`, `tags: {kuma.io/service: web_demo_svc_8080}` |
+| Service tag plus other tags | Other tags kept as `labels`, except Kuma-reserved tags that are not labels (`kuma.io/protocol`, `kuma.io/instance`, `k8s.kuma.io/service-port`, …), which are dropped with a warning |
 | Empty `destinations` | Wildcard, so the conf keeps a `to[]` entry |
 | Several specific `sources` | One output policy per source, named `<name>-0`, `<name>-1`, … |
 
@@ -85,10 +86,10 @@ them `anyOf: [integer, string]`.
 
 | Input | `--to-latest v2` | `--to-latest v3` |
 |---|---|---|
-| Outbound-shape kinds | Converted. Top-level specific service → `Dataplane` `name`/`namespace`; destinations → `MeshService` `name`/`namespace` | Converted. Top-level → `Dataplane` `labels: {app, k8s.kuma.io/namespace}` (warned as a best guess); destinations → `MeshService` labels. Delete-before-upgrade advisory |
+| Outbound-shape kinds | Converted. Top-level specific service → `Dataplane` `labels: {app, k8s.kuma.io/namespace}` (warned as a best guess); destinations → `MeshService` `name`/`namespace` | Converted. Top-level → `Dataplane` labels, as for v2; destinations → `MeshService` labels. Delete-before-upgrade advisory |
 | `HealthCheck` with `healthyPanicThreshold` | Kept on `MeshHealthCheck`, warned | Moved to a companion `MeshCircuitBreaker` `<name>-panic-threshold` with `outlierDetection.healthyPanicThreshold` and `detectors.totalFailures.consecutive: 5` |
-| `TrafficPermission` | `MeshTrafficPermission` with `from[]` | **Error**, original to `_manual/`. See [Access control](access-control.md) |
-| `FaultInjection` | `MeshFaultInjection` with `from[]` | `rules[]` when every source is `kuma.io/service: '*'`; error otherwise |
+| `TrafficPermission` | `MeshTrafficPermission` with `from[]` of `MeshSubset` source tags | **Error**, original to `_manual/`. See [Access control](access-control.md) |
+| `FaultInjection` | `MeshFaultInjection` with `from[]` of `MeshSubset` source tags | `rules[]` when every source is `kuma.io/service: '*'`; error otherwise |
 | `RateLimit` | `MeshRateLimit` with `rules[]` | Same |
 | `TrafficLog`, `TrafficTrace` | Converted with the backend from the `Mesh` in the input; warning naming the backend if the `Mesh` is missing | Same |
 | `ProxyTemplate` | `MeshProxyPatch` | Same; warning when it patches cluster `circuitBreakers` (on 3.0 it overrides `MeshCircuitBreaker`) |
@@ -100,11 +101,19 @@ Code: [`transform.go`](https://github.com/Kong/kuma-migrator/blob/main/pkg/migra
 (`legacyShapes`), [`legacyconf.go`](https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/legacyconf.go),
 [`legacybackend.go`](https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/legacybackend.go).
 
-> **Warning:** Under `v2`, a top-level `kuma.io/service` selector becomes
-> `kind: Dataplane` with `name` and `namespace`. A `Dataplane` `name` selects one `Dataplane`
-> resource by name, and on Kubernetes a `Dataplane` is named after its pod
-> (`web-6d4f8c-xk2pq`), not after the service. Check what it selects, or replace it with `labels`
-> before applying. The `v3` output already uses labels.
+A top-level `kuma.io/service` selector never becomes `Dataplane` `name`/`namespace`: a `Dataplane`
+`name` selects one `Dataplane` by name, and on Kubernetes a `Dataplane` is named after its pod
+(`web-6d4f8c-xk2pq`), not after the service. Both targets emit `labels`. On Kubernetes a
+`Dataplane` carries its pod's labels plus `k8s.kuma.io/namespace`, which the control plane sets;
+`app: <service>` is a guess at the pod label, so each conversion warns. On Universal a `Dataplane`
+carries only the labels in its own `labels` field. `kind: Dataplane` with `labels` at the top level
+is accepted since 2.10
+([UPGRADE](https://github.com/kumahq/kuma/blob/master/UPGRADE.md#new-kind-dataplane-for-targetref-in-policies)).
+
+`TrafficPermission` and `FaultInjection` sources become `from[]` `kind: MeshSubset` with the
+source's tags: the 2.7 upgrade notes deprecate `from[].targetRef.kind: MeshService` for these two
+policies and give that form instead
+([UPGRADE](https://github.com/kumahq/kuma/blob/master/UPGRADE.md#deprecation-of-fromtargetrefkind-meshservice)).
 
 ## What it cannot do
 
@@ -242,8 +251,9 @@ metadata:
 spec:
   targetRef:
     kind: Dataplane
-    name: web
-    namespace: demo
+    labels:
+      app: web
+      k8s.kuma.io/namespace: demo
   to:
   - default:
       http:
@@ -264,10 +274,12 @@ The `TrafficRoute` is copied to `routing/TrafficRoute-route-all.yaml` unchanged,
 ```
 ⚠  Retry "web-retry": conf.http.retriableStatusCodes ([503]) has no MeshRetry equivalent and was
    dropped — MeshRetry cannot retry on specific status codes. …
+⚠  spec.targetRef Dataplane labels use 'app: web' as a best-guess pod label — verify this matches
+   your actual pod labels before applying
 ✗  TrafficRoute requires manual migration to MeshHTTPRoute or MeshTCPRoute
 ```
 
-With `--to-latest v3` the selectors use labels, the `TrafficRoute` goes to `_manual/`, and every
+With `--to-latest v3` the `to[]` selectors use labels too, the `TrafficRoute` goes to `_manual/`, and every
 converted source gets a delete-before-upgrade advisory:
 
 ```yaml

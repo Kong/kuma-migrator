@@ -27,9 +27,12 @@
       | `grpc.streamIdleTimeout`, `grpc.maxStreamDuration` | `http.*` (no `grpc` section exists) |
 
       Any `conf` leaf no rule consumed is reported as a warning. A `kuma.io/service: '*'`
-      selector becomes `kind: Mesh`. A specific service becomes `kind: Dataplane` at the top
-      level and `kind: MeshService` in `to[]`; `<name>_<ns>_svc_<port>` values are decoded
-      into name and namespace. A selector with only non-service tags stays a `MeshSubset`.
+      selector becomes `kind: Mesh`. A specific service becomes
+      `kind: Dataplane, labels: {app: <name>, k8s.kuma.io/namespace: <ns>}` at the top level
+      (`app` is a best guess, warned) and `kind: MeshService` in `to[]`;
+      `<name>_<ns>_svc_<port>` values are decoded into name and namespace. Reserved tags that
+      are not labels (`kuma.io/protocol`, …) are dropped from label selectors, with a warning.
+      A selector with only non-service tags stays a `MeshSubset`.
   v3:
     status: converted
     output: [MeshTimeout]
@@ -213,9 +216,12 @@
     output: [MeshTrafficPermission]
     notes: |
       Inbound shape: `destinations` → `spec.targetRef`, `sources` → `from[]` with
-      `default.action: Allow`. A specific source becomes `from[].targetRef.kind: MeshService`,
-      which the scanner then reports as deprecated since 2.7, and every `from[]` is reported as
-      deprecated in favour of the `rules[]` API (removed in 3.0).
+      `default.action: Allow`. A specific source becomes
+      `from[].targetRef: {kind: MeshSubset, tags: <the source's tags>}`, the form 2.7+ documents
+      in place of the deprecated `kind: MeshService`; a `kuma.io/service: '*'` source becomes
+      `kind: Mesh`. The destination becomes `kind: Dataplane` with
+      `labels: {app: <name>, k8s.kuma.io/namespace: <ns>}` (`app` is a best guess, warned).
+      Every `from[]` is reported as deprecated in favour of the `rules[]` API (removed in 3.0).
   v3:
     status: error
     output: []
@@ -243,8 +249,11 @@
     status: converted
     output: [MeshFaultInjection]
     notes: |
-      Inbound shape: `destinations` → `spec.targetRef`, `sources` → `from[]`. The single legacy
-      `conf` becomes a one-element `default.http[]` list (`delay`, `abort`,
+      Inbound shape: `destinations` → `spec.targetRef` (`Dataplane` labels), `sources` →
+      `from[]` as `kind: MeshSubset` with the source's tags (`kind: Mesh` for
+      `kuma.io/service: '*'`), not the 2.7-deprecated `MeshService`. Reserved tags such as
+      `kuma.io/protocol` are dropped from the `Dataplane` labels, with a warning. The single
+      legacy `conf` becomes a one-element `default.http[]` list (`delay`, `abort`,
       `responseBandwidth`). Percentages are numbers when whole and strings when fractional.
       The scanner then warns that `from[]` is deprecated in favour of `rules[]`.
   v3:
@@ -439,32 +448,36 @@
         `Dataplane` with labels.
 
       A policy whose refs still use `MeshSubset` with `kuma.io/service` tags, or old
-      `<name>_<ns>_svc_<port>` names, is rewritten first (Subset scenario): top level to
-      `Dataplane`, `from[]` to `MeshService`.
+      `<name>_<ns>_svc_<port>` names, is rewritten first (Subset scenario): the top level
+      becomes `Dataplane` with labels. `from[]` keeps `MeshSubset` with the `kuma.io/service`
+      tag (the 2.7+ form); a `from[]` `MeshService` with an old `_svc_` name is turned back
+      into that `MeshSubset`.
   v3:
     status: warned
     output: [MeshTrafficPermission]
     notes: |
       The v2 checks apply, and the `from[]` warning states that 3.0 rejects the policy as it
-      stands (`spec.from: unknown field`, then "policy must define rules"). The policy is still
-      written to the apply tree, so translate `from[]` to `rules[]` before applying.
+      stands (`spec.from: unknown field`, then "policy must define rules"). A policy that still
+      has `from[]` is reported as an error and written to `_manual/`, not to the apply tree:
+      translate `from[]` to `rules[]` by hand, then apply it.
 
       Also under v3:
 
       - Empty match entries (`{}`) in `rules[].default.{allow,deny,allowWithShadowDeny}` are
         reported; 3.0 rejects them.
       - A top-level `MeshService` ref is rewritten from `name`/`namespace` to labels, but the
-        kind stays and 3.0 accepts only `Mesh` and `Dataplane` there, so it is also reported.
+        kind stays and 3.0 accepts only `Mesh` and `Dataplane` there, so the policy is
+        reported as an error and written to `_manual/`.
       - Control-plane-owned labels are removed.
   timeline:
     - version: "2.7"
-      change: "`from[].targetRef.kind: MeshService` deprecated."
+      change: "`from[].targetRef.kind: MeshService` deprecated; use `MeshSubset` with the `kuma.io/service` tag."
     - version: "2.14"
       change: "`from[]` deprecated in favour of the SPIFFE-based `rules[]` API."
     - version: "3.0"
       change: "`spec.from` removed. Empty match entries rejected. Top-level `targetRef` limited to `Mesh` and `Dataplane`."
   topics: [access-control, mtls-identity, policy-targeting]
-  code: [pkg/migrator/deprecation.go, pkg/migrator/v3_policy.go]
+  code: [pkg/migrator/deprecation.go, pkg/migrator/v3_policy.go, pkg/migrator/rejected.go]
 
 - kind: MeshTimeout
   group: mesh
@@ -593,20 +606,23 @@
       Copied unchanged. `from[]` is reported as deprecated in favour of `rules[]` and is not
       converted: `rules[].matches[]` selects clients by SPIFFE ID or SNI. Omitting `matches[]`
       applies the fault to all clients. `from[].targetRef.kind: MeshService` is reported as
-      deprecated since 2.7.
+      deprecated since 2.7. A Subset-scenario policy keeps `from[]` `MeshSubset` with the
+      `kuma.io/service` tag (the 2.7+ form) instead of rewriting it to `MeshService`.
   v3:
     status: rewritten
     output: [MeshFaultInjection]
     notes: |
       When every `from[]` entry targets `kind: Mesh`, `from[]` is rewritten to `rules[]`
       without `matches[]`, which keeps the "every client" scope. Any narrower entry blocks the
-      rewrite and the policy is reported as rejected by 3.0.
+      rewrite: the policy is reported as an error and written to `_manual/`, not to the apply
+      tree.
 
       `to[]` accepts only `kind: Mesh`, and only when `spec.targetRef` is `kind: Mesh`; other
-      combinations are reported. Labels-only refs and control-plane label removal apply.
+      combinations are reported as an error and written to `_manual/`. Labels-only refs and
+      control-plane label removal apply.
   timeline:
     - version: "2.7"
-      change: "`from[].targetRef.kind: MeshService` deprecated."
+      change: "`from[].targetRef.kind: MeshService` deprecated; use `MeshSubset` with the `kuma.io/service` tag."
     - version: "2.13"
       change: "`rules[]` API added."
     - version: "2.14"
@@ -614,7 +630,7 @@
     - version: "3.0"
       change: "`from` removed. `to[]` accepts `kind: Mesh` only."
   topics: [policy-targeting]
-  code: [pkg/migrator/deprecation.go, pkg/migrator/v3_policy.go]
+  code: [pkg/migrator/deprecation.go, pkg/migrator/v3_policy.go, pkg/migrator/rejected.go]
 
 - kind: MeshRateLimit
   group: mesh

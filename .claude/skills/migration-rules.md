@@ -108,26 +108,49 @@ If **only** non-service tags: keep `MeshSubset` unchanged (workload selector, no
 
 ### 4.1 `spec.targetRef` (top-level — "who this policy applies to")
 
-In Kuma 2.13.x, `spec.targetRef` only supports `kind: Mesh` and `kind: Dataplane`.
-`MeshService` is **not** valid at the top level.
+Since Kuma 2.10 `spec.targetRef` takes `kind: Dataplane` (with `labels`, optionally
+`sectionName`) in place of the deprecated `MeshSubset` (UPGRADE.md "New kind Dataplane for
+targetRef in policies"); in 2.13+ only `Mesh` and `Dataplane` are valid. `MeshService` is
+**not** valid at the top level.
+
+**A generated top-level `Dataplane` always uses `labels`, never `name`/`namespace`, on v2
+and v3 alike.** `Dataplane{name}` selects one Dataplane by its own name — the pod name on
+Kubernetes (`web-6d4f8c-xk2pq`) — never the service name decoded from a tag, so it would
+match nothing. On Kubernetes a Dataplane's labels are its pod's labels (merged by the pod
+converter) plus the CP-set `k8s.kuma.io/namespace`, `kuma.io/zone`, `kuma.io/mesh`,
+`kuma.io/origin`, `kuma.io/env`. `kuma.io/display-name` on a Dataplane is the proxy's own
+name, so it is never used to select by service. `app: <svc>` is a best guess at the pod label
+and always warned (`buildLabels`); on Universal (no namespace in the tag) the warning also
+says a Dataplane carries only its own `labels` field.
 
 | Input | Output |
 |---|---|
 | `kind: Mesh` | `kind: Mesh` (unchanged) |
 | `kind: MeshSubset, tags: {kuma.io/service: '*'}` | `kind: Mesh` |
-| `kind: MeshSubset, tags: {kuma.io/service: svc_ns_svc_port}` | `kind: Dataplane, name: svc, namespace: ns` |
-| `kind: MeshSubset, tags: {k8s.kuma.io/service-name: svc, k8s.kuma.io/namespace: ns}` | `kind: Dataplane, name: svc, namespace: ns` |
+| `kind: MeshSubset, tags: {kuma.io/service: svc_ns_svc_port}` | `kind: Dataplane, labels: {app: svc, k8s.kuma.io/namespace: ns}` (warned) |
+| `kind: MeshSubset, tags: {k8s.kuma.io/service-name: svc, k8s.kuma.io/namespace: ns}` | `kind: Dataplane, labels: {app: svc, k8s.kuma.io/namespace: ns}` (warned) |
 | `kind: MeshSubset, tags: {kuma.io/service: X_ns_svc_p, version: v2}` | `kind: Dataplane, labels: {app: X, k8s.kuma.io/namespace: ns, version: v2}` |
 | `kind: MeshSubset, tags: {non-service tags only}` | `kind: Dataplane, labels: {<tags>}` |
+| `kind: MeshService, name: svc_ns_svc_port[, sectionName: s]` (partially migrated) | `kind: Dataplane, labels: {app: svc, k8s.kuma.io/namespace: ns}[, sectionName: s]` |
 | `kind: Dataplane, name/labels: {...}` | unchanged |
 
-From old `sources[]` (ScenarioLegacy):
+From old `sources[]`/`destinations[]`/`selectors[]` (ScenarioLegacy) and `OPAPolicy` selectors:
 
-| Old `sources` match | New `spec.targetRef` |
+| Old match | New `spec.targetRef` |
 |---|---|
 | `kuma.io/service: '*'` | `kind: Mesh` |
-| `kuma.io/service: svc_ns_svc_port` | `kind: Dataplane, name: svc, namespace: ns` |
+| `kuma.io/service: svc_ns_svc_port` | `kind: Dataplane, labels: {app: svc, k8s.kuma.io/namespace: ns}` |
 | service tag + other tags | `kind: Dataplane, labels: {app: svc, k8s.kuma.io/namespace: ns, <other tags>}` |
+
+**Reserved tags are not copied into a labels selector** (`selectorLabelsFromTags` in
+`convert.go`, top level and `to[]`/`from[]`). Tags in the `kuma.io` domain or a subdomain
+(`k8s.kuma.io/…`) are dropped, with a warning naming them, unless they are also labels on
+Dataplanes/MeshServices: `kuma.io/zone`, `kuma.io/env`, `kuma.io/mesh`, `kuma.io/origin`,
+`k8s.kuma.io/namespace` (kuma `pkg/core/resources/labels/registry.go`). Example:
+`{kuma.io/service: backend_demo_svc_3001, kuma.io/protocol: http}` →
+`labels: {app: backend, k8s.kuma.io/namespace: demo}` — no Dataplane has a `kuma.io/protocol`
+label (`kuma.io/instance`, `k8s.kuma.io/service-port` likewise). Tags kept as `MeshSubset`
+`tags` (not labels) are untouched.
 
 ### 4.2 `to[].targetRef` (outbound — "where traffic goes")
 
@@ -145,9 +168,24 @@ From old `sources[]` (ScenarioLegacy):
 
 ### 4.3 `from[].targetRef` (inbound — "who sends traffic")
 
-Same rules as `to[].targetRef`, including the `name/namespace` vs `labels` scoping rule.
+Same rules as `to[].targetRef`, including the `name/namespace` vs `labels` scoping rule,
+**except `MeshTrafficPermission` and `MeshFaultInjection` under v2**: UPGRADE.md 2.7
+("Deprecation of 'from[].targetRef.kind: MeshService'") deprecates `MeshService` in their
+`from[]` and gives `kind: MeshSubset, tags: {kuma.io/service: <value>}` instead. So
+(`fromSubsetRefV2`, `fromRefForTarget` in `convert.go`):
+
+| Input (MTP/MFI `from[]`, v2) | Output |
+|---|---|
+| Legacy source `{kuma.io/service: '*'}` or empty | `kind: Mesh` |
+| Legacy source `{kuma.io/service: web_demo_svc_80, version: v2}` | `kind: MeshSubset, tags: {kuma.io/service: web_demo_svc_80, version: v2}` (tag value kept verbatim — it is the Dataplane's own inbound tag) |
+| `kind: MeshSubset, tags: {...}` (Subset scenario) | unchanged |
+| `kind: MeshService, name: svc_ns_svc_port` (partially migrated) | `kind: MeshSubset, tags: {kuma.io/service: svc_ns_svc_port}` |
+
+Under v3 `from[]` is removed from both kinds; see §18.
 
 ### 4.4 `name/namespace` vs `labels` scoping rule
+
+Applies to `to[]`/`from[]` `MeshService` refs on v2. The top level is always labels (§4.1).
 
 | Policy location | Use |
 |---|---|
@@ -164,7 +202,32 @@ selection. The CP sets `kuma.io/display-name` on every auto-generated MeshServic
 `--to-latest v3` the converter always emits labels (`ConvertTargetRefForTarget`): `name` →
 `kuma.io/display-name`, `namespace` → `k8s.kuma.io/namespace`, `mesh` → `kuma.io/mesh`. A zone-origin
 policy also pins `kuma.io/zone`. `Dataplane{name}` cannot be converted (a Dataplane name is not a
-label) and is warned. The table above applies to v2 output only.
+label); the document is reported as rejected (§4.5). The table above applies to v2 output only.
+
+**Kuma 3.0 producer role needs `kuma.io/zone`.** `ComputePolicyRole` (kuma
+`pkg/core/resources/labels/compute.go`) counts a `to[]` item as producer only when its kind is
+`MeshService`/`MeshHTTPRoute` and its labels are **exactly three**: `kuma.io/display-name`,
+`k8s.kuma.io/namespace` == the policy's namespace, `kuma.io/zone` == the policy's own zone
+(empty zone → never producer, so producers exist only on Zone CPs). All items producer →
+`producer`; none → `consumer`; a mix is rejected. The 2-label rewrite of `{name, namespace}` is
+therefore a consumer policy. `pinProducerZoneForV3` (`v3_policy.go`) runs after the rewrite:
+for a producer policy (`kuma.io/policy-role: producer`, or no role label + app namespace + every
+`to[]` item a `MeshService`/`MeshHTTPRoute` of that namespace) it adds `kuma.io/zone` from the
+policy's own `kuma.io/zone` label; when absent it warns naming each selector that needs
+`kuma.io/zone: <zone-name>` (no zone name is available elsewhere: `ContextMeta` has none).
+Extra labels on a producer selector are warned (they make it a consumer).
+
+### 4.5 Documents the target rejects (`RejectedByTargetError`)
+
+`TransformDocumentWithOptions` returns `*RejectedByTargetError` (`rejected.go`) **together
+with** the converted docs and warnings when, under v3, an output document is one 3.0 rejects
+as written (`v3RejectionReasons`): `spec.from` on `MeshTrafficPermission`/`MeshFaultInjection`;
+a top-level kind other than `Mesh`/`Dataplane`; `name`/`namespace` on a `Dataplane`,
+`MeshService`, `MeshExternalService`, `MeshMultiZoneService` or `MeshHTTPRoute` ref; a `to[]`
+kind the policy's 3.0 validator rejects (`warnV3ToTargetRefKinds`). `Rejected[]` lists the
+indices into the returned docs. The pipeline routes those to `_manual/`, never to the apply
+tree. Never set under v2. Separately, any generated document with an empty kind/type or name
+is a hard error (`unnamedOutputError`), never a silent `other/unknown.yaml`.
 
 ---
 

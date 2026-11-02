@@ -179,13 +179,76 @@ func TestConvertTargetRef(t *testing.T) {
 
 		// --- spec.targetRef (topLevel=true) → Dataplane ---
 		{
-			name: "MeshSubset kuma.io/service K8s format → Dataplane with name+namespace (same ns)",
+			// A Dataplane name is the proxy's own name, never the service name, so
+			// the top level always uses labels — same namespace included.
+			name: "MeshSubset kuma.io/service K8s format → Dataplane with labels (same ns, warns)",
 			input: TargetRef{Kind: "MeshSubset", Tags: map[string]string{
 				"kuma.io/service": "backend_demo_svc_3001",
 			}},
 			policyNamespace: "demo",
 			topLevel:        true,
-			want:            TargetRef{Kind: "Dataplane", Name: strPtr("backend"), Namespace: strPtr("demo")},
+			want: TargetRef{Kind: "Dataplane", Labels: map[string]string{
+				"app":                   "backend",
+				"k8s.kuma.io/namespace": "demo",
+			}},
+			wantWarn: true,
+		},
+		{
+			name: "MeshSubset kuma.io/service K8s format → Dataplane with labels (no policy ns, warns)",
+			input: TargetRef{Kind: "MeshSubset", Tags: map[string]string{
+				"kuma.io/service": "backend_demo_svc_3001",
+			}},
+			topLevel: true,
+			want: TargetRef{Kind: "Dataplane", Labels: map[string]string{
+				"app":                   "backend",
+				"k8s.kuma.io/namespace": "demo",
+			}},
+			wantWarn: true,
+		},
+		{
+			name: "MeshSubset reserved non-label tags are dropped from Dataplane labels (warns)",
+			input: TargetRef{Kind: "MeshSubset", Tags: map[string]string{
+				"kuma.io/service":          "backend_demo_svc_3001",
+				"kuma.io/protocol":         "http",
+				"k8s.kuma.io/service-port": "3001",
+				"version":                  "v2",
+			}},
+			topLevel: true,
+			want: TargetRef{Kind: "Dataplane", Labels: map[string]string{
+				"app":                   "backend",
+				"k8s.kuma.io/namespace": "demo",
+				"version":               "v2",
+			}},
+			wantWarn: true,
+		},
+		{
+			name: "MeshSubset reserved non-label tags are dropped from MeshService labels (to[], warns)",
+			input: TargetRef{Kind: "MeshSubset", Tags: map[string]string{
+				"kuma.io/service":  "backend_demo_svc_3001",
+				"kuma.io/protocol": "http",
+				"kuma.io/zone":     "east",
+			}},
+			topLevel: false,
+			want: TargetRef{Kind: "MeshService", Labels: map[string]string{
+				"kuma.io/display-name":  "backend",
+				"k8s.kuma.io/namespace": "demo",
+				"kuma.io/zone":          "east",
+			}},
+			wantWarn: true,
+		},
+		{
+			name: "MeshSubset only non-service tags, reserved ones dropped (top-level, warns)",
+			input: TargetRef{Kind: "MeshSubset", Tags: map[string]string{
+				"kuma.io/protocol": "http",
+				"kuma.io/env":      "kubernetes",
+				"app":              "web",
+			}},
+			topLevel: true,
+			want: TargetRef{Kind: "Dataplane", Labels: map[string]string{
+				"kuma.io/env": "kubernetes",
+				"app":         "web",
+			}},
+			wantWarn: true,
 		},
 		{
 			name: "MeshSubset kuma.io/service K8s format → Dataplane with labels (different ns, warns)",
@@ -265,11 +328,22 @@ func TestConvertTargetRef(t *testing.T) {
 			want:     TargetRef{Kind: "MeshService", Name: strPtr("echo"), Namespace: strPtr("demo")},
 		},
 		{
-			name:            "MeshService with old internal name at top-level, same ns → Dataplane with name+namespace",
-			input:           TargetRef{Kind: "MeshService", Name: strPtr("echo_demo_svc_8000")},
+			name:            "MeshService with old internal name at top-level, same ns → Dataplane with labels (warns)",
+			input:           TargetRef{Kind: "MeshService", Name: strPtr("echo_demo_svc_8000"), SectionName: strPtr("http")},
 			policyNamespace: "demo",
 			topLevel:        true,
-			want:            TargetRef{Kind: "Dataplane", Name: strPtr("echo"), Namespace: strPtr("demo")},
+			want: TargetRef{Kind: "Dataplane", SectionName: strPtr("http"), Labels: map[string]string{
+				"app":                   "echo",
+				"k8s.kuma.io/namespace": "demo",
+			}},
+			wantWarn: true,
+		},
+		{
+			name:            "MeshService with old internal name in to[], same ns keeps sectionName",
+			input:           TargetRef{Kind: "MeshService", Name: strPtr("echo_demo_svc_8000"), SectionName: strPtr("http")},
+			policyNamespace: "demo",
+			topLevel:        false,
+			want:            TargetRef{Kind: "MeshService", Name: strPtr("echo"), Namespace: strPtr("demo"), SectionName: strPtr("http")},
 		},
 		{
 			name:            "MeshService with old internal name at top-level, different ns → Dataplane with labels (warns)",
@@ -291,10 +365,11 @@ func TestConvertTargetRef(t *testing.T) {
 			want:     TargetRef{Kind: "MeshService", Name: strPtr("my-backend")},
 		},
 		{
-			name:     "Universal mode kuma.io/service → Dataplane, empty namespace (top-level)",
+			name:     "Universal mode kuma.io/service → Dataplane labels, no namespace (top-level, warns)",
 			input:    TargetRef{Kind: "MeshSubset", Tags: map[string]string{"kuma.io/service": "my-backend"}},
 			topLevel: true,
-			want:     TargetRef{Kind: "Dataplane", Name: strPtr("my-backend")},
+			want:     TargetRef{Kind: "Dataplane", Labels: map[string]string{"app": "my-backend"}},
+			wantWarn: true,
 		},
 	}
 
@@ -320,7 +395,7 @@ func targetRefEqual(a, b TargetRef) bool {
 	if a.Kind != b.Kind {
 		return false
 	}
-	if !strPtrEqual(a.Name, b.Name) || !strPtrEqual(a.Namespace, b.Namespace) {
+	if !strPtrEqual(a.Name, b.Name) || !strPtrEqual(a.Namespace, b.Namespace) || !strPtrEqual(a.SectionName, b.SectionName) {
 		return false
 	}
 	if !mapEqual(a.Tags, b.Tags) || !mapEqual(a.Labels, b.Labels) {

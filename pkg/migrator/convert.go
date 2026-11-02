@@ -2,6 +2,7 @@ package migrator
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -70,9 +71,11 @@ func ParseKumaServiceTag(value string) (name, namespace string) {
 // topLevel=true  → spec.targetRef position: only Mesh and Dataplane are valid in Kuma 2.13.x.
 // topLevel=false → to[]/from[] position: MeshService is valid.
 //
-// Namespace scoping rule: name+namespace may only be used when the policy namespace matches
-// the target resource's namespace. When they differ (e.g. policy in kuma-system, target in
-// demo), labels must be used instead to avoid ambiguity on Global CP.
+// Namespace scoping rule (to[]/from[] MeshService only): name+namespace may only be used
+// when the policy namespace matches the target resource's namespace. When they differ (e.g.
+// policy in kuma-system, target in demo), labels must be used instead to avoid ambiguity on
+// Global CP. A top-level Dataplane always uses labels: a Dataplane name is the proxy's own
+// name (the pod name on Kubernetes), never the service name decoded from a tag.
 //
 // Returns the converted TargetRef and an optional warning string (non-empty when a
 // Dataplane labels ref is emitted and the "app" label key is a best-guess).
@@ -134,11 +137,13 @@ func convertTargetRef(ref TargetRef, policyNamespace string, topLevel bool, labe
 				if ns == "" {
 					ns = policyNamespace
 				}
-				if labelsOnly || (policyNamespace != "" && policyNamespace != ns) {
+				// A top-level Dataplane is always selected by labels: a Dataplane's
+				// name is the pod/proxy name, never the service name decoded here.
+				if labelsOnly || topLevel || (policyNamespace != "" && policyNamespace != ns) {
 					labels, warn := buildLabels(name, ns, "", nil, topLevel)
 					return TargetRef{Kind: outputKind, Labels: labels, SectionName: ref.SectionName}, warn
 				}
-				result := TargetRef{Kind: outputKind, Name: strPtr(name)}
+				result := TargetRef{Kind: outputKind, Name: strPtr(name), SectionName: ref.SectionName}
 				if ns != "" {
 					result.Namespace = strPtr(ns)
 				}
@@ -177,10 +182,7 @@ func convertTargetRef(ref TargetRef, policyNamespace string, topLevel bool, labe
 		// At top-level (spec.targetRef): MeshSubset with only workload-selector tags is
 		// deprecated in Kuma 2.10+. Migrate to Dataplane with labels.
 		if topLevel {
-			labels := map[string]string{}
-			for k, v := range otherTags {
-				labels[k] = v
-			}
+			labels, dropWarn := selectorLabelsFromTags(otherTags)
 			if namespaceFromTag != "" {
 				labels["k8s.kuma.io/namespace"] = namespaceFromTag
 			}
@@ -188,9 +190,9 @@ func convertTargetRef(ref TargetRef, policyNamespace string, topLevel bool, labe
 				labels["kuma.io/zone"] = zoneValue
 			}
 			if len(labels) == 0 {
-				return ref, "" // empty MeshSubset — nothing to convert
+				return ref, dropWarn // empty MeshSubset — nothing to convert
 			}
-			return TargetRef{Kind: "Dataplane", Labels: labels}, ""
+			return TargetRef{Kind: "Dataplane", Labels: labels}, dropWarn
 		}
 		// In to[]/from[] context there is no service to point at, so the ref is left
 		// as MeshSubset. 2.14's shared TargetRef schema still lists the kind; under
@@ -238,7 +240,10 @@ func convertTargetRef(ref TargetRef, policyNamespace string, topLevel bool, labe
 	// Namespace scoping: use labels when policy namespace differs from target namespace.
 	// When policyNamespace is unknown (empty — Scenario A / Universal) keep name/namespace.
 	// Kuma 3.0 resolves real resources by labels only, so labelsOnly always takes this path.
-	if labelsOnly || (policyNamespace != "" && policyNamespace != ns) {
+	// A top-level Dataplane always takes it too: Dataplane name/namespace selects one
+	// proxy by its own name (the pod name on Kubernetes), and the service name decoded
+	// from the tag is never that, so the name form would match nothing.
+	if labelsOnly || topLevel || (policyNamespace != "" && policyNamespace != ns) {
 		labels, warn := buildLabels(name, ns, "", nil, topLevel)
 		return TargetRef{Kind: outputKind, Labels: labels}, warn
 	}
@@ -261,17 +266,21 @@ func convertTargetRef(ref TargetRef, policyNamespace string, topLevel bool, labe
 //
 // For MeshService (topLevel=false): uses "kuma.io/display-name".
 func buildLabels(name, ns, zone string, extra map[string]string, topLevel bool) (map[string]string, string) {
-	labels := map[string]string{}
-	var warn string
+	labels, warn := selectorLabelsFromTags(extra)
 
 	if topLevel {
 		if name != "" {
 			labels["app"] = name
 		}
-		warn = fmt.Sprintf(
+		guess := fmt.Sprintf(
 			"spec.targetRef Dataplane labels use 'app: %s' as a best-guess pod label — verify this matches your actual pod labels before applying",
 			name,
 		)
+		if ns == "" {
+			guess += " (on Universal a Dataplane carries only the labels in its own labels field: add 'app: " +
+				name + "' there or select a label the Dataplanes already have)"
+		}
+		warn = joinWarnings(guess, warn)
 	} else {
 		if name != "" {
 			labels["kuma.io/display-name"] = name
@@ -284,10 +293,70 @@ func buildLabels(name, ns, zone string, extra map[string]string, topLevel bool) 
 	if zone != "" {
 		labels["kuma.io/zone"] = zone
 	}
-	for k, v := range extra {
+	return labels, warn
+}
+
+// selectorLabelTags are the Kuma-reserved tag keys that are also labels on the
+// resources a labels selector matches (Dataplane, MeshService). On Kubernetes a
+// Dataplane's labels are its pod's labels plus the ones the control plane sets:
+// kuma.io/mesh, kuma.io/zone, kuma.io/origin, kuma.io/env and k8s.kuma.io/namespace
+// (kuma pkg/core/resources/labels/registry.go; pod_converter.go merges the pod
+// labels). The other reserved keys that appear as inbound tags — kuma.io/protocol,
+// kuma.io/instance, k8s.kuma.io/service-port, … — are never labels, so a selector
+// carrying them matches nothing. kuma.io/display-name is a label, but on a Dataplane
+// it holds the proxy's own name, not the service's, so it is never taken from a tag.
+var selectorLabelTags = map[string]bool{
+	"kuma.io/zone":          true,
+	"kuma.io/env":           true,
+	"kuma.io/mesh":          true,
+	"kuma.io/origin":        true,
+	"k8s.kuma.io/namespace": true,
+}
+
+// isReservedTagKey reports whether key is in a Kuma-reserved domain (kuma.io or a
+// subdomain such as k8s.kuma.io).
+func isReservedTagKey(key string) bool {
+	i := strings.Index(key, "/")
+	if i < 0 {
+		return false
+	}
+	domain := key[:i]
+	return domain == "kuma.io" || strings.HasSuffix(domain, ".kuma.io")
+}
+
+// selectorLabelsFromTags copies refinement tags into a labels selector, dropping
+// the Kuma-reserved tags that are not labels on the selected resources. Returns a
+// warning naming the dropped tags, empty when none was dropped.
+func selectorLabelsFromTags(tags map[string]string) (map[string]string, string) {
+	labels := map[string]string{}
+	var dropped []string
+	for k, v := range tags {
+		if isReservedTagKey(k) && !selectorLabelTags[k] {
+			dropped = append(dropped, k+"="+v)
+			continue
+		}
 		labels[k] = v
 	}
-	return labels, warn
+	if len(dropped) == 0 {
+		return labels, ""
+	}
+	sort.Strings(dropped)
+	return labels, fmt.Sprintf(
+		"dropped tag(s) %s from the generated labels selector — they are Kuma inbound tags, not labels on "+
+			"Dataplanes or MeshServices, so a selector carrying them would match nothing. Check that the "+
+			"remaining labels still select the intended proxies or services",
+		strings.Join(dropped, ", "))
+}
+
+// joinWarnings joins the non-empty warnings into one message.
+func joinWarnings(ws ...string) string {
+	var out []string
+	for _, w := range ws {
+		if w != "" {
+			out = append(out, w)
+		}
+	}
+	return strings.Join(out, "; ")
 }
 
 // ConvertSelectorToTargetRef converts a legacy OldSelector (from sources[]/destinations[])
@@ -322,6 +391,57 @@ func ConvertSelectorToTargetRefForTarget(sel OldSelector, policyNamespace string
 	// Delegate via a synthetic MeshSubset so the full conversion rules apply.
 	synthetic := TargetRef{Kind: "MeshSubset", Tags: tags}
 	return ConvertTargetRefForTarget(synthetic, policyNamespace, topLevel, target)
+}
+
+// meshSubsetFromKinds are the policies whose 2.x from[] must select clients with
+// MeshSubset tags rather than MeshService. UPGRADE.md "Deprecation of
+// 'from[].targetRef.kind: MeshService'" (2.7): only these two kinds ever accepted
+// MeshService in from[], and the documented replacement is MeshSubset with the
+// kuma.io/service tag. The tag value is the Dataplane's own inbound tag (the
+// encoded <name>_<namespace>_svc_<port> on Kubernetes), so it is kept verbatim.
+var meshSubsetFromKinds = map[string]bool{
+	"MeshTrafficPermission": true,
+	"MeshFaultInjection":    true,
+}
+
+// fromSubsetRefV2 converts a legacy source selector into the from[] targetRef a
+// 2.x MeshTrafficPermission/MeshFaultInjection documents as current: kind: Mesh
+// for "every client", otherwise MeshSubset with the selector's tags. A
+// kuma.io/service: '*' entry is dropped from the tags (it means "any service").
+func fromSubsetRefV2(sel OldSelector) TargetRef {
+	tags := map[string]string{}
+	for k, v := range sel.Match {
+		if k == "kuma.io/service" && v == "*" {
+			continue
+		}
+		tags[k] = v
+	}
+	if len(tags) == 0 {
+		return TargetRef{Kind: "Mesh"}
+	}
+	return TargetRef{Kind: "MeshSubset", Tags: tags}
+}
+
+// fromRefForTarget converts a from[] targetRef of an existing policy (Subset
+// scenario). Under v2, MeshTrafficPermission and MeshFaultInjection keep MeshSubset
+// (the 2.7+ recommended form) instead of being rewritten to the deprecated
+// MeshService; a partially migrated MeshService whose name is the old
+// <name>_<namespace>_svc_<port> tag value is turned back into that MeshSubset.
+// Every other case is ConvertTargetRefForTarget with topLevel=false.
+func fromRefForTarget(ref TargetRef, policyKind, policyNamespace string, target TargetVersion) (TargetRef, string, error) {
+	if !target.IsV3() && meshSubsetFromKinds[policyKind] {
+		switch ref.Kind {
+		case "MeshSubset":
+			return ref, "", nil
+		case "MeshService":
+			if ref.Name != nil {
+				if _, ns := ParseKumaServiceTag(*ref.Name); ns != "" {
+					return fromSubsetRefV2(OldSelector{Match: map[string]string{"kuma.io/service": *ref.Name}}), "", nil
+				}
+			}
+		}
+	}
+	return ConvertTargetRefForTarget(ref, policyNamespace, false, target)
 }
 
 func strPtr(s string) *string { return &s }
