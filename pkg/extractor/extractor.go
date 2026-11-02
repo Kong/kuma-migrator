@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/Kong/kuma-migrator/pkg/config"
@@ -24,32 +25,6 @@ func loadSkipSet(env string) map[string]bool {
 	return cfg.SkipSetForEnv(env)
 }
 
-// gatewayLocalKinds is the set of resource types that may be created directly on a Zone
-// or Standalone CP and therefore may NOT carry a kuma.io/origin: zone label.
-//
-// Two categories:
-//
-//  1. Strictly zone-local (never synced to Global CP):
-//     MeshGatewayInstance, MeshGatewayConfig — these are always zone-created and have no
-//     origin label.
-//
-//  2. Gateway policy kinds that can be created on either the Global CP or the Zone CP:
-//     MeshGateway, MeshHTTPRoute, MeshTCPRoute, MeshGatewayRoute — when created on the
-//     Global CP they are synced to zones WITH kuma.io/origin: global (skipped by the normal
-//     origin filter). When created directly on the Zone CP they carry no origin label and
-//     must be kept.
-//
-// On a Zone CP extraction these kinds are kept when the origin label is absent;
-// resources explicitly labelled kuma.io/origin: global are still skipped.
-var gatewayLocalKinds = map[string]bool{
-	"MeshGatewayInstance": true,
-	"MeshGatewayConfig":   true,
-	"MeshGateway":         true,
-	"MeshHTTPRoute":       true,
-	"MeshTCPRoute":        true,
-	"MeshGatewayRoute":    true,
-}
-
 // zoneOnlyKinds is the set of resource types that must be extracted from Zone or
 // Standalone CPs only. They are skipped during Global CP extraction.
 //
@@ -60,80 +35,202 @@ var zoneOnlyKinds = map[string]bool{
 	"MeshGatewayConfig":   true,
 }
 
-// isGatewayLocalKind reports whether kind is a gateway resource that may lack
-// kuma.io/origin labels on a Zone CP (see gatewayLocalKinds).
-func isGatewayLocalKind(kind string) bool {
-	return gatewayLocalKinds[kind]
-}
-
 // isZoneOnlyKind reports whether kind must be extracted from Zone/Standalone CPs only
 // and should be skipped during Global CP extraction (see zoneOnlyKinds).
 func isZoneOnlyKind(kind string) bool {
 	return zoneOnlyKinds[kind]
 }
 
-// ZoneOriginSkip records a resource the origin filter skipped, so the summary
-// can list it instead of dropping it silently. Two cases:
-//
-//   - NoOriginLabel false: skipped on a Global CP because it carries
-//     kuma.io/origin: zone. These are zone-created policies synced (read-only)
-//     to the Global CP and must be extracted from the originating zone instead.
-//   - NoOriginLabel true: skipped on a federated Zone CP because it carries no
-//     kuma.io/origin label at all. Kuma 2.7+ labels everything created on a zone
-//     (webhook defaulter / API server, pkg/core/resources/labels/compute.go) and
-//     KDS labels everything synced from Global, so an unlabelled object is
-//     older than the label (created on Kuma ≤2.6, never updated since) or was
-//     written with the admission webhook bypassed. Its owner cannot be told
-//     from the object.
+// ZoneOriginSkip records a resource skipped on a Global CP because it carries
+// kuma.io/origin: zone. These are zone-created policies synced (read-only) to
+// the Global CP and must be extracted from the originating zone instead.
 type ZoneOriginSkip struct {
-	Kind          string
-	Name          string
-	ZoneName      string // value of kuma.io/zone label; empty when label is absent
-	Mesh          string // mesh the resource belongs to; empty for global-scoped
-	NoOriginLabel bool
+	Kind     string
+	Name     string
+	ZoneName string // value of kuma.io/zone label; empty when label is absent
+}
+
+// extractNotes collects what the per-resource filters did, for the summary
+// printed after extraction. All methods accept a nil receiver (no recording).
+type extractNotes struct {
+	// ZoneOriginSkips: Global CP, resources labelled kuma.io/origin: zone.
+	ZoneOriginSkips []ZoneOriginSkip
+	// GlobalCopies: federated Zone CP, resources labelled kuma.io/origin: global
+	// (KDS copies of Global resources) that were skipped.
+	GlobalCopies int
+	// KeptUnlabelled: federated Zone CP, kind → number of resources kept that
+	// carry no kuma.io/origin label.
+	KeptUnlabelled map[string]int
+	// Generated: kind → number of CP-generated resources skipped
+	// (kuma.io/managed-by, see cpGeneratedManagedBy).
+	Generated map[string]int
+}
+
+func (n *extractNotes) zoneOriginSkip(s ZoneOriginSkip) {
+	if n != nil {
+		n.ZoneOriginSkips = append(n.ZoneOriginSkips, s)
+	}
+}
+
+func (n *extractNotes) globalCopy() {
+	if n != nil {
+		n.GlobalCopies++
+	}
+}
+
+func (n *extractNotes) keptUnlabelled(kind string) {
+	if n == nil {
+		return
+	}
+	if n.KeptUnlabelled == nil {
+		n.KeptUnlabelled = map[string]int{}
+	}
+	n.KeptUnlabelled[kind]++
+}
+
+func (n *extractNotes) generated(kind string) {
+	if n == nil {
+		return
+	}
+	if n.Generated == nil {
+		n.Generated = map[string]int{}
+	}
+	n.Generated[kind]++
 }
 
 // zoneOriginDecision is the per-resource origin filter on a federated Zone CP.
-// keep: write the resource. noLabel: it was skipped for carrying no
-// kuma.io/origin label (the caller records it so the summary lists it).
 //
-//   - origin zone  → keep
-//   - origin global → skip silently (a KDS copy; extract it from the Global CP)
-//   - no origin, gateway-local kind → keep (see gatewayLocalKinds)
-//   - no origin, any other kind → skip and report
-func zoneOriginDecision(kind, origin string) (keep, noLabel bool) {
-	switch {
-	case origin == CPModeZone:
-		return true, false
-	case origin == "" && isGatewayLocalKind(kind):
-		return true, false
-	case origin == "":
-		return false, true
-	default:
+//   - origin global → skip: a KDS copy of a Global resource. The KDS
+//     global-to-zone mapper sets kuma.io/origin: global on every resource it
+//     syncs (kuma pkg/kds/context/context.go, DefaultContext globalMappers), so
+//     a synced copy is always labelled. Extract it from the Global CP.
+//   - origin zone → keep.
+//   - no origin label → keep. The resource was written on this zone. Kuma 2.x
+//     labels a resource only when it passes the defaulting webhook
+//     (Kubernetes) or the API server (Universal), and the Helm chart registers
+//     that webhook for new-style policies, Mesh, Dataplane, MeshGateway and the
+//     zone proxies only (kuma deployments/charts/kuma/templates/
+//     cp-webhooks-and-secrets.yaml, mesh.defaulter.kuma-admission.kuma.io). The
+//     legacy policies, ExternalService, ProxyTemplate, MeshGatewayRoute,
+//     OPAPolicy, AccessRole and AccessAudit are never labelled on Kubernetes.
+//
+// unlabelled reports a kept resource without the label, for the summary.
+func zoneOriginDecision(origin string) (keep, unlabelled bool) {
+	switch origin {
+	case CPModeGlobal:
 		return false, false
+	case "":
+		return true, true
+	default:
+		return true, false
+	}
+}
+
+// cpGeneratedManagedBy lists the kuma.io/managed-by values the control plane
+// writes on resources it generates and reconciles itself (kuma 2.14):
+//
+//   - k8s-controller: MeshService generated from a Kubernetes Service
+//     (pkg/plugins/runtime/k8s/controllers/meshservice_controller.go), also
+//     MeshZoneAddress and Workload.
+//   - meshservice-generator: MeshService generated from Dataplane inbounds on
+//     Universal (pkg/core/resources/apis/meshservice/generate/generator.go).
+//   - workload-generator: Workload on Universal.
+//
+// The CP recreates these, so re-applying a copy fights the controller.
+// A hand-written MeshService has no such label and is kept. kuma.io/env is
+// not a usable signal: the defaulting webhook sets it on every MeshService
+// created on a zone, hand-written or not (labels.Compute, ProvidedByZoneFlag).
+var cpGeneratedManagedBy = map[string]bool{
+	"k8s-controller":        true,
+	"meshservice-generator": true,
+	"workload-generator":    true,
+}
+
+// isCPGenerated reports whether labels mark a resource as generated by the CP.
+func isCPGenerated(labels map[string]interface{}) bool {
+	v, _ := labels["kuma.io/managed-by"].(string)
+	return cpGeneratedManagedBy[v]
+}
+
+// resourceMesh returns the mesh a resource belongs to, "" for a global-scoped
+// resource:
+//
+//   - a Mesh belongs to itself, so it is written under mesh-<name>/;
+//   - the kuma.io/mesh label (new-style resources, and every Universal
+//     resource converted to Kubernetes format);
+//   - the top-level mesh field: Universal format, and the Kubernetes CRDs of
+//     the legacy kinds (TrafficPermission, MeshGatewayRoute, …), which store
+//     the mesh there and carry no label.
+func resourceMesh(obj map[string]interface{}, kind, name string, labels map[string]interface{}) string {
+	if kind == "Mesh" {
+		return name
+	}
+	if m, _ := labels["kuma.io/mesh"].(string); m != "" {
+		return m
+	}
+	m, _ := obj["mesh"].(string)
+	return m
+}
+
+// serverSideMetadata lists the metadata fields the API server writes. They
+// are dropped on extract:
+//
+//   - resourceVersion: a stale value makes `kubectl apply` fail with a
+//     conflict once the object changed on the server;
+//   - uid, creationTimestamp, generation, selfLink, managedFields,
+//     deletionTimestamp, deletionGracePeriodSeconds: server-owned, rejected
+//     or ignored on create;
+//   - ownerReferences: on Kubernetes the CP's owner-reference mutating webhook
+//     adds the Mesh owner itself on create, with the UID of the Mesh in the
+//     target cluster (kuma pkg/plugins/runtime/k8s/webhooks/
+//     owner_reference_mutator.go). A copied reference carries the source
+//     cluster's UID: on any other cluster, or once the Mesh was recreated,
+//     the garbage collector deletes the object as orphaned. 3.0 also rejects
+//     a Mesh owner that disagrees with the resource's mesh (UPGRADE.md, "A
+//     resource's Mesh ownerReference must match its mesh").
+var serverSideMetadata = []string{
+	"resourceVersion", "uid", "creationTimestamp", "generation", "selfLink",
+	"managedFields", "ownerReferences", "deletionTimestamp", "deletionGracePeriodSeconds",
+}
+
+// lastAppliedAnnotation is written by client-side `kubectl apply`. A copy
+// pins the old applied state onto the object on the next apply.
+const lastAppliedAnnotation = "kubectl.kubernetes.io/last-applied-configuration"
+
+// stripServerSideFields removes what the server computes from an extracted
+// object so the file can be re-applied as written:
+//
+//   - status (both formats): computed by the CP; migrate never reads it;
+//   - Kubernetes metadata: serverSideMetadata and lastAppliedAnnotation;
+//   - Universal: creationTime, modificationTime and kri, all CP-computed.
+//
+// Labels and annotations users set are kept, including the CP-computed
+// kuma.io/* labels: the zone origin filter and the migrator read them, and the
+// CP recomputes them on apply anyway.
+func stripServerSideFields(obj map[string]interface{}) {
+	delete(obj, "status")
+	delete(obj, "creationTime")
+	delete(obj, "modificationTime")
+	delete(obj, "kri")
+	meta, ok := obj["metadata"].(map[string]interface{})
+	if !ok {
+		return
+	}
+	for _, f := range serverSideMetadata {
+		delete(meta, f)
+	}
+	if ann, ok := meta["annotations"].(map[string]interface{}); ok {
+		delete(ann, lastAppliedAnnotation)
+		if len(ann) == 0 {
+			delete(meta, "annotations")
+		}
 	}
 }
 
 // writeResourceFiles splits a multi-document YAML stream into individual files under outputDir.
-// Documents whose kind contains "Insight" or is in skipSet are silently skipped.
-// On a Zone CP (cpMode == CPModeZone) only resources with kuma.io/origin: zone are kept,
-// with the exception of gateway-local kinds which may lack the label (see gatewayLocalKinds).
-// On a Global CP (cpMode == CPModeGlobal) resources with kuma.io/origin: zone are skipped and
-// appended to skips (when non-nil) so callers can surface them to the user.
-// Files are written into per-kind subfolders under <outputDir>/<cpModeDir>/<meshName>/<sub>/
-// (context-first layout). Global-scoped resources go to <outputDir>/<cpModeDir>/global/<sub>/.
-//
-//   - cpModeDir:    the CP mode directory label (e.g. "global", "zone-eu-west"); empty means flat output.
-//   - meshName:     the mesh these resources belong to; when non-empty, files are written under
-//     <outputDir>/<meshName>/<cpModeDir>/<sub>/ so each mesh has its own top-level directory.
-//   - meshFilter:   when non-empty, resources whose meshName does not match are skipped.
-//     Resources with no mesh association (global-scoped) are never filtered out.
-//   - outputFormat: "kubernetes" converts Universal-format resources (type/name/mesh) to
-//     Kubernetes format (apiVersion/kind/metadata) before writing. "universal" writes as-is.
-//   - skips:        when non-nil, zone-origin resources skipped on Global CP are appended here.
-//
+// See writeResourceObject for the filters applied to each document.
 // Returns the number of files written.
-func writeResourceFiles(data []byte, outputDir string, skipSet map[string]bool, cpMode, cpModeDir, meshName, meshFilter, outputFormat string, skips *[]ZoneOriginSkip) (int, error) {
+func writeResourceFiles(data []byte, outputDir string, skipSet map[string]bool, cpMode, cpModeDir, meshName, meshFilter, outputFormat string, notes *extractNotes) (int, error) {
 	docs := splitYAMLDocs(data)
 	count := 0
 	for _, doc := range docs {
@@ -141,7 +238,7 @@ func writeResourceFiles(data []byte, outputDir string, skipSet map[string]bool, 
 		if doc == "" {
 			continue
 		}
-		n, err := writeSingleResourceDoc(doc, outputDir, skipSet, cpMode, cpModeDir, meshName, meshFilter, outputFormat, skips)
+		n, err := writeSingleResourceDoc(doc, outputDir, skipSet, cpMode, cpModeDir, meshName, meshFilter, outputFormat, notes)
 		if err != nil {
 			return count, err
 		}
@@ -150,8 +247,18 @@ func writeResourceFiles(data []byte, outputDir string, skipSet map[string]bool, 
 	return count, nil
 }
 
-// writeSingleResourceDoc writes one YAML document to disk, or expands a list document
-// into its individual items. Returns the number of files written.
+// writeSingleResourceDoc parses one YAML document and hands it to writeResourceObject.
+func writeSingleResourceDoc(doc string, outputDir string, skipSet map[string]bool, cpMode, cpModeDir, meshName, meshFilter, outputFormat string, notes *extractNotes) (int, error) {
+	var obj map[string]interface{}
+	if err := yaml.Unmarshal([]byte(doc), &obj); err != nil || obj == nil {
+		return 0, nil
+	}
+	return writeResourceObject(obj, outputDir, skipSet, cpMode, cpModeDir, meshName, meshFilter, outputFormat, notes)
+}
+
+// writeResourceObject writes one resource to disk, or expands a list into its
+// items. Returns the number of files written. Both extraction paths (kubectl
+// and kumactl) go through it.
 //
 // Supported formats:
 //   - Kubernetes-style: kind/apiVersion + metadata.name  (kubectl/kumactl Kubernetes output)
@@ -159,23 +266,22 @@ func writeResourceFiles(data []byte, outputDir string, skipSet map[string]bool, 
 //   - Kubernetes list: kind ends in "List", items[]      (kumactl -o yaml on Kube returns MeshMetricList)
 //   - Universal list:  top-level items[], no kind/type   ({total: N, items: [...]})
 //
-// When outputFormat is "kubernetes", Universal-format documents (type/name/mesh at top level)
-// are converted to Kubernetes format (apiVersion/kind/metadata) before writing. This applies
-// to both standalone documents and items within list responses (e.g. Konnect API responses).
+// When outputFormat is "kubernetes", Universal-format documents are converted
+// to Kubernetes format (universalToKubernetes).
 //
-// When cpModeDir is non-empty, the file is written to <outputDir>/<cpModeDir>/<meshName>/<sub>/
-// for mesh-scoped resources, or <outputDir>/<cpModeDir>/global/<sub>/ for global-scoped ones.
-// When meshFilter is non-empty, resources whose meshName does not match are skipped (resources
-// with no mesh association are always kept).
+// Filters, in order:
+//   - Insight kinds and skipSet kinds;
+//   - CP-generated resources (isCPGenerated), counted in notes;
+//   - Global CP: zone-only kinds; kuma.io/origin: zone (recorded in notes);
+//   - federated Zone CP: kuma.io/origin: global (zoneOriginDecision);
+//   - meshFilter: resources of another mesh. Global-scoped ones are kept.
 //
-// On a Global CP, resources with kuma.io/origin: zone are skipped and appended to skips (when
-// non-nil). These are zone-created policies synced read-only to the Global CP.
-func writeSingleResourceDoc(doc string, outputDir string, skipSet map[string]bool, cpMode, cpModeDir, meshName, meshFilter, outputFormat string, skips *[]ZoneOriginSkip) (int, error) {
-	var obj map[string]interface{}
-	if err := yaml.Unmarshal([]byte(doc), &obj); err != nil || obj == nil {
-		return 0, nil
-	}
-
+// meshName is the mesh the caller fetched the resource for (kumactl --mesh);
+// when empty the mesh is read from the resource (resourceMesh). Files go to
+// <outputDir>/<cpModeDir>/mesh-<mesh>/<sub>/, or
+// <outputDir>/<cpModeDir>/global-scoped-resources/<sub>/ without a mesh.
+// Server-written fields are removed first (stripServerSideFields).
+func writeResourceObject(obj map[string]interface{}, outputDir string, skipSet map[string]bool, cpMode, cpModeDir, meshName, meshFilter, outputFormat string, notes *extractNotes) (int, error) {
 	kind, _ := obj["kind"].(string)
 	if kind == "" {
 		kind, _ = obj["type"].(string) // Universal format uses "type" instead of "kind"
@@ -191,11 +297,7 @@ func writeSingleResourceDoc(doc string, outputDir string, skipSet map[string]boo
 			if !ok {
 				continue
 			}
-			itemBytes, err := yaml.Marshal(itemMap)
-			if err != nil {
-				continue
-			}
-			n, _ := writeSingleResourceDoc(strings.TrimSpace(string(itemBytes)), outputDir, skipSet, cpMode, cpModeDir, meshName, meshFilter, outputFormat, skips)
+			n, _ := writeResourceObject(itemMap, outputDir, skipSet, cpMode, cpModeDir, meshName, meshFilter, outputFormat, notes)
 			count += n
 		}
 		return count, nil
@@ -203,16 +305,11 @@ func writeSingleResourceDoc(doc string, outputDir string, skipSet map[string]boo
 
 	// Convert Universal-format documents to Kubernetes format when requested.
 	// A Universal document has "type" but no "kind" at the top level.
-	// universalToKubernetes maps type→kind, name→metadata.name, mesh→metadata.labels,
-	// preserves spec/status, and drops CP-internal fields (kri, creationTime, modificationTime).
 	if outputFormat == "kubernetes" {
 		if _, hasKind := obj["kind"]; !hasKind {
 			if _, hasType := obj["type"]; hasType {
 				obj = universalToKubernetes(obj)
 				kind, _ = obj["kind"].(string)
-				if converted, err := yaml.Marshal(obj); err == nil {
-					doc = strings.TrimSpace(string(converted))
-				}
 			}
 		}
 	}
@@ -233,17 +330,16 @@ func writeSingleResourceDoc(doc string, outputDir string, skipSet map[string]boo
 	if labels == nil {
 		labels, _ = obj["labels"].(map[string]interface{})
 	}
-
-	// Skip MeshService CRs that were auto-generated by Kuma from Kubernetes Services.
-	// These carry kuma.io/env: kubernetes and do not need to be extracted or re-applied.
-	if kind == "MeshService" {
-		if env, _ := labels["kuma.io/env"].(string); env == "kubernetes" {
-			return 0, nil
-		}
+	if meshName == "" {
+		meshName = resourceMesh(obj, kind, name, labels)
 	}
 
-	// On a Global CP, skip zone-only kinds (MeshGateway, MeshGatewayInstance, etc.).
-	// They may appear on the global CP via KDS sync but must be extracted from zone CPs.
+	if isCPGenerated(labels) {
+		notes.generated(kind)
+		return 0, nil
+	}
+
+	// On a Global CP, skip zone-only kinds (MeshGatewayInstance, MeshGatewayConfig).
 	if cpMode == CPModeGlobal && isZoneOnlyKind(kind) {
 		return 0, nil
 	}
@@ -254,24 +350,7 @@ func writeSingleResourceDoc(doc string, outputDir string, skipSet map[string]boo
 	if cpMode == CPModeGlobal {
 		if origin, _ := labels["kuma.io/origin"].(string); origin == CPModeZone {
 			zoneName, _ := labels["kuma.io/zone"].(string)
-			if skips != nil {
-				*skips = append(*skips, ZoneOriginSkip{Kind: kind, Name: name, ZoneName: zoneName})
-			}
-			return 0, nil
-		}
-	}
-
-	// On a federated Zone CP keep only what this zone owns. Callers pass "" instead
-	// of CPModeZone for a non-federated zone (originFilterMode), which keeps all.
-	if cpMode == CPModeZone {
-		origin, _ := labels["kuma.io/origin"].(string)
-		keep, noLabel := zoneOriginDecision(kind, origin)
-		if !keep {
-			// The mesh filter still applies: a resource of another mesh is not
-			// "lost", it was not asked for.
-			if noLabel && skips != nil && (meshFilter == "" || meshName == "" || meshName == meshFilter) {
-				*skips = append(*skips, ZoneOriginSkip{Kind: kind, Name: name, Mesh: meshName, NoOriginLabel: true})
-			}
+			notes.zoneOriginSkip(ZoneOriginSkip{Kind: kind, Name: name, ZoneName: zoneName})
 			return 0, nil
 		}
 	}
@@ -279,6 +358,28 @@ func writeSingleResourceDoc(doc string, outputDir string, skipSet map[string]boo
 	// Apply mesh filter: skip if a specific mesh was requested and this resource
 	// belongs to a different mesh. Resources with no mesh association are always kept.
 	if meshFilter != "" && meshName != "" && meshName != meshFilter {
+		return 0, nil
+	}
+
+	// On a federated Zone CP drop the copies synced from Global. Callers pass ""
+	// instead of CPModeZone for a non-federated zone (originFilterMode), which
+	// keeps everything.
+	if cpMode == CPModeZone {
+		origin, _ := labels["kuma.io/origin"].(string)
+		keep, unlabelled := zoneOriginDecision(origin)
+		if !keep {
+			notes.globalCopy()
+			return 0, nil
+		}
+		if unlabelled {
+			notes.keptUnlabelled(kind)
+		}
+	}
+
+	stripServerSideFields(obj)
+	out, err := yaml.Marshal(obj)
+	if err != nil {
+		ui.Warn(fmt.Sprintf("marshal %s/%s: %v", kind, name, err))
 		return 0, nil
 	}
 
@@ -291,10 +392,10 @@ func writeSingleResourceDoc(doc string, outputDir string, skipSet map[string]boo
 
 	sub := resource.KindSubfolder(kind)
 	// Compute output directory (context-first layout):
-	//   <outputDir>/<cpModeDir>/<meshName>/<sub>   when both cpModeDir and meshName are set
-	//   <outputDir>/<cpModeDir>/global/<sub>        when cpModeDir is set but no mesh (global-scoped resources)
-	//   <outputDir>/<meshName>/<sub>               when only meshName is set (no CP-mode dir)
-	//   <outputDir>/<sub>                          otherwise (flat / legacy)
+	//   <outputDir>/<cpModeDir>/mesh-<mesh>/<sub>              mesh-scoped
+	//   <outputDir>/<cpModeDir>/global-scoped-resources/<sub>  no mesh
+	//   <outputDir>/mesh-<mesh>/<sub>                          no CP-mode dir
+	//   <outputDir>/<sub>                                      flat
 	var dir string
 	switch {
 	case cpModeDir != "" && meshName != "":
@@ -311,7 +412,7 @@ func writeSingleResourceDoc(doc string, outputDir string, skipSet map[string]boo
 		return 0, nil
 	}
 	outPath := filepath.Join(dir, filename)
-	if err := os.WriteFile(outPath, []byte(doc+"\n"), 0644); err != nil {
+	if err := os.WriteFile(outPath, out, 0644); err != nil {
 		ui.Warn(fmt.Sprintf("write %s: %v", outPath, err))
 		return 0, nil
 	}
@@ -371,55 +472,70 @@ func universalToKubernetes(obj map[string]interface{}) map[string]interface{} {
 	return result
 }
 
+// printExtractNotes prints what the filters did, after ExtractDone.
+func printExtractNotes(notes *extractNotes) {
+	if notes == nil {
+		return
+	}
+	if len(notes.KeptUnlabelled) > 0 {
+		fmt.Println()
+		ui.Info(fmt.Sprintf("%d resource(s) without a kuma.io/origin label kept (created on this zone): %s",
+			sumCounts(notes.KeptUnlabelled), formatCounts(notes.KeptUnlabelled)))
+		ui.InfoIndented("Kuma 2.x labels only the kinds its defaulting webhook covers; legacy policies,")
+		ui.InfoIndented("ExternalService, ProxyTemplate, MeshGatewayRoute and Kong Mesh RBAC kinds are never labelled.")
+		ui.InfoIndented("Copies synced from Global always carry kuma.io/origin: global.")
+	}
+	if notes.GlobalCopies > 0 {
+		fmt.Println()
+		ui.Info(fmt.Sprintf("%d resource(s) synced from the Global CP (kuma.io/origin: global) skipped — extract them from the Global CP.",
+			notes.GlobalCopies))
+	}
+	if len(notes.Generated) > 0 {
+		fmt.Println()
+		ui.Info(fmt.Sprintf("%d resource(s) generated by the control plane skipped (kuma.io/managed-by): %s",
+			sumCounts(notes.Generated), formatCounts(notes.Generated)))
+		ui.InfoIndented("The CP recreates them from Kubernetes Services or Dataplanes.")
+	}
+	printZoneOriginSkips(notes.ZoneOriginSkips)
+}
+
+func sumCounts(m map[string]int) int {
+	n := 0
+	for _, v := range m {
+		n += v
+	}
+	return n
+}
+
+// formatCounts renders kind → count as "Kind1 2, Kind2 1", sorted by kind.
+func formatCounts(m map[string]int) string {
+	kinds := make([]string, 0, len(m))
+	for k := range m {
+		kinds = append(kinds, k)
+	}
+	sort.Strings(kinds)
+	parts := make([]string, len(kinds))
+	for i, k := range kinds {
+		parts[i] = fmt.Sprintf("%s %d", k, m[k])
+	}
+	return strings.Join(parts, ", ")
+}
+
 // printZoneOriginSkips prints a terminal summary of resources skipped on a Global CP
 // because they carry kuma.io/origin: zone, telling the user which zone to target.
-//
-// Entries with NoOriginLabel (federated Zone CP) are printed in their own
-// section by printNoOriginSkips.
 func printZoneOriginSkips(skips []ZoneOriginSkip) {
-	var zoneOrigin, noOrigin []ZoneOriginSkip
-	for _, s := range skips {
-		if s.NoOriginLabel {
-			noOrigin = append(noOrigin, s)
-		} else {
-			zoneOrigin = append(zoneOrigin, s)
-		}
-	}
-	printNoOriginSkips(noOrigin)
-	if len(zoneOrigin) == 0 {
+	if len(skips) == 0 {
 		return
 	}
 	fmt.Println()
 	ui.Warn("Zone-origin resources skipped on Global CP — extract from their zone instead:")
-	for _, s := range zoneOrigin {
+	for _, s := range skips {
 		zone := s.ZoneName
 		if zone == "" {
 			zone = "(zone label absent — check kuma.io/zone label)"
 		}
 		ui.WarnIndented(fmt.Sprintf("%s/%s  →  zone: %s", s.Kind, s.Name, zone))
 	}
-}
-
-// printNoOriginSkips lists resources skipped on a federated Zone CP because they
-// carry no kuma.io/origin label, so they do not disappear silently.
-func printNoOriginSkips(skips []ZoneOriginSkip) {
-	if len(skips) == 0 {
-		return
-	}
-	fmt.Println()
-	ui.Warn(fmt.Sprintf("%d resource(s) without a kuma.io/origin label skipped on this federated Zone CP:", len(skips)))
-	for _, s := range skips {
-		where := ""
-		if s.Mesh != "" {
-			where = "  (mesh " + s.Mesh + ")"
-		}
-		ui.WarnIndented(fmt.Sprintf("%s/%s%s", s.Kind, s.Name, where))
-	}
-	ui.WarnIndented("Kuma 2.7+ labels every resource created on a zone (kuma.io/origin: zone) and every")
-	ui.WarnIndented("copy synced from Global (kuma.io/origin: global). An unlabelled one predates the label")
-	ui.WarnIndented("or was written with the admission webhook bypassed, so its owner is unknown.")
-	ui.WarnIndented("If it also exists on the Global CP it is a synced copy: extract it there. Otherwise it")
-	ui.WarnIndented("was created on this zone: label it kuma.io/origin=zone and re-run extract.")
 }
 
 // splitYAMLDocs splits a byte slice on YAML document separators (---).
@@ -472,13 +588,10 @@ func PrintCPInfo(info CPInfo, zones []string) {
 	switch cpMode {
 	case CPModeZone:
 		ui.KV("CP mode:", fmt.Sprintf("zone (%s), federated", zoneName))
-		ui.Warn("Extracting from a Zone CP — only kuma.io/origin: zone resources will be kept.")
+		ui.Warn("Extracting from a federated Zone CP — copies synced from Global (kuma.io/origin: global) are skipped.")
 		ui.WarnIndented("For a complete policy set, also run extract against the Global CP.")
-		ui.Info("MeshGatewayInstance and MeshGatewayConfig are zone-local and will be extracted here.")
-		ui.Info("MeshGateway and route CRDs (MeshHTTPRoute, MeshTCPRoute, MeshGatewayRoute):")
-		ui.InfoIndented("- Synced from Global CP with kuma.io/origin: global → skipped (extract from Global CP).")
-		ui.InfoIndented("- Created directly on this Zone CP with no origin label → extracted here.")
-		ui.Info("Other resources with no kuma.io/origin label are skipped and listed after extraction.")
+		ui.Info("Resources created on this zone are extracted: kuma.io/origin: zone, or no origin label")
+		ui.InfoIndented("(Kuma 2.x does not label legacy policies, ExternalService, ProxyTemplate, MeshGatewayRoute, …).")
 	case CPModeGlobal:
 		ui.KV("CP mode:", "global")
 		if len(zones) > 0 {

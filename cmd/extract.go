@@ -26,7 +26,8 @@ Two connection modes are supported (mutually exclusive):
                    every instance, producing one file per resource.
 
   --kumactl-context  Uses the kumactl CLI and the kumactl config file
-                   (~/.kumactl/config or $KUMACTL_CONFIG) to resolve the
+                   (~/.kumactl/config or $KUMACTL_CONFIG, which is also
+                   passed to kumactl as --config-file) to resolve the
                    context and its linked control plane, calls its
                    /_resources endpoint to discover every writable resource
                    type, lists the meshes, then runs "kumactl get <type>
@@ -39,15 +40,28 @@ Both modes detect the control plane mode and filter on the kuma.io/origin label:
 
   global                  zone-origin copies are skipped and listed (extract
                           them from their zone).
-  zone, federated         only kuma.io/origin: zone resources are kept; synced
-                          global copies are skipped, and resources with no
-                          origin label are skipped and listed.
+  zone, federated         copies synced from Global (kuma.io/origin: global)
+                          are skipped. Resources labelled kuma.io/origin: zone
+                          and resources with no origin label are kept: Kuma 2.x
+                          does not label legacy policies, ExternalService,
+                          ProxyTemplate, MeshGatewayRoute or the Kong Mesh RBAC
+                          kinds, and KDS labels every copy it syncs.
   zone, not federated     no filter: everything is extracted.
   standalone / unknown    no filter: everything is extracted.
 
 A zone is federated when it has a Global address and a zone name
 (GET /config multizone.zone.globalAddress for kumactl,
-KUMA_MULTIZONE_ZONE_GLOBAL_ADDRESS on the CP Deployment for kubectl).`,
+KUMA_MULTIZONE_ZONE_GLOBAL_ADDRESS on the CP Deployment for kubectl).
+
+In every mode, resources the control plane generates (kuma.io/managed-by:
+k8s-controller, meshservice-generator, workload-generator, such as the
+MeshServices created from Kubernetes Services) are skipped, and the fields
+the server writes are dropped so the files can be re-applied: status,
+metadata.resourceVersion/uid/generation/creationTimestamp/managedFields/
+ownerReferences, the kubectl last-applied annotation, and Universal
+creationTime/modificationTime/kri.
+
+Each Mesh is written under its own mesh-<name>/ directory.`,
 	Example: `  # Extract via kumactl (uses ~/.kumactl/config; self-hosted OR Konnect)
   kuma-migrator extract --kumactl-context konnect-global-prod --output-dir ./raw-policies
 

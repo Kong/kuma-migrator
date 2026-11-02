@@ -274,25 +274,25 @@ func TestIsEmptyResult_RealError(t *testing.T) {
 	}
 }
 
-// ---- isUnknownMeshFlag ------------------------------------------------------
+// ---- isUnknownSubcommand ------------------------------------------------------
 
 func TestIsUnknownMeshFlag_Match(t *testing.T) {
-	if !isUnknownMeshFlag(fakeErr("Error: unknown flag: --mesh")) {
-		t.Error("expected isUnknownMeshFlag=true for 'unknown flag: --mesh'")
+	if !isUnknownSubcommand(fakeErr("Error: unknown flag: --mesh")) {
+		t.Error("expected isUnknownSubcommand=true for 'unknown flag: --mesh'")
 	}
 }
 
 func TestIsUnknownMeshFlag_NoMatch(t *testing.T) {
 	for _, msg := range []string{"connection refused", "no resources found", "unauthorized"} {
-		if isUnknownMeshFlag(fakeErr(msg)) {
-			t.Errorf("expected isUnknownMeshFlag=false for %q", msg)
+		if isUnknownSubcommand(fakeErr(msg)) {
+			t.Errorf("expected isUnknownSubcommand=false for %q", msg)
 		}
 	}
 }
 
 func TestIsUnknownMeshFlag_Nil(t *testing.T) {
-	if isUnknownMeshFlag(nil) {
-		t.Error("expected isUnknownMeshFlag=false for nil")
+	if isUnknownSubcommand(nil) {
+		t.Error("expected isUnknownSubcommand=false for nil")
 	}
 }
 

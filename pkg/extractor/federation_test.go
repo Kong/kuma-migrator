@@ -140,69 +140,61 @@ metadata:
 spec: {}
 `
 
-func TestWriteResourceFiles_FederatedZone_ReportsNoLabelSkips(t *testing.T) {
-	var skips []ZoneOriginSkip
+func TestWriteResourceFiles_FederatedZone_KeepsUnlabelledSkipsGlobalCopies(t *testing.T) {
+	notes := &extractNotes{}
 	data := []byte(noLabelTimeout + "---\n" + globalOriginTimeout)
-	n, err := writeResourceFiles(data, t.TempDir(), map[string]bool{}, CPModeZone, "ctx-zone-ctx", "default", "", "kubernetes", &skips)
+	n, err := writeResourceFiles(data, t.TempDir(), map[string]bool{}, CPModeZone, "ctx-zone-ctx", "default", "", "kubernetes", notes)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n != 0 {
-		t.Errorf("expected nothing written on a federated zone, got %d", n)
+	if n != 1 {
+		t.Errorf("expected the unlabelled resource written and the global copy skipped, got %d", n)
 	}
-	if len(skips) != 1 {
-		t.Fatalf("expected only the unlabelled resource reported (a global-origin copy is expected), got %+v", skips)
-	}
-	s := skips[0]
-	if !s.NoOriginLabel || s.Kind != "MeshTimeout" || s.Name != "legacy-timeout" || s.Mesh != "default" {
-		t.Errorf("unexpected skip record: %+v", s)
+	if notes.KeptUnlabelled["MeshTimeout"] != 1 || notes.GlobalCopies != 1 || len(notes.ZoneOriginSkips) != 0 {
+		t.Errorf("unexpected notes: %+v", notes)
 	}
 }
 
-func TestWriteResourceFiles_FederatedZone_GatewayLocalNoLabelNotReported(t *testing.T) {
-	var skips []ZoneOriginSkip
-	data := []byte("apiVersion: kuma.io/v1alpha1\nkind: MeshGatewayInstance\nmetadata:\n  name: gw\nspec: {}\n")
-	n, _ := writeResourceFiles(data, t.TempDir(), map[string]bool{}, CPModeZone, "", "", "", "kubernetes", &skips)
-	if n != 1 || len(skips) != 0 {
-		t.Errorf("gateway-local kind without label must be kept and not reported: n=%d skips=%+v", n, skips)
-	}
-}
-
-func TestWriteResourceFiles_FederatedZone_MeshFilterNotReported(t *testing.T) {
-	var skips []ZoneOriginSkip
-	_, _ = writeResourceFiles([]byte(noLabelTimeout), t.TempDir(), map[string]bool{}, CPModeZone, "", "other", "default", "kubernetes", &skips)
-	if len(skips) != 0 {
-		t.Errorf("a resource excluded by --mesh is not lost and must not be reported: %+v", skips)
+func TestWriteResourceFiles_FederatedZone_MeshFilterNotCounted(t *testing.T) {
+	notes := &extractNotes{}
+	_, _ = writeResourceFiles([]byte(globalOriginTimeout), t.TempDir(), map[string]bool{}, CPModeZone, "", "other", "default", "kubernetes", notes)
+	if notes.GlobalCopies != 0 {
+		t.Errorf("a resource excluded by --mesh must not be counted: %+v", notes)
 	}
 }
 
 // A non-federated zone is extracted with filter mode "" (originFilterMode):
 // unlabelled resources and leftovers from an earlier federation are all kept.
 func TestWriteResourceFiles_NonFederatedZone_KeepsEverything(t *testing.T) {
-	var skips []ZoneOriginSkip
+	notes := &extractNotes{}
 	info := CPInfo{Mode: CPModeZone, ZoneName: "z"}
 	data := []byte(noLabelTimeout + "---\n" + globalOriginTimeout)
-	n, err := writeResourceFiles(data, t.TempDir(), map[string]bool{}, originFilterMode(info), "ctx-zone-ctx", "default", "", "kubernetes", &skips)
+	n, err := writeResourceFiles(data, t.TempDir(), map[string]bool{}, originFilterMode(info), "ctx-zone-ctx", "default", "", "kubernetes", notes)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n != 2 || len(skips) != 0 {
-		t.Errorf("expected both resources written and nothing reported, got n=%d skips=%+v", n, skips)
+	if n != 2 || notes.GlobalCopies != 0 || len(notes.KeptUnlabelled) != 0 {
+		t.Errorf("expected both resources written and nothing counted, got n=%d notes=%+v", n, notes)
 	}
 }
 
-func TestPrintZoneOriginSkips_SplitsReasons(t *testing.T) {
-	// Smoke test: both kinds of entry print without panicking.
-	printZoneOriginSkips([]ZoneOriginSkip{
-		{Kind: "MeshTimeout", Name: "a", ZoneName: "z1"},
-		{Kind: "MeshRetry", Name: "b", Mesh: "default", NoOriginLabel: true},
+func TestPrintExtractNotes_Smoke(t *testing.T) {
+	printExtractNotes(nil)
+	printExtractNotes(&extractNotes{
+		ZoneOriginSkips: []ZoneOriginSkip{{Kind: "MeshTimeout", Name: "a", ZoneName: "z1"}},
+		GlobalCopies:    2,
+		KeptUnlabelled:  map[string]int{"TrafficPermission": 3, "ExternalService": 1},
+		Generated:       map[string]int{"MeshService": 4},
 	})
+	if got := formatCounts(map[string]int{"b": 1, "a": 2}); got != "a 2, b 1" {
+		t.Errorf("formatCounts = %q", got)
+	}
 }
 
 // ---- kubectl path end to end with a fake kubectl ----------------------------
 
 // fakeKubectl answers the calls ExtractViaKubectl makes for a zone CP with one
-// MeshTimeout CRD holding an unlabelled and a zone-origin instance.
+// MeshTimeout CRD holding an unlabelled, a zone-origin and a global-origin instance.
 func fakeKubectl(t *testing.T, deploymentEnv map[string]string) {
 	t.Helper()
 	orig := runKubectl
@@ -218,11 +210,9 @@ func fakeKubectl(t *testing.T, deploymentEnv map[string]string) {
 			return []byte(`{"items":[{"spec":{"group":"kuma.io","names":{"kind":"MeshTimeout","plural":"meshtimeouts"},"versions":[{"name":"v1alpha1"}]}}]}`), nil
 		case cmd == "get meshtimeouts -A -o json":
 			return []byte(`{"items":[
-				{"kind":"MeshTimeout","metadata":{"namespace":"kuma-system","name":"old","labels":{"kuma.io/mesh":"default"}}},
-				{"kind":"MeshTimeout","metadata":{"namespace":"kuma-system","name":"new","labels":{"kuma.io/mesh":"default","kuma.io/origin":"zone"}}}]}`), nil
-		case strings.HasPrefix(cmd, "get meshtimeouts "):
-			name := args[2]
-			return []byte("apiVersion: kuma.io/v1alpha1\nkind: MeshTimeout\nmetadata:\n  name: " + name + "\n  namespace: kuma-system\nspec: {}\n"), nil
+				{"apiVersion":"kuma.io/v1alpha1","kind":"MeshTimeout","metadata":{"namespace":"kuma-system","name":"old","labels":{"kuma.io/mesh":"default"}},"spec":{}},
+				{"apiVersion":"kuma.io/v1alpha1","kind":"MeshTimeout","metadata":{"namespace":"kuma-system","name":"new","labels":{"kuma.io/mesh":"default","kuma.io/origin":"zone"}},"spec":{}},
+				{"apiVersion":"kuma.io/v1alpha1","kind":"MeshTimeout","metadata":{"namespace":"kuma-system","name":"synced","labels":{"kuma.io/mesh":"default","kuma.io/origin":"global"}},"spec":{}}]}`), nil
 		}
 		return nil, fmt.Errorf("unexpected kubectl call: %s", cmd)
 	}
@@ -250,8 +240,8 @@ func TestExtractViaKubectl_NonFederatedZoneExtractsUnlabelled(t *testing.T) {
 	if err := ExtractViaKubectl("kctx", out, "", "kubernetes"); err != nil {
 		t.Fatal(err)
 	}
-	if got := extractedTimeouts(t, out); len(got) != 2 {
-		t.Errorf("non-federated zone: expected both MeshTimeouts extracted, got %v", got)
+	if got := extractedTimeouts(t, out); len(got) != 3 {
+		t.Errorf("non-federated zone: expected every MeshTimeout extracted, got %v", got)
 	}
 	meta := ReadContextMeta(out, "kctx-zone-ctx")
 	if meta == nil || meta.Federated == nil || *meta.Federated {
@@ -262,7 +252,7 @@ func TestExtractViaKubectl_NonFederatedZoneExtractsUnlabelled(t *testing.T) {
 	}
 }
 
-func TestExtractViaKubectl_FederatedZoneSkipsUnlabelled(t *testing.T) {
+func TestExtractViaKubectl_FederatedZoneKeepsUnlabelled(t *testing.T) {
 	fakeKubectl(t, map[string]string{
 		"KUMA_MODE": "zone", "KUMA_MULTIZONE_ZONE_NAME": "east",
 		"KUMA_MULTIZONE_ZONE_GLOBAL_ADDRESS": "grpcs://global:5685",
@@ -272,8 +262,8 @@ func TestExtractViaKubectl_FederatedZoneSkipsUnlabelled(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := extractedTimeouts(t, out)
-	if len(got) != 1 || !strings.Contains(got[0], "-new") {
-		t.Errorf("federated zone: expected only the zone-origin MeshTimeout, got %v", got)
+	if len(got) != 2 || strings.Contains(strings.Join(got, ","), "-synced") {
+		t.Errorf("federated zone: expected the zone-origin and unlabelled MeshTimeouts only, got %v", got)
 	}
 	meta := ReadContextMeta(out, "kctx-zone-ctx")
 	if meta == nil || meta.Federated == nil || !*meta.Federated {
@@ -281,15 +271,15 @@ func TestExtractViaKubectl_FederatedZoneSkipsUnlabelled(t *testing.T) {
 	}
 }
 
-func TestDumpCRDInstances_FederatedZoneRecordsNoLabelSkip(t *testing.T) {
+func TestDumpCRDInstances_FederatedZoneCountsUnlabelled(t *testing.T) {
 	fakeKubectl(t, nil)
-	var skips []ZoneOriginSkip
-	n, err := dumpCRDInstances("kctx", crdEntry{Kind: "MeshTimeout", Plural: "meshtimeouts"}, t.TempDir(), CPModeZone, "kctx-zone-ctx", "", &skips)
+	notes := &extractNotes{}
+	n, err := dumpCRDInstances("kctx", crdEntry{Kind: "MeshTimeout", Plural: "meshtimeouts"}, t.TempDir(), CPModeZone, "kctx-zone-ctx", "", notes)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n != 1 || len(skips) != 1 || !skips[0].NoOriginLabel || skips[0].Name != "old" || skips[0].Mesh != "default" {
-		t.Errorf("expected 1 written and the unlabelled one reported, got n=%d skips=%+v", n, skips)
+	if n != 2 || notes.KeptUnlabelled["MeshTimeout"] != 1 || notes.GlobalCopies != 1 {
+		t.Errorf("expected 2 written, 1 unlabelled kept, 1 global copy skipped; got n=%d notes=%+v", n, notes)
 	}
 }
 

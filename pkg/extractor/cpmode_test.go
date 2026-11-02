@@ -133,26 +133,6 @@ func TestIsZoneOnlyKind(t *testing.T) {
 	}
 }
 
-func TestIsGatewayLocalKind(t *testing.T) {
-	// All gateway CRD kinds may lack the origin label on a Zone CP when created there directly.
-	gatewayKinds := []string{
-		"MeshGatewayInstance", "MeshGatewayConfig",
-		"MeshGateway", "MeshHTTPRoute", "MeshTCPRoute", "MeshGatewayRoute",
-	}
-	for _, k := range gatewayKinds {
-		if !isGatewayLocalKind(k) {
-			t.Errorf("expected %q to be gateway-local", k)
-		}
-	}
-	// Non-gateway policy kinds are not gateway-local.
-	nonGatewayKinds := []string{"MeshTimeout", "Mesh", "MeshRetry", "MeshHealthCheck"}
-	for _, k := range nonGatewayKinds {
-		if isGatewayLocalKind(k) {
-			t.Errorf("expected %q NOT to be gateway-local", k)
-		}
-	}
-}
-
 // ---- writeResourceFiles zone filter -----------------------------------------
 
 func TestWriteResourceFiles_ZoneFilter_KeepsZoneOrigin(t *testing.T) {
@@ -193,7 +173,7 @@ spec: {}
 	}
 }
 
-func TestWriteResourceFiles_ZoneFilter_SkipsNoLabel(t *testing.T) {
+func TestWriteResourceFiles_ZoneFilter_KeepsNoLabel(t *testing.T) {
 	dir := t.TempDir()
 	data := []byte(`apiVersion: kuma.io/v1alpha1
 kind: MeshTimeout
@@ -205,8 +185,8 @@ spec: {}
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if n != 0 {
-		t.Errorf("expected 0 files written (no origin label skipped on zone CP), got %d", n)
+	if n != 1 {
+		t.Errorf("expected 1 file written (no origin label = created on this zone), got %d", n)
 	}
 }
 
@@ -276,8 +256,9 @@ metadata:
   name: no-label-hc
 spec: {}
 `)
-	var skips []ZoneOriginSkip
-	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeGlobal, "", "", "", "universal", &skips)
+	notes := &extractNotes{}
+	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeGlobal, "", "", "", "universal", notes)
+	skips := notes.ZoneOriginSkips
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -305,8 +286,9 @@ labels:
   kuma.io/zone: us-east
 spec: {}
 `)
-	var skips []ZoneOriginSkip
-	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeGlobal, "", "default", "", "universal", &skips)
+	notes := &extractNotes{}
+	n, err := writeResourceFiles(data, dir, map[string]bool{}, CPModeGlobal, "", "default", "", "universal", notes)
+	skips := notes.ZoneOriginSkips
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -565,9 +547,9 @@ items: []
 	}
 }
 
-func TestWriteResourceFiles_ZoneFilter_SkipsNonGatewayNoLabel(t *testing.T) {
+func TestWriteResourceFiles_ZoneFilter_KeepsNonGatewayNoLabel(t *testing.T) {
 	dir := t.TempDir()
-	// MeshTimeout without origin label — not a gateway-local kind, must be skipped on zone CP.
+	// MeshTimeout without origin label: created on this zone (KDS labels every synced copy).
 	data := []byte(`apiVersion: kuma.io/v1alpha1
 kind: MeshTimeout
 metadata:
@@ -578,8 +560,8 @@ spec: {}
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if n != 0 {
-		t.Errorf("expected 0 files (non-gateway kind without origin label skipped on zone CP), got %d", n)
+	if n != 1 {
+		t.Errorf("expected 1 file (kind without origin label kept on zone CP), got %d", n)
 	}
 }
 
@@ -781,7 +763,8 @@ spec: {}
 	if n != 1 {
 		t.Fatalf("expected 1 file written, got %d", n)
 	}
-	content, err := os.ReadFile(filepath.Join(dir, "resiliency", "MeshTimeout-my-timeout.yaml"))
+	// The top-level mesh field places it under mesh-default/.
+	content, err := os.ReadFile(filepath.Join(dir, "mesh-default", "resiliency", "MeshTimeout-my-timeout.yaml"))
 	if err != nil {
 		t.Fatalf("reading written file: %v", err)
 	}

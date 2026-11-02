@@ -3,6 +3,7 @@ package extractor
 import (
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -29,8 +30,9 @@ var TLSSkipVerify bool
 //  1. Resolve context → CP URL from ~/.kumactl/config (or $KUMACTL_CONFIG)
 //  2. GET <cpURL>/_resources → discover all writable resource types
 //  3. List all Mesh names via kumactl
-//  4. For Mesh-scoped types: kumactl get <path> --mesh <mesh> -o yaml  (per mesh)
-//  5. For Global-scoped types: kumactl get <path> -o yaml
+//  4. For Mesh-scoped types: kumactl get <list-arg> --mesh <mesh> -o yaml  (per mesh)
+//  5. For Global-scoped types: kumactl get <list-arg> -o yaml
+//     (<list-arg> is kumactlListArg: the API path, except for HealthCheck)
 //  6. Split YAML stream → one file per resource (Insight kinds skipped)
 //
 // meshFilter, when non-empty, restricts extraction to the named mesh only.
@@ -132,11 +134,11 @@ func ExtractViaKumactl(contextName, outputDir, meshFilter, outputFormat string) 
 	}
 
 	total := 0
-	var zoneOriginSkips []ZoneOriginSkip
+	notes := &extractNotes{}
 
 	// Global-scoped resources first (no mesh association).
 	for _, rt := range globalScopedTypes {
-		n, err := dumpResources(resolvedCtx, cpURL, bearerToken, rt, "", outputDir, skipSet, filterMode, dirLabel, meshFilter, outputFormat, &zoneOriginSkips)
+		n, err := dumpResources(resolvedCtx, cpURL, bearerToken, rt, "", outputDir, skipSet, filterMode, dirLabel, meshFilter, outputFormat, notes)
 		if err != nil {
 			ui.Warn(fmt.Sprintf("%s: %v", rt.Path, err))
 		}
@@ -144,52 +146,35 @@ func ExtractViaKumactl(contextName, outputDir, meshFilter, outputFormat string) 
 	}
 
 	total += runMeshScopedTypes(loopMeshes, meshScopedTypes, resolvedCtx, cpURL, bearerToken,
-		outputDir, skipSet, filterMode, dirLabel, meshFilter, outputFormat, &zoneOriginSkips)
+		outputDir, skipSet, filterMode, dirLabel, meshFilter, outputFormat, notes)
 
 	ui.ExtractDone(total, outputDir)
-	printZoneOriginSkips(zoneOriginSkips)
+	printExtractNotes(notes)
 	return nil
 }
 
 // runMeshScopedTypes fetches every Mesh-scoped resource type for each mesh and
 // returns the number of files written.
 //
-// Some types are reported as Mesh-scoped by /_resources but rejected by kumactl
-// when passed --mesh ("unknown flag: --mesh"; "health-checks" is the common one).
-// Those are retried once without --mesh and recorded, so the retry happens a
-// single time overall rather than once per mesh.
-//
-// A type that fails this way must NOT stop the remaining types from being
-// fetched: on a live CP the first such type appears 5th out of 44, so aborting
-// silently drops nearly every policy while extract still reports success.
+// A type that fails must NOT stop the remaining types from being fetched: on a
+// live CP an early failure would otherwise silently drop nearly every policy
+// while extract still reports success. The failure is reported and the loop
+// carries on.
 func runMeshScopedTypes(
 	loopMeshes []string,
 	meshScopedTypes []resourceTypeEntry,
 	resolvedCtx, cpURL, bearerToken, outputDir string,
 	skipSet map[string]bool,
 	cpMode, dirLabel, meshFilter, outputFormat string,
-	zoneOriginSkips *[]ZoneOriginSkip,
+	notes *extractNotes,
 ) int {
 	total := 0
-	globallyExtracted := map[string]bool{}
 	for _, mesh := range loopMeshes {
 		ui.StartMesh(mesh)
 		for _, rt := range meshScopedTypes {
-			if globallyExtracted[rt.Path] {
-				continue
-			}
-			n, err := dumpResources(resolvedCtx, cpURL, bearerToken, rt, mesh, outputDir, skipSet, cpMode, dirLabel, meshFilter, outputFormat, zoneOriginSkips)
+			n, err := dumpResources(resolvedCtx, cpURL, bearerToken, rt, mesh, outputDir, skipSet, cpMode, dirLabel, meshFilter, outputFormat, notes)
 			if err != nil {
-				if isUnknownMeshFlag(err) {
-					globallyExtracted[rt.Path] = true
-					n2, err2 := dumpResources(resolvedCtx, cpURL, bearerToken, rt, "", outputDir, skipSet, cpMode, dirLabel, meshFilter, outputFormat, zoneOriginSkips)
-					if err2 != nil {
-						ui.Warn(fmt.Sprintf("%s: %v", rt.Path, err2))
-					}
-					total += n2
-					continue
-				}
-				ui.Warn(fmt.Sprintf("%s (mesh %s): %v", rt.Path, mesh, err))
+				ui.Warn(fmt.Sprintf("%s (mesh %s): %v", rt.Name, mesh, err))
 				continue
 			}
 			total += n
@@ -347,6 +332,26 @@ type resourceTypeEntry struct {
 	ReadOnly bool   `json:"readOnly"` // true for Insights and computed resources
 }
 
+// kumactlListArgOverrides maps a resource type to its `kumactl get` subcommand
+// where that differs from the API path /_resources reports. /_resources only
+// carries the API path (ResourceTypeDescription has no kumactl field); kumactl
+// registers `get` subcommands under the descriptor's KumactlListArg
+// (app/kumactl/cmd/get/get_resources.go). The two differ for one type in
+// Kuma 2.14 and Kong Mesh 2.14 (checked against every resource descriptor):
+//
+//	HealthCheck  WsPath "health-checks"  KumactlListArg "healthchecks"
+var kumactlListArgOverrides = map[string]string{
+	"HealthCheck": "healthchecks",
+}
+
+// kumactlListArg returns the `kumactl get` subcommand that lists rt.
+func kumactlListArg(rt resourceTypeEntry) string {
+	if arg, ok := kumactlListArgOverrides[rt.Name]; ok {
+		return arg
+	}
+	return rt.Path
+}
+
 type resourceTypeList struct {
 	Resources []resourceTypeEntry `json:"resources"`
 }
@@ -480,18 +485,19 @@ func parseMeshNamesFromYAML(data []byte) []string {
 // mesh is the Kuma mesh name for Mesh-scoped resources (empty for Global-scoped).
 // cpModeDir is the CP mode directory label.
 // meshFilter restricts extraction to the named mesh when non-empty.
-// skips, when non-nil, receives ZoneOriginSkip entries for any resource skipped on a
-// Global CP because it carries kuma.io/origin: zone.
+// notes, when non-nil, records what the filters skipped or kept (printExtractNotes).
 //
 // For Konnect-hosted CPs (cpURL contains api.konghq.com), resources are fetched
 // via a direct authenticated HTTP GET with ?format=kubernetes so that the response
 // is in Kubernetes format rather than Universal format. For all other CPs the
-// kumactl CLI is used.
+// kumactl CLI is used (`kumactl get <kumactlListArg>`), with a direct API read
+// when kumactl has no subcommand for the type.
+//
 // dumpResources is the indirection used by the extraction loops so tests can
 // substitute a fake fetcher. Defaults to dumpKumactlResources.
 var dumpResources = dumpKumactlResources
 
-func dumpKumactlResources(kumactlCtx, cpURL, bearerToken string, rt resourceTypeEntry, mesh, outputDir string, skipSet map[string]bool, cpMode, cpModeDir, meshFilter, outputFormat string, skips *[]ZoneOriginSkip) (int, error) {
+func dumpKumactlResources(kumactlCtx, cpURL, bearerToken string, rt resourceTypeEntry, mesh, outputDir string, skipSet map[string]bool, cpMode, cpModeDir, meshFilter, outputFormat string, notes *extractNotes) (int, error) {
 	var (
 		out []byte
 		err error
@@ -527,20 +533,35 @@ func dumpKumactlResources(kumactlCtx, cpURL, bearerToken string, rt resourceType
 		}
 	} else {
 		// Self-hosted CP: delegate to kumactl CLI.
-		args := []string{"get", rt.Path, "-o", "yaml"}
+		arg := kumactlListArg(rt)
+		args := []string{"get", arg, "-o", "yaml"}
 		if mesh != "" {
 			args = append(args, "--mesh", mesh)
 		}
 		out, err = kumactl(kumactlCtx, args...)
+		if err == nil && isKumactlUsage(out) {
+			err = errKumactlUsage
+		}
 		if err != nil {
 			if isEmptyResult(err) {
 				return 0, nil
 			}
-			return 0, err
+			if !isUnknownSubcommand(err) {
+				return 0, err
+			}
+			// kumactl has no `get <arg>`: every `get <type>` subcommand
+			// declares --mesh, so "unknown flag: --mesh" means the subcommand
+			// does not exist, not that the type is global. Read the type from
+			// the API instead of writing nothing.
+			warnUnknownSubcommand(rt, arg)
+			out, err = fetchResourcesHTTP(cpURL, bearerToken, rt.Path, mesh)
+			if err != nil {
+				return 0, fmt.Errorf("kumactl has no `get %s` subcommand and the API fallback failed: %w", arg, err)
+			}
 		}
 	}
 
-	n, err := writeResourceFiles(out, outputDir, skipSet, cpMode, cpModeDir, mesh, meshFilter, outputFormat, skips)
+	n, err := writeResourceFiles(out, outputDir, skipSet, cpMode, cpModeDir, mesh, meshFilter, outputFormat, notes)
 	return n, err
 }
 
@@ -555,15 +576,93 @@ func isEmptyResult(err error) bool {
 		strings.Contains(msg, "not found")
 }
 
-// isUnknownMeshFlag returns true when kumactl rejects --mesh for a resource type
-// that the /_resources API incorrectly reported as Mesh-scoped. This happens with
-// some Global-scoped resources (e.g. meshglobalratelimits, opa-policies) on
-// certain Kuma/Konnect versions.
-func isUnknownMeshFlag(err error) bool {
+// errKumactlUsage is returned when kumactl printed its help text instead of
+// resources, which it does for an unknown `get` subcommand without --mesh.
+var errKumactlUsage = errors.New("kumactl printed its usage")
+
+// isUnknownSubcommand returns true when kumactl did not recognise the `get`
+// subcommand. kumactl then parses the arguments against `get` itself, which
+// has no --mesh flag ("unknown flag: --mesh"), or prints its usage when
+// --mesh was not passed.
+func isUnknownSubcommand(err error) bool {
 	if err == nil {
 		return false
 	}
-	return strings.Contains(err.Error(), "unknown flag: --mesh")
+	if errors.Is(err, errKumactlUsage) {
+		return true
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "unknown flag: --mesh") ||
+		strings.Contains(msg, "unknown command")
+}
+
+// isKumactlUsage reports whether kumactl printed help text instead of resources.
+func isKumactlUsage(out []byte) bool {
+	s := string(out)
+	return strings.Contains(s, "Usage:") && strings.Contains(s, "Available Commands:")
+}
+
+var warnedSubcommands = map[string]bool{}
+
+// warnUnknownSubcommand reports, once per type, that kumactl could not list rt.
+func warnUnknownSubcommand(rt resourceTypeEntry, arg string) {
+	if warnedSubcommands[rt.Name] {
+		return
+	}
+	warnedSubcommands[rt.Name] = true
+	ui.Warn(fmt.Sprintf("kumactl has no `get %s` subcommand for %s (API path %q): reading it from the API instead.",
+		arg, rt.Name, rt.Path))
+}
+
+// fetchResourcesHTTP lists a resource type from the CP API directly, following
+// the `next` link of each page, and returns the items as one Universal list
+// document ({"items": [...]}). Used when kumactl cannot list the type.
+//
+// A `next` link pointing at another scheme or host is refused, so the bearer
+// token is only ever sent to the configured CP.
+func fetchResourcesHTTP(cpURL, bearerToken, path, mesh string) ([]byte, error) {
+	base := strings.TrimRight(cpURL, "/")
+	next := base + "/" + path
+	if mesh != "" {
+		next = base + "/meshes/" + url.PathEscape(mesh) + "/" + path
+	}
+	baseURL, err := url.Parse(base)
+	if err != nil {
+		return nil, err
+	}
+	var items []json.RawMessage
+	for page := 0; next != "" && page < 1000; page++ {
+		u, err := url.Parse(next)
+		if err != nil {
+			return nil, fmt.Errorf("invalid next link %q: %w", next, err)
+		}
+		if u.Scheme != baseURL.Scheme || u.Host != baseURL.Host {
+			return nil, fmt.Errorf("refusing next link %q outside %s", next, base)
+		}
+		body, status, err := authenticatedGet(next, bearerToken, 30*time.Second)
+		if err != nil {
+			return nil, err
+		}
+		if status == http.StatusNotFound {
+			return []byte(`{"items":[]}`), nil
+		}
+		if status != http.StatusOK {
+			return nil, fmt.Errorf("GET %s: unexpected status %d", next, status)
+		}
+		var resp struct {
+			Items []json.RawMessage `json:"items"`
+			Next  *string           `json:"next"`
+		}
+		if err := json.Unmarshal(body, &resp); err != nil {
+			return nil, fmt.Errorf("parse %s: %w", next, err)
+		}
+		items = append(items, resp.Items...)
+		next = ""
+		if resp.Next != nil {
+			next = *resp.Next
+		}
+	}
+	return json.Marshal(map[string]interface{}{"items": items})
 }
 
 // ---- kumactl config parsing -------------------------------------------------
@@ -738,9 +837,9 @@ func authenticatedGet(rawURL, bearerToken string, timeout time.Duration) (body [
 
 // ---- kumactl helper ---------------------------------------------------------
 
-func kumactl(kumactlCtx string, args ...string) ([]byte, error) {
-	fullArgs := append([]string{"--context", kumactlCtx}, args...)
-	out, err := exec.Command("kumactl", fullArgs...).Output()
+// execKumactl runs the kumactl binary. Tests substitute a fake.
+var execKumactl = func(args ...string) ([]byte, error) {
+	out, err := exec.Command("kumactl", args...).Output()
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			return nil, fmt.Errorf("%s", exitErr.Stderr)
@@ -748,4 +847,21 @@ func kumactl(kumactlCtx string, args ...string) ([]byte, error) {
 		return nil, err
 	}
 	return out, nil
+}
+
+func kumactl(kumactlCtx string, args ...string) ([]byte, error) {
+	return execKumactl(kumactlArgs(kumactlCtx, args...)...)
+}
+
+// kumactlArgs prepends the global flags to a kumactl command line. When
+// $KUMACTL_CONFIG names a config file, --config-file passes it on: extract
+// resolved the context from that file, and kumactl itself only reads
+// ~/.kumactl/config (it has no environment variable for the path).
+func kumactlArgs(kumactlCtx string, args ...string) []string {
+	var full []string
+	if p := os.Getenv("KUMACTL_CONFIG"); p != "" {
+		full = append(full, "--config-file", p)
+	}
+	full = append(full, "--context", kumactlCtx)
+	return append(full, args...)
 }
