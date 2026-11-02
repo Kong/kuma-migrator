@@ -32,7 +32,9 @@ func meshServicesV3Note(target TargetVersion) string {
 	return " Under 3.0 the field has no effect on 3.0 zones, but it is required during the " +
 		"mixed-version window: set it before upgrading the Global CP, because a 2.x zone reads a " +
 		"missing field as Disabled and then deletes every generated MeshService. Drop " +
-		"spec.meshServices once every zone runs 3.0. Any mode other than Exclusive is rejected by 3.0."
+		"spec.meshServices once every zone runs 3.0. Any mode other than Exclusive is rejected by 3.0; " +
+		"Exclusive is accepted with the warning \"meshServices was removed in 3.0 and is ignored\", which " +
+		"is expected while 2.x zones remain."
 }
 
 // ---- networking.outbound.passthrough --------------------------------------------
