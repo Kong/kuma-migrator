@@ -123,6 +123,8 @@ and Kong Mesh's latest 2.14 patch accepts the renamed KDS authentication setting
 </tr>
 </tbody>
 </table></div>
+<p>A <code>--to-latest v3</code> report checks the first two for every extracted control plane. See
+<a href="#control-plane-topology">Control Plane Topology</a>.</p>
 <h2 id="which-target-for-which-step">Which target for which step</h2>
 <div class="table-wrap"><table>
 <thead>
@@ -283,6 +285,45 @@ cutover (when a <code>Mesh</code> sets <code>spec.mtls</code>), set <code>meshSe
 delete the removed kinds, upgrade, apply backends then policies, apply the <code>Mesh</code> files. The
 first four run on 2.14; the <code>Mesh</code> files, which drop <code>spec.mtls</code>, are applied only on 3.0.</li>
 </ul>
+<h2 id="control-plane-topology">Control Plane Topology</h2>
+<p>A <code>--to-latest v3</code> report opens with this section when an extracted control plane cannot run
+3.0 as deployed. It is read from each context's <code>.kuma-migrator.json</code> (see
+<a href="../extract/#output-layout">Extract</a>); a context without one is not checked.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Context</th>
+<th>Classified as</th>
+<th>Required change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>cpMode: standalone</code></td>
+<td>Blocking</td>
+<td>Set <code>KUMA_MODE=zone</code> or <code>controlPlane.mode: zone</code>. 3.0 <code>kuma-cp</code> fails config validation on <code>standalone</code> and the Helm chart fails at template time.</td>
+</tr>
+<tr>
+<td><code>cpMode: global</code> with <code>environment: kubernetes</code> or <code>storeType: kubernetes</code>, not Konnect</td>
+<td>Blocking</td>
+<td>Deploy a Global <code>kuma-cp</code> with <code>environment=universal</code> on PostgreSQL (it can still run in a cluster), recreate the Global's resources on it, point every zone's <code>controlPlane.kdsGlobalAddress</code> at it, then retire the old one.</td>
+</tr>
+<tr>
+<td><code>cpMode: zone</code>, not federated, extracted with <code>kumactl</code></td>
+<td>Check</td>
+<td>A 2.x <code>kuma-cp</code> started with <code>KUMA_MODE=standalone</code> reports <code>zone</code> through <code>GET /config</code>. Confirm the configured value is <code>zone</code>.</td>
+</tr>
+</tbody>
+</table></div>
+<p>Konnect's hosted Global control plane is never flagged. A Global control plane deployed in a
+cluster with <code>controlPlane.environment: universal</code> and a PostgreSQL store is not flagged either.</p>
+<p>Recreating the Global's resources uses <code>kumactl apply</code>, which takes Universal YAML: extract the
+current Global with <code>--kumactl-context &lt;ctx&gt; --output-format universal</code>. <code>extract</code> skips
+<code>Secret</code>, <code>GlobalSecret</code> and <code>AccessRoleBinding</code>, so copy those separately. Without the Mesh CA
+secrets the new Global generates new CAs.</p>
+<p>Sources: <a href="https://github.com/kumahq/kuma/blob/v3.0.1/UPGRADE.md#global-control-plane-on-kubernetes-is-no-longer-supported">Global control plane on Kubernetes is no longer supported</a>,
+<a href="https://github.com/kumahq/kuma/blob/v3.0.1/UPGRADE.md#standalone-mode-removed"><code>standalone</code> mode removed</a>,
+<a href="https://kuma.io/docs/latest/production/cp-deployment/multi-zone/">Universal on Kubernetes using Helm</a>.</p>
 <h2 id="read-delete-before-upgrading-to-30">Read Delete Before Upgrading to 3.0</h2>
 <p>This section is written by <code>--to-latest v3</code> runs only. One row per source object of a kind
 3.0 removes:</p>
@@ -354,7 +395,7 @@ was in the control plane before the upgrade and what changed.</p>
   </main>
   <nav class="toc" aria-label="On this page">
     <p class="toc-title">On this page</p>
-    <ul><li class="toc-l2"><a href="#supported-upgrade-paths">Supported upgrade paths</a></li><li class="toc-l2"><a href="#which-target-for-which-step">Which target for which step</a></li><li class="toc-l2"><a href="#recommended-sequence-for-30">Recommended sequence for 3.0</a></li><li class="toc-l2"><a href="#use---dry-run-to-plan">Use --dry-run to plan</a></li><li class="toc-l2"><a href="#read-the-apply-checklist">Read the Apply Checklist</a></li><li class="toc-l2"><a href="#read-delete-before-upgrading-to-30">Read Delete Before Upgrading to 3.0</a></li><li class="toc-l2"><a href="#rollback">Rollback</a></li></ul>
+    <ul><li class="toc-l2"><a href="#supported-upgrade-paths">Supported upgrade paths</a></li><li class="toc-l2"><a href="#which-target-for-which-step">Which target for which step</a></li><li class="toc-l2"><a href="#recommended-sequence-for-30">Recommended sequence for 3.0</a></li><li class="toc-l2"><a href="#use---dry-run-to-plan">Use --dry-run to plan</a></li><li class="toc-l2"><a href="#read-the-apply-checklist">Read the Apply Checklist</a></li><li class="toc-l2"><a href="#control-plane-topology">Control Plane Topology</a></li><li class="toc-l2"><a href="#read-delete-before-upgrading-to-30">Read Delete Before Upgrading to 3.0</a></li><li class="toc-l2"><a href="#rollback">Rollback</a></li></ul>
   </nav>
 </div>
 <footer class="site-footer">

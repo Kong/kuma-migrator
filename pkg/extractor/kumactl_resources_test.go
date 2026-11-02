@@ -436,4 +436,3 @@ type errString string
 func (e errString) Error() string { return string(e) }
 
 func fakeErr(msg string) error { return errString(msg) }
-

@@ -128,7 +128,8 @@ per-zone <code>MeshService</code>s, and target it from clients and from <code>Me
 <h2 id="what-kuma-migrator-does">What kuma-migrator does</h2>
 <h3 id="extraction">Extraction</h3>
 <p><code>extract</code> detects the control plane mode (<code>GET /config</code> with <code>--kumactl-context</code>, <code>KUMA_MODE</code>
-with <code>--kube-context</code>) and filters on <code>kuma.io/origin</code>:</p>
+with <code>--kube-context</code>), whether a zone is federated (a Global address and a zone name are both
+set), and filters on <code>kuma.io/origin</code>:</p>
 <div class="table-wrap"><table>
 <thead>
 <tr>
@@ -144,9 +145,14 @@ with <code>--kube-context</code>) and filters on <code>kuma.io/origin</code>:</p
 <td><code>kuma.io/origin: zone</code>: read-only copies of zone-created resources. Listed after extraction with the zone to extract from (its <code>kuma.io/zone</code> label)</td>
 </tr>
 <tr>
-<td><code>zone</code></td>
+<td><code>zone</code>, federated</td>
 <td><code>kuma.io/origin: zone</code> and gateway-local kinds</td>
-<td>Resources synced from the Global CP</td>
+<td>Resources synced from the Global CP (<code>kuma.io/origin: global</code>); other resources with no origin label, listed after extraction</td>
+</tr>
+<tr>
+<td><code>zone</code>, not federated</td>
+<td>Everything</td>
+<td>Nothing</td>
 </tr>
 <tr>
 <td><code>standalone</code>, unknown</td>
@@ -155,9 +161,14 @@ with <code>--kube-context</code>) and filters on <code>kuma.io/origin</code>:</p
 </tr>
 </tbody>
 </table></div>
+<p>A zone with no Global owns all of its resources, so no origin filter applies to it. On a
+federated zone, Kuma 2.7+ labels every locally created resource <code>kuma.io/origin: zone</code> and
+every synced copy <code>kuma.io/origin: global</code>; an unlabelled resource predates the label or
+bypassed the admission webhook, so <code>extract</code> lists it instead of guessing its owner.</p>
 <p><code>MeshGatewayInstance</code> and <code>MeshGatewayConfig</code> are zone-local and never synced to the Global CP.
 Each context is written to its own directory (<code>&lt;context&gt;-global-ctx</code>, <code>&lt;context&gt;-zone-ctx</code>,
-<code>&lt;context&gt;-standalone-ctx</code>). Details: <a href="../../guides/extract/">Extract</a>.</p>
+<code>&lt;context&gt;-standalone-ctx</code>). On 3.0 the <code>standalone</code> mode is <code>zone</code>; the <code>-standalone-ctx</code>
+name is kept so existing extracts stay valid. Details: <a href="../../guides/extract/">Extract</a>.</p>
 <blockquote class="callout callout-note"><p><strong>Note:</strong> On Kong Mesh 3.0, <code>GET /config</code> needs the <code>VIEW_CONTROL_PLANE_METADATA</code> access type.
 Without it <code>extract</code> warns and continues with the mode unknown, so no origin filter is applied.
 See <a href="../access-control/">Access control</a>.</p>
@@ -220,9 +231,12 @@ list (the control plane generates them), so only Universal zone proxies reach <c
 <ul>
 <li><strong>Upgrade the topology.</strong> Moving a Kubernetes-native Global CP to Universal + PostgreSQL,
 renaming <code>standalone</code> to <code>zone</code> in <code>KUMA_MODE</code>/<code>controlPlane.mode</code>, and redeploying zone proxies
-as mesh-scoped ones are control plane and Helm changes, not manifests. The extractor still
-labels a standalone context <code>-standalone-ctx</code> and accepts a Kubernetes Global CP; both
-describe topologies 3.0 does not support.</li>
+as mesh-scoped ones are control plane and Helm changes, not manifests. <code>extract</code> records
+each control plane's mode, environment, store type and federation in <code>.kuma-migrator.json</code>,
+and a <code>--to-latest v3</code> report lists a <code>standalone</code> control plane and a Kubernetes-native
+Global CP (Konnect excluded) as blocking, with the steps
+(<a href="../../guides/upgrade-plans/#control-plane-topology">Upgrade plans</a>). It does not make
+the change.</li>
 <li><strong>Write <code>MeshMultiZoneService</code>.</strong> Which services must keep cross-zone behaviour is a design
 decision.</li>
 <li><strong>Create <code>MeshZoneAddress</code>.</strong> It does not exist before 3.0 and must be created right after the
@@ -231,7 +245,7 @@ zone CP upgrade. The <code>v3</code> warning contains the snippet.</li>
 <h2 id="manual-steps">Manual steps</h2>
 <ol>
 <li>Extract from the Global CP and from every Zone CP. Check the zone-origin skip list printed by
-the Global extraction.</li>
+the Global extraction, and the unlabelled-resource list printed by each federated zone.</li>
 <li>On 2.14, set <code>meshServices.mode: Exclusive</code> on every mesh (see <a href="../meshservice/">MeshService</a>).</li>
 <li>Create <code>MeshMultiZoneService</code>s for services that need cross-zone load balancing, and move
 <code>crossZone</code> settings onto <code>to[]</code> entries that target them.</li>

@@ -23,6 +23,7 @@ import (
 //	  | while read crd; do
 //	      kubectl --context <ctx> get <crd> -A -o json | <per item> | kubectl get -o yaml > file.yaml
 //	    done
+//
 // ExtractViaKubectl extracts all kuma.io/v1alpha1 resources from the cluster
 // reachable via the given Kubernetes context, writing one YAML file per resource
 // to outputDir. Resources whose kind contains "Insight" are skipped.
@@ -36,9 +37,21 @@ func ExtractViaKubectl(kubeContext, outputDir, meshFilter, outputFormat string) 
 
 	skipSet := loadSkipSet(CPEnvKubernetes) // kubectl path is always Kubernetes
 
-	cpMode, zoneName := detectKubeCPMode(kubeContext)
+	cpInfo := detectKubeCPInfo(kubeContext)
+	cpMode := cpInfo.Mode
+	// filterMode drives the per-resource origin filter; "" for a non-federated zone.
+	filterMode := originFilterMode(cpInfo)
 	dirLabel := cpModeDirectoryLabel(kubeContext, cpMode)
-	if err := WriteContextMeta(outputDir, dirLabel, "kubectl", kubeContext, cpMode, CPEnvKubernetes, false); err != nil {
+	// Environment: the Helm chart always renders KUMA_ENVIRONMENT=kubernetes; a
+	// different value means the CP was overridden to run on Universal (e.g. a
+	// Global CP on PostgreSQL deployed in a cluster), which the 3.0 topology
+	// advisory needs to tell apart from a Kubernetes-native Global.
+	metaEnv := CPEnvKubernetes
+	if cpInfo.Environment != "" {
+		metaEnv = cpInfo.Environment
+	}
+	meta := contextMetaFor("kubectl", kubeContext, metaEnv, cpInfo, false)
+	if err := WriteContextMetaFile(outputDir, dirLabel, meta); err != nil {
 		ui.Warn(fmt.Sprintf("could not write context metadata: %v", err))
 	}
 	var zones []string
@@ -51,7 +64,7 @@ func ExtractViaKubectl(kubeContext, outputDir, meshFilter, outputFormat string) 
 	if meshFilter != "" {
 		ui.KV("Mesh filter:", meshFilter)
 	}
-	PrintCPModeInfo(cpMode, zoneName, zones)
+	PrintCPInfo(cpInfo, zones)
 	fmt.Println()
 
 	crds, err := listKumaCRDs(kubeContext, skipSet)
@@ -64,7 +77,7 @@ func ExtractViaKubectl(kubeContext, outputDir, meshFilter, outputFormat string) 
 	total := 0
 	var zoneOriginSkips []ZoneOriginSkip
 	for _, crd := range crds {
-		n, err := dumpCRDInstances(kubeContext, crd, outputDir, cpMode, dirLabel, meshFilter, &zoneOriginSkips)
+		n, err := dumpCRDInstances(kubeContext, crd, outputDir, filterMode, dirLabel, meshFilter, &zoneOriginSkips)
 		if err != nil {
 			ui.Warn(fmt.Sprintf("%s: %v", crd.Plural, err))
 		}
@@ -77,7 +90,7 @@ func ExtractViaKubectl(kubeContext, outputDir, meshFilter, outputFormat string) 
 
 // listZoneNamesKubectl returns the names of all Zone resources from the cluster.
 func listZoneNamesKubectl(kubeContext string) []string {
-	out, err := kubectl(kubeContext, "get", "zones.kuma.io", "-o", "json")
+	out, err := runKubectl(kubeContext, "get", "zones.kuma.io", "-o", "json")
 	if err != nil {
 		return nil
 	}
@@ -108,17 +121,32 @@ func listZoneNamesKubectl(kubeContext string) []string {
 // zone CPs). Returns ("", "") if the deployment cannot be found — callers treat
 // "" as global and extract everything.
 func detectKubeCPMode(kubeContext string) (mode, zoneName string) {
+	info := detectKubeCPInfo(kubeContext)
+	return info.Mode, info.ZoneName
+}
+
+// detectKubeCPInfo is detectKubeCPMode plus the store type (KUMA_STORE_TYPE)
+// and zone federation. A zone is federated when KUMA_MULTIZONE_ZONE_GLOBAL_ADDRESS
+// and KUMA_MULTIZONE_ZONE_NAME are both non-empty (upstream
+// Config.IsFederatedZoneCP). The Helm chart always renders
+// KUMA_MULTIZONE_ZONE_GLOBAL_ADDRESS in zone mode, with an empty value when
+// controlPlane.kdsGlobalAddress is unset (kuma deployments/charts/kuma/templates/_helpers.tpl),
+// so the value is what counts, not the presence of the variable.
+func detectKubeCPInfo(kubeContext string) CPInfo {
 	candidates := []struct{ ns, name string }{
 		{"kuma-system", "kuma-control-plane"},
 		{"kong-mesh-system", "kong-mesh-control-plane"},
 	}
 	for _, c := range candidates {
-		m, z := kubeCPModeFromDeployment(kubeContext, c.ns, c.name)
-		if m != "" {
-			return m, z
+		out, err := runKubectl(kubeContext, "get", "deployment", c.name, "-n", c.ns, "-o", "json")
+		if err != nil {
+			continue
+		}
+		if info := kubeCPInfoFromDeploymentJSON(out); info.Mode != "" {
+			return info
 		}
 	}
-	return "", ""
+	return CPInfo{}
 }
 
 type kubeDeployment struct {
@@ -136,26 +164,34 @@ type kubeDeployment struct {
 	} `json:"spec"`
 }
 
-func kubeCPModeFromDeployment(kubeContext, ns, name string) (mode, zoneName string) {
-	out, err := kubectl(kubeContext, "get", "deployment", name, "-n", ns, "-o", "json")
-	if err != nil {
-		return "", ""
-	}
+// kubeCPInfoFromDeploymentJSON reads the CP settings from the env of a
+// `kubectl get deployment -o json` document. A later duplicate of a variable
+// wins, as it does in the running container.
+func kubeCPInfoFromDeploymentJSON(out []byte) CPInfo {
 	var dep kubeDeployment
 	if err := json.Unmarshal(out, &dep); err != nil {
-		return "", ""
+		return CPInfo{}
 	}
+	var info CPInfo
+	var globalAddress string
 	for _, container := range dep.Spec.Template.Spec.Containers {
 		for _, env := range container.Env {
 			switch env.Name {
 			case "KUMA_MODE":
-				mode = strings.ToLower(env.Value)
+				info.Mode = strings.ToLower(env.Value)
 			case "KUMA_MULTIZONE_ZONE_NAME":
-				zoneName = env.Value
+				info.ZoneName = env.Value
+			case "KUMA_MULTIZONE_ZONE_GLOBAL_ADDRESS":
+				globalAddress = env.Value
+			case "KUMA_ENVIRONMENT":
+				info.Environment = strings.ToLower(env.Value)
+			case "KUMA_STORE_TYPE":
+				info.StoreType = strings.ToLower(env.Value)
 			}
 		}
 	}
-	return mode, zoneName
+	info.Federated = isFederatedZone(info.Mode, globalAddress, info.ZoneName)
+	return info
 }
 
 // ---- CRD discovery ----------------------------------------------------------
@@ -166,8 +202,8 @@ type kubeCRDList struct {
 
 type kubeCRDItem struct {
 	Spec struct {
-		Group    string `json:"group"`
-		Names    struct {
+		Group string `json:"group"`
+		Names struct {
 			Kind   string `json:"kind"`
 			Plural string `json:"plural"`
 		} `json:"names"`
@@ -183,7 +219,7 @@ type crdEntry struct {
 }
 
 func listKumaCRDs(kubeContext string, skipSet map[string]bool) ([]crdEntry, error) {
-	out, err := kubectl(kubeContext, "get", "crd", "-o", "json")
+	out, err := runKubectl(kubeContext, "get", "crd", "-o", "json")
 	if err != nil {
 		return nil, fmt.Errorf("list CRDs: %w", err)
 	}
@@ -242,7 +278,7 @@ type kubeResourceItem struct {
 // skips, when non-nil, receives ZoneOriginSkip entries for any resource skipped on a
 // Global CP because it carries kuma.io/origin: zone.
 func dumpCRDInstances(kubeContext string, crd crdEntry, outputDir, cpMode, cpModeDir, meshFilter string, skips *[]ZoneOriginSkip) (int, error) {
-	out, err := kubectl(kubeContext, "get", crd.Plural, "-A", "-o", "json")
+	out, err := runKubectl(kubeContext, "get", crd.Plural, "-A", "-o", "json")
 	if err != nil {
 		return 0, err
 	}
@@ -283,22 +319,24 @@ func dumpCRDInstances(kubeContext string, crd crdEntry, outputDir, cpMode, cpMod
 			}
 		}
 
-		// On a Zone CP, skip resources not originating from this zone.
-		// Gateway-local kinds (MeshGateway, MeshHTTPRoute, etc.) may lack the origin label
-		// even when zone-local, so they are kept unless explicitly labelled global.
+		meshName := item.Metadata.Labels["kuma.io/mesh"]
+
+		// On a federated Zone CP, skip resources not originating from this zone
+		// (zoneOriginDecision). Callers pass "" instead of CPModeZone for a
+		// non-federated zone (originFilterMode), which keeps everything.
 		if cpMode == CPModeZone {
-			origin := item.Metadata.Labels["kuma.io/origin"]
-			switch {
-			case origin == CPModeZone:
-				// explicit zone-origin → keep
-			case origin == "" && isGatewayLocalKind(item.Kind):
-				// gateway-local kinds may lack the label on zone CPs → keep
-			default:
+			k := item.Kind
+			if k == "" {
+				k = crd.Kind
+			}
+			keep, noLabel := zoneOriginDecision(k, item.Metadata.Labels["kuma.io/origin"])
+			if !keep {
+				if noLabel && skips != nil && (meshFilter == "" || meshName == "" || meshName == meshFilter) {
+					*skips = append(*skips, ZoneOriginSkip{Kind: k, Name: item.Metadata.Name, Mesh: meshName, NoOriginLabel: true})
+				}
 				continue
 			}
 		}
-
-		meshName := item.Metadata.Labels["kuma.io/mesh"]
 
 		// Apply mesh filter: skip resources that belong to a different mesh.
 		// Resources with no mesh label (global-scoped) are never filtered out.
@@ -315,9 +353,9 @@ func dumpCRDInstances(kubeContext string, crd crdEntry, outputDir, cpMode, cpMod
 
 		var yamlBytes []byte
 		if ns != "" {
-			yamlBytes, err = kubectl(kubeContext, "get", crd.Plural, name, "-n", ns, "-o", "yaml")
+			yamlBytes, err = runKubectl(kubeContext, "get", crd.Plural, name, "-n", ns, "-o", "yaml")
 		} else {
-			yamlBytes, err = kubectl(kubeContext, "get", crd.Plural, name, "-o", "yaml")
+			yamlBytes, err = runKubectl(kubeContext, "get", crd.Plural, name, "-o", "yaml")
 		}
 		if err != nil {
 			ui.Warn(fmt.Sprintf("get %s/%s: %v", kind, name, err))
@@ -362,6 +400,10 @@ func dumpCRDInstances(kubeContext string, crd crdEntry, outputDir, cpMode, cpMod
 }
 
 // ---- kubectl helper ---------------------------------------------------------
+
+// runKubectl is the kubectl runner used by the kubectl extraction path.
+// Tests substitute a fake.
+var runKubectl = kubectl
 
 func kubectl(kubeContext string, args ...string) ([]byte, error) {
 	fullArgs := append([]string{"--context", kubeContext}, args...)

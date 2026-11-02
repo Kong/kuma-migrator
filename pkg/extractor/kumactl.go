@@ -51,7 +51,10 @@ func ExtractViaKumactl(contextName, outputDir, meshFilter, outputFormat string) 
 		ui.KV("Platform:", "Kong Konnect (hosted)")
 	}
 
-	cpMode, zoneName, cpEnv := detectKumactlCPMode(cpURL, bearerToken)
+	cpInfo := detectKumactlCPInfo(cpURL, bearerToken)
+	cpMode, cpEnv := cpInfo.Mode, cpInfo.Environment
+	// filterMode drives the per-resource origin filter; "" for a non-federated zone.
+	filterMode := originFilterMode(cpInfo)
 	if cpEnv != "" {
 		ui.KV("Environment:", cpEnv)
 	}
@@ -71,14 +74,15 @@ func ExtractViaKumactl(contextName, outputDir, meshFilter, outputFormat string) 
 
 	skipSet := loadSkipSet(cpEnv)
 	dirLabel := cpModeDirectoryLabel(resolvedCtx, cpMode)
-	if err := WriteContextMeta(outputDir, dirLabel, "kumactl", resolvedCtx, cpMode, cpEnv, isKonnectURL(cpURL)); err != nil {
+	meta := contextMetaFor("kumactl", resolvedCtx, cpEnv, cpInfo, isKonnectURL(cpURL))
+	if err := WriteContextMetaFile(outputDir, dirLabel, meta); err != nil {
 		ui.Warn(fmt.Sprintf("could not write context metadata: %v", err))
 	}
 	var zones []string
 	if cpMode == CPModeGlobal {
 		zones = listZoneNamesKumactl(resolvedCtx, cpURL, bearerToken)
 	}
-	PrintCPModeInfo(cpMode, zoneName, zones)
+	PrintCPInfo(cpInfo, zones)
 	fmt.Println()
 
 	// Discover all writable resource types from the CP API, excluding skip-list kinds.
@@ -132,7 +136,7 @@ func ExtractViaKumactl(contextName, outputDir, meshFilter, outputFormat string) 
 
 	// Global-scoped resources first (no mesh association).
 	for _, rt := range globalScopedTypes {
-		n, err := dumpKumactlResources(resolvedCtx, cpURL, bearerToken, rt, "", outputDir, skipSet, cpMode, dirLabel, meshFilter, outputFormat, &zoneOriginSkips)
+		n, err := dumpResources(resolvedCtx, cpURL, bearerToken, rt, "", outputDir, skipSet, filterMode, dirLabel, meshFilter, outputFormat, &zoneOriginSkips)
 		if err != nil {
 			ui.Warn(fmt.Sprintf("%s: %v", rt.Path, err))
 		}
@@ -140,7 +144,7 @@ func ExtractViaKumactl(contextName, outputDir, meshFilter, outputFormat string) 
 	}
 
 	total += runMeshScopedTypes(loopMeshes, meshScopedTypes, resolvedCtx, cpURL, bearerToken,
-		outputDir, skipSet, cpMode, dirLabel, meshFilter, outputFormat, &zoneOriginSkips)
+		outputDir, skipSet, filterMode, dirLabel, meshFilter, outputFormat, &zoneOriginSkips)
 
 	ui.ExtractDone(total, outputDir)
 	printZoneOriginSkips(zoneOriginSkips)
@@ -255,8 +259,22 @@ var konnectURLCheck = isKonnectURL
 //
 // For self-hosted CPs, calls GET <cpURL>/config (authenticated when bearerToken is set).
 func detectKumactlCPMode(cpURL, bearerToken string) (mode, zoneName, environment string) {
+	info := detectKumactlCPInfo(cpURL, bearerToken)
+	return info.Mode, info.ZoneName, info.Environment
+}
+
+// detectKumactlCPInfo reads GET <cpURL>/config. Besides mode, zone name and
+// environment it records the store type and whether a zone CP is federated:
+// multizone.zone.globalAddress and multizone.zone.name both set, the test
+// upstream Config.IsFederatedZoneCP applies (kuma pkg/config/app/kuma-cp/config.go;
+// globalAddress is `json:"globalAddress,omitempty"` in pkg/config/multizone).
+//
+// A 2.x CP started with KUMA_MODE=standalone reports mode "zone" here: kuma-cp
+// rewrites it at startup (app/kuma-cp/cmd/run.go). Only older CPs report
+// "standalone".
+func detectKumactlCPInfo(cpURL, bearerToken string) CPInfo {
 	if isKonnectURL(cpURL) {
-		return CPModeGlobal, "", CPEnvKubernetes
+		return CPInfo{Mode: CPModeGlobal, Environment: CPEnvKubernetes}
 	}
 
 	url := strings.TrimRight(cpURL, "/") + "/config"
@@ -264,21 +282,32 @@ func detectKumactlCPMode(cpURL, bearerToken string) (mode, zoneName, environment
 	if err != nil || status != http.StatusOK {
 		ui.Warn(cpConfigUnavailableWarning(url, status, err))
 		fmt.Println()
-		return "", "", ""
+		return CPInfo{}
 	}
 	var cfg struct {
 		Mode        string `json:"mode"`
 		Environment string `json:"environment"`
-		Multizone   struct {
+		Store       struct {
+			Type string `json:"type"`
+		} `json:"store"`
+		Multizone struct {
 			Zone struct {
-				Name string `json:"name"`
+				Name          string `json:"name"`
+				GlobalAddress string `json:"globalAddress"`
 			} `json:"zone"`
 		} `json:"multizone"`
 	}
 	if err := json.Unmarshal(body, &cfg); err != nil {
-		return "", "", ""
+		return CPInfo{}
 	}
-	return strings.ToLower(cfg.Mode), cfg.Multizone.Zone.Name, strings.ToLower(cfg.Environment)
+	mode := strings.ToLower(cfg.Mode)
+	return CPInfo{
+		Mode:        mode,
+		ZoneName:    cfg.Multizone.Zone.Name,
+		Environment: strings.ToLower(cfg.Environment),
+		StoreType:   strings.ToLower(cfg.Store.Type),
+		Federated:   isFederatedZone(mode, cfg.Multizone.Zone.GlobalAddress, cfg.Multizone.Zone.Name),
+	}
 }
 
 // cpConfigUnavailableWarning explains what extract loses when GET /config

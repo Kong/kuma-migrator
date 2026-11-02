@@ -16,7 +16,8 @@ it never writes to the control plane.
 | Type discovery | Every `kuma.io/v1alpha1` CRD in the cluster | `GET <cp>/_resources` |
 | Listing | `kubectl get <kind> -o yaml` per CRD | `kumactl get <type> [--mesh <mesh>] -o yaml` per type and mesh |
 | Mode detection | `KUMA_MODE` on the control plane Deployment in `kuma-system` or `kong-mesh-system` | `GET <cp>/config` |
-| Environment | Always `kubernetes` | `environment` field of `GET <cp>/config` |
+| Zone federation | `KUMA_MULTIZONE_ZONE_GLOBAL_ADDRESS` and `KUMA_MULTIZONE_ZONE_NAME` on the Deployment | `multizone.zone.globalAddress` and `multizone.zone.name` in `GET <cp>/config` |
+| Environment | Kubernetes skip list always; `KUMA_ENVIRONMENT` and `KUMA_STORE_TYPE` recorded | `environment` and `store.type` fields of `GET <cp>/config` |
 | Output format | Kubernetes, as returned by the API server | Universal by default; `--output-format kubernetes` converts it |
 | Apply command in the report | `kubectl apply -f <dir>/` | one `kumactl apply -f <file>` per file |
 
@@ -70,12 +71,15 @@ The kind subfolders come from
 `.kuma-migrator.json` records the extraction:
 
 ```json
-{"tool":"kumactl","context":"konnect-global-prod","cpMode":"global","isKonnect":true}
-{"tool":"kubectl","context":"zone-eu-west1-prod","cpMode":"zone","environment":"kubernetes"}
+{"tool":"kumactl","context":"konnect-global-prod","cpMode":"global","isKonnect":true,"environment":"kubernetes"}
+{"tool":"kubectl","context":"zone-eu-west1-prod","cpMode":"zone","environment":"kubernetes","storeType":"kubernetes","federated":true}
 ```
 
-`migrate` reads it to pick the skip list (`environment`) and to write the right apply command
-(`tool`, `context`, `isKonnect`) into the report. Without it, the report assumes `kubectl`.
+`migrate` reads it to pick the skip list (`environment`), to write the right apply command
+(`tool`, `context`, `isKonnect`) into the report, and, under `--to-latest v3`, to check the
+control plane topology (`cpMode`, `environment`, `storeType`, `federated`; see
+[Upgrade plans](upgrade-plans.md#control-plane-topology)). Without it, the report assumes
+`kubectl` and skips the topology check. `federated` is written for zone control planes only.
 
 Extract one mesh only:
 
@@ -89,14 +93,26 @@ each control plane gets its own `<context>-<mode>-ctx/` directory.
 ## Control plane modes
 
 `extract` detects the mode of the control plane and filters on the `kuma.io/origin` label.
-The mode decides both the directory suffix and the filter.
+The mode decides both the directory suffix and the filter. For a zone control plane, the filter
+also depends on whether the zone is federated, that is, connected to a Global control plane.
 
 | Mode | Directory | Kept | Skipped |
 |---|---|---|---|
 | `global` | `<context>-global-ctx` | `kuma.io/origin: global` and resources with no origin label | `kuma.io/origin: zone` (read-only copies synced up from zones), listed after extraction with the zone to target; `MeshGatewayInstance` and `MeshGatewayConfig` |
-| `zone` | `<context>-zone-ctx` | `kuma.io/origin: zone`, plus gateway kinds with no origin label (`MeshGateway`, `MeshGatewayInstance`, `MeshGatewayConfig`, `MeshGatewayRoute`, `MeshHTTPRoute`, `MeshTCPRoute`) | `kuma.io/origin: global` (already captured from the Global control plane) and other resources with no origin label |
+| `zone`, federated | `<context>-zone-ctx` | `kuma.io/origin: zone`, plus gateway kinds with no origin label (`MeshGateway`, `MeshGatewayInstance`, `MeshGatewayConfig`, `MeshGatewayRoute`, `MeshHTTPRoute`, `MeshTCPRoute`) | `kuma.io/origin: global` (already captured from the Global control plane); other resources with no origin label, listed after extraction |
+| `zone`, not federated | `<context>-zone-ctx` | everything | nothing |
 | `standalone` | `<context>-standalone-ctx` | everything | nothing |
 | unknown | `<context>-unknown-ctx` | everything | nothing |
+
+A zone counts as federated when it has both a Global address and a zone name, the same test as
+Kuma's `IsFederatedZoneCP`. The Helm chart always sets `KUMA_MULTIZONE_ZONE_GLOBAL_ADDRESS` in
+zone mode, empty when `controlPlane.kdsGlobalAddress` is unset, so `extract` checks the value.
+
+Kuma 3.0 removes the `standalone` mode: it becomes `zone`. The two already behave the same,
+and a 2.x control plane started with `KUMA_MODE=standalone` already reports `zone` through
+`GET /config`, so the `--kumactl-context` path sees it as a non-federated zone. `extract` keeps
+the `-standalone-ctx` directory name for a control plane that the `--kube-context` path still
+reads as `standalone`, so existing extract directories stay valid.
 
 The filter is implemented in
 [`pkg/extractor/extractor.go`](https://github.com/Kong/kuma-migrator/blob/main/pkg/extractor/extractor.go).
@@ -144,13 +160,39 @@ kuma-migrator extract --kube-context prod-zone-eu --output-dir ./raw-policies
 kuma-migrator extract --kube-context prod-zone-us --output-dir ./raw-policies
 ```
 
-Console output on a Zone control plane:
+Console output on a federated Zone control plane:
 
 ```text
-CP mode:        zone (eu-west)
+CP mode:        zone (eu-west), federated
 [WARN] Extracting from a Zone CP. Only resources with kuma.io/origin: zone will be kept.
        For a complete policy set, also run extract against the Global CP.
 [INFO] MeshGatewayInstance and MeshGatewayConfig are zone-local and will be extracted here.
+[INFO] Other resources with no kuma.io/origin label are skipped and listed after extraction.
+Extracted 12 resource(s) to ./raw-policies
+
+  ⚠  2 resource(s) without a kuma.io/origin label skipped on this federated Zone CP:
+     MeshTimeout/legacy-timeout  (mesh default)
+     MeshRetry/legacy-retry  (mesh default)
+```
+
+Kuma 2.7 and later label every resource created on a zone `kuma.io/origin: zone` (the admission
+webhook and the API server compute it) and every copy synced from the Global control plane
+`kuma.io/origin: global`. A resource with no origin label on a federated zone was created
+before the label existed (Kuma 2.6 or earlier) and not updated since, or was written with the
+admission webhook bypassed. Its owner cannot be read from the object. If it also exists on the
+Global control plane, it is a synced copy: extract it there. Otherwise it was created on the
+zone: label it `kuma.io/origin=zone` and run `extract` again.
+
+### Zone control plane without a Global
+
+A zone control plane that is not connected to a Global control plane (`KUMA_MODE=zone` with no
+Global address) owns every resource in its store, including those with no origin label, so
+`extract` applies no origin filter:
+
+```text
+CP mode:        zone (eu-west), not federated
+[INFO] This Zone CP is not connected to a Global CP: every resource in its store is its own.
+       No kuma.io/origin filter is applied — all resources are extracted.
 ```
 
 ### Where gateway resources live
@@ -170,7 +212,10 @@ The `--kumactl-context` path reads `environment` (`kubernetes` or `universal`) f
 `GET <cp>/config`, prints it, and records it in `.kuma-migrator.json`. On Universal,
 `Dataplane`, `ZoneIngress` and `ZoneEgress` are hand-written, so they are extracted and
 scanned. `Workload` is generated by the control plane in both environments and stays skipped.
-The `--kube-context` path always uses the Kubernetes skip list.
+The `--kube-context` path always uses the Kubernetes skip list. It records the Deployment's
+`KUMA_ENVIRONMENT` and `KUMA_STORE_TYPE` in `.kuma-migrator.json` (the Helm chart sets both to
+`kubernetes`; a Global control plane deployed with `controlPlane.environment: universal` on
+PostgreSQL reports otherwise), which the 3.0 topology check reads.
 
 If `GET <cp>/config` fails, `extract` prints a warning and continues in unknown mode: no origin
 filter, Kubernetes skip list. On Kong Mesh 3.0, `/config` requires the

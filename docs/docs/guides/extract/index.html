@@ -88,9 +88,14 @@ it never writes to the control plane.</p>
 <td><code>GET &lt;cp&gt;/config</code></td>
 </tr>
 <tr>
+<td>Zone federation</td>
+<td><code>KUMA_MULTIZONE_ZONE_GLOBAL_ADDRESS</code> and <code>KUMA_MULTIZONE_ZONE_NAME</code> on the Deployment</td>
+<td><code>multizone.zone.globalAddress</code> and <code>multizone.zone.name</code> in <code>GET &lt;cp&gt;/config</code></td>
+</tr>
+<tr>
 <td>Environment</td>
-<td>Always <code>kubernetes</code></td>
-<td><code>environment</code> field of <code>GET &lt;cp&gt;/config</code></td>
+<td>Kubernetes skip list always; <code>KUMA_ENVIRONMENT</code> and <code>KUMA_STORE_TYPE</code> recorded</td>
+<td><code>environment</code> and <code>store.type</code> fields of <code>GET &lt;cp&gt;/config</code></td>
 </tr>
 <tr>
 <td>Output format</td>
@@ -170,11 +175,14 @@ with <code>ApiServer.ReadOnly=true</code> reports every type as read-only, which
 </tbody>
 </table></div>
 <p><code>.kuma-migrator.json</code> records the extraction:</p>
-<div class="code"><pre class="chroma" data-lang="json"><code><span class="p">{</span><span class="nt">"tool"</span><span class="p">:</span><span class="s2">"kumactl"</span><span class="p">,</span><span class="nt">"context"</span><span class="p">:</span><span class="s2">"konnect-global-prod"</span><span class="p">,</span><span class="nt">"cpMode"</span><span class="p">:</span><span class="s2">"global"</span><span class="p">,</span><span class="nt">"isKonnect"</span><span class="p">:</span><span class="kc">true</span><span class="p">}</span>
-<span class="p">{</span><span class="nt">"tool"</span><span class="p">:</span><span class="s2">"kubectl"</span><span class="p">,</span><span class="nt">"context"</span><span class="p">:</span><span class="s2">"zone-eu-west1-prod"</span><span class="p">,</span><span class="nt">"cpMode"</span><span class="p">:</span><span class="s2">"zone"</span><span class="p">,</span><span class="nt">"environment"</span><span class="p">:</span><span class="s2">"kubernetes"</span><span class="p">}</span>
+<div class="code"><pre class="chroma" data-lang="json"><code><span class="p">{</span><span class="nt">"tool"</span><span class="p">:</span><span class="s2">"kumactl"</span><span class="p">,</span><span class="nt">"context"</span><span class="p">:</span><span class="s2">"konnect-global-prod"</span><span class="p">,</span><span class="nt">"cpMode"</span><span class="p">:</span><span class="s2">"global"</span><span class="p">,</span><span class="nt">"isKonnect"</span><span class="p">:</span><span class="kc">true</span><span class="p">,</span><span class="nt">"environment"</span><span class="p">:</span><span class="s2">"kubernetes"</span><span class="p">}</span>
+<span class="p">{</span><span class="nt">"tool"</span><span class="p">:</span><span class="s2">"kubectl"</span><span class="p">,</span><span class="nt">"context"</span><span class="p">:</span><span class="s2">"zone-eu-west1-prod"</span><span class="p">,</span><span class="nt">"cpMode"</span><span class="p">:</span><span class="s2">"zone"</span><span class="p">,</span><span class="nt">"environment"</span><span class="p">:</span><span class="s2">"kubernetes"</span><span class="p">,</span><span class="nt">"storeType"</span><span class="p">:</span><span class="s2">"kubernetes"</span><span class="p">,</span><span class="nt">"federated"</span><span class="p">:</span><span class="kc">true</span><span class="p">}</span>
 </code></pre></div>
-<p><code>migrate</code> reads it to pick the skip list (<code>environment</code>) and to write the right apply command
-(<code>tool</code>, <code>context</code>, <code>isKonnect</code>) into the report. Without it, the report assumes <code>kubectl</code>.</p>
+<p><code>migrate</code> reads it to pick the skip list (<code>environment</code>), to write the right apply command
+(<code>tool</code>, <code>context</code>, <code>isKonnect</code>) into the report, and, under <code>--to-latest v3</code>, to check the
+control plane topology (<code>cpMode</code>, <code>environment</code>, <code>storeType</code>, <code>federated</code>; see
+<a href="../upgrade-plans/#control-plane-topology">Upgrade plans</a>). Without it, the report assumes
+<code>kubectl</code> and skips the topology check. <code>federated</code> is written for zone control planes only.</p>
 <p>Extract one mesh only:</p>
 <div class="code"><pre class="chroma" data-lang="bash"><code><span class="k-bin">kuma-migrator</span> <span class="k-sub">extract</span> <span class="k-flag">--kumactl-context</span> <span class="k-val">global-cp</span> <span class="k-flag">--output-dir</span> <span class="k-val">./raw-policies</span> <span class="k-flag">--mesh</span> <span class="k-val">default</span>
 </code></pre></div>
@@ -182,7 +190,8 @@ with <code>ApiServer.ReadOnly=true</code> reports every type as read-only, which
 each control plane gets its own <code>&lt;context&gt;-&lt;mode&gt;-ctx/</code> directory.</p>
 <h2 id="control-plane-modes">Control plane modes</h2>
 <p><code>extract</code> detects the mode of the control plane and filters on the <code>kuma.io/origin</code> label.
-The mode decides both the directory suffix and the filter.</p>
+The mode decides both the directory suffix and the filter. For a zone control plane, the filter
+also depends on whether the zone is federated, that is, connected to a Global control plane.</p>
 <div class="table-wrap"><table>
 <thead>
 <tr>
@@ -200,10 +209,16 @@ The mode decides both the directory suffix and the filter.</p>
 <td><code>kuma.io/origin: zone</code> (read-only copies synced up from zones), listed after extraction with the zone to target; <code>MeshGatewayInstance</code> and <code>MeshGatewayConfig</code></td>
 </tr>
 <tr>
-<td><code>zone</code></td>
+<td><code>zone</code>, federated</td>
 <td><code>&lt;context&gt;-zone-ctx</code></td>
 <td><code>kuma.io/origin: zone</code>, plus gateway kinds with no origin label (<code>MeshGateway</code>, <code>MeshGatewayInstance</code>, <code>MeshGatewayConfig</code>, <code>MeshGatewayRoute</code>, <code>MeshHTTPRoute</code>, <code>MeshTCPRoute</code>)</td>
-<td><code>kuma.io/origin: global</code> (already captured from the Global control plane) and other resources with no origin label</td>
+<td><code>kuma.io/origin: global</code> (already captured from the Global control plane); other resources with no origin label, listed after extraction</td>
+</tr>
+<tr>
+<td><code>zone</code>, not federated</td>
+<td><code>&lt;context&gt;-zone-ctx</code></td>
+<td>everything</td>
+<td>nothing</td>
 </tr>
 <tr>
 <td><code>standalone</code></td>
@@ -219,6 +234,14 @@ The mode decides both the directory suffix and the filter.</p>
 </tr>
 </tbody>
 </table></div>
+<p>A zone counts as federated when it has both a Global address and a zone name, the same test as
+Kuma's <code>IsFederatedZoneCP</code>. The Helm chart always sets <code>KUMA_MULTIZONE_ZONE_GLOBAL_ADDRESS</code> in
+zone mode, empty when <code>controlPlane.kdsGlobalAddress</code> is unset, so <code>extract</code> checks the value.</p>
+<p>Kuma 3.0 removes the <code>standalone</code> mode: it becomes <code>zone</code>. The two already behave the same,
+and a 2.x control plane started with <code>KUMA_MODE=standalone</code> already reports <code>zone</code> through
+<code>GET /config</code>, so the <code>--kumactl-context</code> path sees it as a non-federated zone. <code>extract</code> keeps
+the <code>-standalone-ctx</code> directory name for a control plane that the <code>--kube-context</code> path still
+reads as <code>standalone</code>, so existing extract directories stay valid.</p>
 <p>The filter is implemented in
 <a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/extractor/extractor.go"><code>pkg/extractor/extractor.go</code></a>.
 Kuma's multizone resource sync is described in the
@@ -254,11 +277,32 @@ control plane.</li>
 <div class="code"><pre class="chroma" data-lang="bash"><code><span class="k-bin">kuma-migrator</span> <span class="k-sub">extract</span> <span class="k-flag">--kube-context</span> <span class="k-val">prod-zone-eu</span> <span class="k-flag">--output-dir</span> <span class="k-val">./raw-policies</span>
 <span class="k-bin">kuma-migrator</span> <span class="k-sub">extract</span> <span class="k-flag">--kube-context</span> <span class="k-val">prod-zone-us</span> <span class="k-flag">--output-dir</span> <span class="k-val">./raw-policies</span>
 </code></pre></div>
-<p>Console output on a Zone control plane:</p>
-<div class="code"><pre class="chroma" data-lang="text"><code>CP mode:        zone (eu-west)
+<p>Console output on a federated Zone control plane:</p>
+<div class="code"><pre class="chroma" data-lang="text"><code>CP mode:        zone (eu-west), federated
 <span class="o-warn">[WARN]</span> Extracting from a Zone CP. Only resources with kuma.io/origin: zone will be kept.
        For a complete policy set, also run extract against the Global CP.
 <span class="o-info">[INFO]</span> MeshGatewayInstance and MeshGatewayConfig are zone-local and will be extracted here.
+<span class="o-info">[INFO]</span> Other resources with no kuma.io/origin label are skipped and listed after extraction.
+Extracted 12 resource(s) to ./raw-policies
+
+  <span class="o-warn">⚠</span>  2 resource(s) without a kuma.io/origin label skipped on this federated Zone CP:
+     MeshTimeout/legacy-timeout  (mesh default)
+     MeshRetry/legacy-retry  (mesh default)
+</code></pre></div>
+<p>Kuma 2.7 and later label every resource created on a zone <code>kuma.io/origin: zone</code> (the admission
+webhook and the API server compute it) and every copy synced from the Global control plane
+<code>kuma.io/origin: global</code>. A resource with no origin label on a federated zone was created
+before the label existed (Kuma 2.6 or earlier) and not updated since, or was written with the
+admission webhook bypassed. Its owner cannot be read from the object. If it also exists on the
+Global control plane, it is a synced copy: extract it there. Otherwise it was created on the
+zone: label it <code>kuma.io/origin=zone</code> and run <code>extract</code> again.</p>
+<h3 id="zone-control-plane-without-a-global">Zone control plane without a Global</h3>
+<p>A zone control plane that is not connected to a Global control plane (<code>KUMA_MODE=zone</code> with no
+Global address) owns every resource in its store, including those with no origin label, so
+<code>extract</code> applies no origin filter:</p>
+<div class="code"><pre class="chroma" data-lang="text"><code>CP mode:        zone (eu-west), not federated
+<span class="o-info">[INFO]</span> This Zone CP is not connected to a Global CP: every resource in its store is its own.
+       No kuma.io/origin filter is applied — all resources are extracted.
 </code></pre></div>
 <h3 id="where-gateway-resources-live">Where gateway resources live</h3>
 <div class="table-wrap"><table>
@@ -303,7 +347,10 @@ control plane.</li>
 <code>GET &lt;cp&gt;/config</code>, prints it, and records it in <code>.kuma-migrator.json</code>. On Universal,
 <code>Dataplane</code>, <code>ZoneIngress</code> and <code>ZoneEgress</code> are hand-written, so they are extracted and
 scanned. <code>Workload</code> is generated by the control plane in both environments and stays skipped.
-The <code>--kube-context</code> path always uses the Kubernetes skip list.</p>
+The <code>--kube-context</code> path always uses the Kubernetes skip list. It records the Deployment's
+<code>KUMA_ENVIRONMENT</code> and <code>KUMA_STORE_TYPE</code> in <code>.kuma-migrator.json</code> (the Helm chart sets both to
+<code>kubernetes</code>; a Global control plane deployed with <code>controlPlane.environment: universal</code> on
+PostgreSQL reports otherwise), which the 3.0 topology check reads.</p>
 <p>If <code>GET &lt;cp&gt;/config</code> fails, <code>extract</code> prints a warning and continues in unknown mode: no origin
 filter, Kubernetes skip list. On Kong Mesh 3.0, <code>/config</code> requires the
 <code>VIEW_CONTROL_PLANE_METADATA</code> access type, so a <code>401</code> or <code>403</code> here usually means the role
@@ -343,7 +390,7 @@ file, for a control plane API with a self-signed certificate.</p>
   </main>
   <nav class="toc" aria-label="On this page">
     <p class="toc-title">On this page</p>
-    <ul><li class="toc-l2"><a href="#connection-modes">Connection modes</a></li><li class="toc-l2"><a href="#output-layout">Output layout</a></li><li class="toc-l2"><a href="#control-plane-modes">Control plane modes</a></li><li class="toc-l3"><a href="#global-control-plane">Global control plane</a></li><li class="toc-l3"><a href="#zone-control-planes">Zone control planes</a></li><li class="toc-l3"><a href="#where-gateway-resources-live">Where gateway resources live</a></li><li class="toc-l2"><a href="#environment-detection">Environment detection</a></li><li class="toc-l2"><a href="#konnect">Konnect</a></li><li class="toc-l2"><a href="#universal-format">Universal format</a></li><li class="toc-l2"><a href="#self-hosted-kumactl-specifics">Self-hosted kumactl specifics</a></li></ul>
+    <ul><li class="toc-l2"><a href="#connection-modes">Connection modes</a></li><li class="toc-l2"><a href="#output-layout">Output layout</a></li><li class="toc-l2"><a href="#control-plane-modes">Control plane modes</a></li><li class="toc-l3"><a href="#global-control-plane">Global control plane</a></li><li class="toc-l3"><a href="#zone-control-planes">Zone control planes</a></li><li class="toc-l3"><a href="#zone-control-plane-without-a-global">Zone control plane without a Global</a></li><li class="toc-l3"><a href="#where-gateway-resources-live">Where gateway resources live</a></li><li class="toc-l2"><a href="#environment-detection">Environment detection</a></li><li class="toc-l2"><a href="#konnect">Konnect</a></li><li class="toc-l2"><a href="#universal-format">Universal format</a></li><li class="toc-l2"><a href="#self-hosted-kumactl-specifics">Self-hosted kumactl specifics</a></li></ul>
   </nav>
 </div>
 <footer class="site-footer">

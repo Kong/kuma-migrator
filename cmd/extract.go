@@ -33,7 +33,21 @@ Two connection modes are supported (mutually exclusive):
                    [--mesh <mesh>] -o yaml" for each type/mesh combination
                    (or an authenticated HTTP GET instead of the CLI, for a
                    Konnect-hosted control plane), writing one file per
-                   resource.`,
+                   resource.
+
+Both modes detect the control plane mode and filter on the kuma.io/origin label:
+
+  global                  zone-origin copies are skipped and listed (extract
+                          them from their zone).
+  zone, federated         only kuma.io/origin: zone resources are kept; synced
+                          global copies are skipped, and resources with no
+                          origin label are skipped and listed.
+  zone, not federated     no filter: everything is extracted.
+  standalone / unknown    no filter: everything is extracted.
+
+A zone is federated when it has a Global address and a zone name
+(GET /config multizone.zone.globalAddress for kumactl,
+KUMA_MULTIZONE_ZONE_GLOBAL_ADDRESS on the CP Deployment for kubectl).`,
 	Example: `  # Extract via kumactl (uses ~/.kumactl/config; self-hosted OR Konnect)
   kuma-migrator extract --kumactl-context konnect-global-prod --output-dir ./raw-policies
 
