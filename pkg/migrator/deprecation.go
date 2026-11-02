@@ -34,8 +34,10 @@ import (
 //   - MeshMetric/MeshTrace/MeshAccessLog inline openTelemetry.endpoint → MeshOpenTelemetryBackend + backendRef (v2.14, removed 3.0)
 //   - MeshAccessLog openTelemetry.attributes[].key validation tightened (v2.14)
 //   - Mesh spec.routing.defaultForbidMeshExternalServiceAccess removed (3.0)
-//   - Mesh spec.mtls.backends → advisory: MeshIdentity + MeshTrust successor model (2.12+, guided)
-//   - Mesh without spec.meshServices → advisory: 3.0 defaults the mode to Exclusive (kuma#17102)
+//   - Mesh spec.mtls → MeshIdentity + MeshTrust, required before 3.0 (removed in 3.0, guided)
+//   - Mesh routing.zoneEgress / routing.localityAwareLoadBalancing / skipCreatingInitialPolicies /
+//     PERMISSIVE mTLS backend → removed in 3.0 (warnMeshFieldsRemovedIn30, v3_mesh.go)
+//   - MeshMetric prometheus.tls.mode: ActiveMTLSBackend requires a client cert on 3.0 (v3 only)
 //   - Dataplane transparentProxying.redirectPortInboundV6 removed (v2.9)
 //   - Dataplane transparentProxying.reachableServices uses legacy kuma.io/service names (v2.10)
 //   - Any Mesh* policy with a deprecated top-level spec.targetRef.kind: MeshSubset (without
@@ -77,6 +79,7 @@ func ScanForDeprecations(raw []byte, target TargetVersion) (out []byte, warnings
 	case "MeshMetric":
 		fix(fixMeshMetricSidecarRegex(obj, name))
 		warnings = append(warnings, warnInlineOtelEndpoint(obj, name, kind, target)...)
+		warnings = append(warnings, warnMeshMetricActiveMTLSBackend(obj, name, target)...)
 	case "MeshTrace":
 		warnings = append(warnings, warnInlineOtelEndpoint(obj, name, kind, target)...)
 	case "MeshAccessLog":
@@ -102,8 +105,8 @@ func ScanForDeprecations(raw []byte, target TargetVersion) (out []byte, warnings
 		fix(fixMeshServicePortProtocol(obj, name))
 	case "Mesh":
 		warnings = append(warnings, warnMeshForbidExternalServiceAccess(obj, name)...)
-		warnings = append(warnings, warnMeshMtlsBackends(obj, name)...)
-		warnings = append(warnings, warnMeshServicesDefaultFlip(obj, name)...)
+		warnings = append(warnings, warnMeshMtlsBackends(obj, name, target)...)
+		warnings = append(warnings, warnMeshFieldsRemovedIn30(obj, name)...)
 	case "Dataplane":
 		warnings = append(warnings, warnDataplaneRedirectPortInboundV6(obj, name)...)
 		warnings = append(warnings, warnDataplaneReachableServices(obj, name)...)
@@ -636,28 +639,48 @@ func collectOtelAttributeKeys(v interface{}, fn func(string)) {
 // ---- Mesh routing.defaultForbidMeshExternalServiceAccess (removed 3.0) --------
 
 func warnMeshForbidExternalServiceAccess(obj map[string]interface{}, name string) []string {
-	if !hasNestedField(obj, "spec", "routing", "defaultForbidMeshExternalServiceAccess") &&
-		!hasNestedField(obj, "routing", "defaultForbidMeshExternalServiceAccess") {
+	var v interface{}
+	if spec, ok := obj["spec"].(map[string]interface{}); ok {
+		if routing, ok := spec["routing"].(map[string]interface{}); ok {
+			v = routing["defaultForbidMeshExternalServiceAccess"]
+		}
+	}
+	if v == nil {
+		if routing, ok := obj["routing"].(map[string]interface{}); ok {
+			v = routing["defaultForbidMeshExternalServiceAccess"]
+		}
+	}
+	if v == nil {
 		return nil
+	}
+	if b, _ := v.(bool); !b {
+		return []string{fmt.Sprintf(
+			"Mesh %q: spec.routing.defaultForbidMeshExternalServiceAccess is removed in Kuma 3.0 — "+
+				"it is set to false, so remove it with no replacement.",
+			name)}
 	}
 	return []string{fmt.Sprintf(
 		"Mesh %q: spec.routing.defaultForbidMeshExternalServiceAccess is removed in Kuma 3.0 — "+
-			"control MeshExternalService access with MeshTrafficPermission instead.",
+			"control MeshExternalService access with MeshTrafficPermission instead: write an explicit "+
+			"MeshTrafficPermission on each MeshExternalService that only the intended clients may reach.",
 		name)}
 }
 
 // ---- Mesh spec.mtls backends → MeshIdentity + MeshTrust (advisory) ------------
 
-// warnMeshMtlsBackends emits a forward-looking advisory when a Mesh defines legacy mTLS
-// backends (spec.mtls.backends, builtin/provided/vault). Kuma 2.12+ introduces MeshIdentity
-// (workload identity) + MeshTrust (trust domains) as the successor model, and the experimental
-// SPIFFE rules[] API for MeshTrafficPermission requires MeshIdentity. This is intentionally
-// NOT auto-converted: the cutover is a guided multi-step CA migration (Kuma MADR-074) whose
-// inputs — trust domain (runtime/zone-derived), per-workload SPIFFE paths, and CA key material
-// (CP-generated Secret / DataSource / Vault) — are not present in the Mesh manifest, and the
-// builtin path mints a brand-new CA (a trust-root change). spec.mtls is not deprecated, so
-// doing nothing is currently safe.
-func warnMeshMtlsBackends(obj map[string]interface{}, name string) []string {
+// warnMeshMtlsBackends warns when a Mesh carries a legacy spec.mtls block
+// (enabledBackend or backends). Kuma 3.0 removes Mesh.mtls: the field is dropped
+// silently, it no longer issues certificates, and a mesh whose only identity source
+// is mtls serves and accepts plaintext, so MeshTLS and MeshTrafficPermission stop
+// applying to its proxies (UPGRADE.md "Mesh.mtls is removed from the API" and the
+// three entries after it). The successor is MeshIdentity + MeshTrust.
+//
+// This is NOT auto-converted into a MeshIdentity: the cutover is a guided CA
+// migration (Kuma MADR-074) whose inputs — trust domain (runtime/zone-derived),
+// per-workload SPIFFE paths, and CA key material (CP-generated Secret / DataSource /
+// Vault) — are not present in the Mesh manifest, and the builtin path mints a new CA.
+// Under v3 TransformMeshForTarget deletes the block and calls this for the text.
+func warnMeshMtlsBackends(obj map[string]interface{}, name string, target TargetVersion) []string {
 	// Kubernetes format: spec.mtls; Universal format: top-level mtls.
 	mtls, _ := obj["mtls"].(map[string]interface{})
 	if mtls == nil {
@@ -668,33 +691,60 @@ func warnMeshMtlsBackends(obj map[string]interface{}, name string) []string {
 	if mtls == nil {
 		return nil
 	}
-	backends, ok := mtls["backends"].([]interface{})
-	if !ok || len(backends) == 0 {
+	backends, _ := mtls["backends"].([]interface{})
+	enabled, _ := mtls["enabledBackend"].(string)
+	if len(backends) == 0 && enabled == "" {
 		return nil
 	}
 
-	msg := fmt.Sprintf(
-		"Mesh %q: spec.mtls.backends is the legacy mTLS/identity model. Kuma 2.12+ introduces "+
-			"MeshIdentity (workload identity) + MeshTrust (trust domains) as the successor, and the "+
-			"experimental SPIFFE rules[] MeshTrafficPermission API requires MeshIdentity. This is a "+
-			"guided CA cutover (see Kuma MADR-074), not a manifest rewrite — the trust domain, "+
-			"per-workload SPIFFE paths, and CA key material are not in this manifest, and the builtin "+
-			"backend mints a new CA. spec.mtls is NOT deprecated, so no action is required today; plan "+
-			"the migration when adopting MeshIdentity / the rules[] MeshTrafficPermission API.",
-		name)
+	const cutover = "This is a guided CA cutover (see Kuma MADR-074), not a manifest rewrite — the " +
+		"trust domain, per-workload SPIFFE paths, and CA key material are not in this manifest, and the " +
+		"builtin backend mints a new CA."
+
+	var msg string
+	if target.IsV3() {
+		msg = fmt.Sprintf(
+			"Mesh %q: spec.mtls is REMOVED in 3.0 and has been dropped from the Mesh output. BLOCKING: "+
+				"before upgrading, create a MeshIdentity (and MeshTrust) that selects every proxy in this "+
+				"mesh, unless one already does. On 3.0 spec.mtls issues no certificates: a mesh whose only "+
+				"identity source is spec.mtls serves and accepts plaintext, and MeshTLS and "+
+				"MeshTrafficPermission stop applying to its proxies. Finish the MeshIdentity migration "+
+				"first: after the upgrade, proxies still holding a legacy mesh certificate are not trusted "+
+				"by MeshIdentity peers and there is no rolling path back. %s The upgrade does not delete "+
+				"the <mesh>.ca-builtin-cert-<backend> / <mesh>.ca-builtin-key-<backend> Secrets; delete "+
+				"them yourself once no tooling needs the CA material.",
+			name, cutover)
+	} else {
+		msg = fmt.Sprintf(
+			"Mesh %q: spec.mtls is the legacy mTLS/identity model and is removed in Kuma 3.0. Migrating "+
+				"to MeshIdentity (workload identity) + MeshTrust (trust domains) is required before "+
+				"upgrading to 3.0: on 3.0 spec.mtls is dropped silently and issues no certificates, so a "+
+				"mesh whose only identity source is spec.mtls serves plaintext and MeshTLS / "+
+				"MeshTrafficPermission stop applying. %s The field still works on 2.x, so this output keeps it.",
+			name, cutover)
+	}
 
 	// Kong Mesh 2.14 added the MeshIdentity `Extension` provider, which is the
 	// native successor for the enterprise CA backends. Name the mapping when the
 	// Mesh actually uses one of them — it is not on the docs site, so it is easy
 	// to conclude that only Bundled and Spire exist.
 	if ext := kongMeshCABackendExtensions(backends); len(ext.types) > 0 {
-		msg += fmt.Sprintf(
-			" This Mesh uses the Kong Mesh CA backend type(s) %s. Kong Mesh 2.14 added a matching "+
-				"MeshIdentity provider: spec.provider.type: Extension with spec.provider.extension.name "+
-				"set to %s. Note the Kuma docs still list only Bundled and Spire as providers — the "+
-				"Extension provider and its acmpca/vault/certmanager configs are undocumented. "+
-				"certmanager is Kubernetes-only; on Universal the CP does not register it.",
-			strings.Join(ext.types, ", "), strings.Join(ext.names, "/"))
+		if target.IsV3() {
+			msg += fmt.Sprintf(
+				" This Mesh uses the Kong Mesh CA backend type(s) %s, which are removed in Kong Mesh 3.0. "+
+					"Replace them with a MeshIdentity using spec.provider.type: Extension with "+
+					"spec.provider.extension.name set to %s.",
+				strings.Join(ext.types, ", "), strings.Join(ext.names, "/"))
+		} else {
+			msg += fmt.Sprintf(
+				" This Mesh uses the Kong Mesh CA backend type(s) %s. Kong Mesh 2.14 added a matching "+
+					"MeshIdentity provider: spec.provider.type: Extension with spec.provider.extension.name "+
+					"set to %s.",
+				strings.Join(ext.types, ", "), strings.Join(ext.names, "/"))
+		}
+		msg += " Note the Kuma docs still list only Bundled and Spire as providers — the " +
+			"Extension provider and its acmpca/vault/certmanager configs are undocumented. " +
+			"certmanager is Kubernetes-only; on Universal the CP does not register it."
 	}
 
 	return []string{msg}
@@ -705,6 +755,7 @@ func warnMeshMtlsBackends(obj map[string]interface{}, name string) []string {
 var caBackendExtensionMap = map[string]string{
 	"vault":        "vault",
 	"acm":          "acmpca",
+	"acmpca":       "acmpca",
 	"cert-manager": "certmanager",
 	"certmanager":  "certmanager",
 }
@@ -734,36 +785,6 @@ func kongMeshCABackendExtensions(backends []interface{}) caBackendExtensions {
 		out.names = append(out.names, ext)
 	}
 	return out
-}
-
-// ---- Mesh meshServices default flip to Exclusive (advisory, 3.0) --------------
-
-// warnMeshServicesDefaultFlip advises when a Mesh has no spec.meshServices block. Kuma 3.0
-// changes the default for such meshes from permissive to meshServices.mode: Exclusive
-// (kumahq/kuma#17102), which restricts outbound connectivity to explicitly-reachable services
-// and requires reachableServices/reachableBackends to name MeshService display names. A mesh
-// that already sets meshServices (any mode) is left alone — the flip only affects the nil block.
-func warnMeshServicesDefaultFlip(obj map[string]interface{}, name string) []string {
-	// Kubernetes format: spec.meshServices; Universal format: top-level meshServices.
-	if v, ok := obj["meshServices"]; ok && v != nil {
-		return nil
-	}
-	if spec, ok := obj["spec"].(map[string]interface{}); ok {
-		if v, ok := spec["meshServices"]; ok && v != nil {
-			return nil
-		}
-	}
-	return []string{fmt.Sprintf(
-		"Mesh %q: no spec.meshServices block is set. Kuma 3.0 removes the meshServices field and its "+
-			"mode enum from the Mesh schema entirely and behaves as the old Exclusive mode "+
-			"unconditionally (kumahq/kuma#17102 flipped the nil default first; the field was then "+
-			"removed). Outbound connectivity is restricted to explicitly-reachable services, and "+
-			"reachableBackends must name MeshService resources — reachableServices and the "+
-			"kuma.io/transparent-proxying-reachable-services annotation are removed in 3.0 too. Set "+
-			"spec.meshServices.mode explicitly now (Everywhere preserves current 2.x behaviour) and "+
-			"declare reachable backends before upgrading, to avoid breaking connectivity. A Mesh that "+
-			"still sets meshServices applies successfully on 3.0; the field is silently ignored.",
-		name)}
 }
 
 // ---- Dataplane transparentProxying.redirectPortInboundV6 (v2.9) --------------

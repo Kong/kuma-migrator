@@ -89,7 +89,7 @@ func TransformDocumentWithOptions(raw []byte, opts TransformOptions) ([][]byte, 
 
 	case ScenarioMesh:
 		var err error
-		docs, warnings, err = TransformMesh(raw)
+		docs, warnings, err = TransformMeshForTarget(raw, target)
 		if err != nil {
 			return nil, nil, scenario, err
 		}
@@ -139,6 +139,16 @@ func TransformDocumentWithOptions(raw []byte, opts TransformOptions) ([][]byte, 
 
 	default: // ScenarioPassthrough, ScenarioSkipped, ScenarioUnknown
 		docs = [][]byte{raw}
+		if out, w, ok := transformPassthroughMeshForV3(raw, target); ok {
+			docs, warnings = out, w
+		}
+	}
+
+	// 3.0 removes the inline OpenTelemetry endpoint; generate MeshOpenTelemetryBackends.
+	if target.IsV3() {
+		var otelWarns []string
+		docs, otelWarns = convertInlineOtelEndpointsForV3(docs)
+		warnings = append(warnings, otelWarns...)
 	}
 
 	// The built-in gateway API is deleted outright in 3.0, so converting a MeshGateway or

@@ -145,8 +145,16 @@ func meshNeedsMigration(raw []byte) bool {
 //  1. The cleaned Mesh CRD (metrics/tracing/logging/passthrough sections removed)
 //  2. Zero or more companion CRDs (MeshMetric, MeshTrace, MeshAccessLog, MeshPassthrough)
 //
-// The cleaned Mesh is always the first document returned.
+// The cleaned Mesh is always the first document returned. TransformMesh targets
+// the 2.x line; use TransformMeshForTarget for a 3.0 target.
 func TransformMesh(raw []byte) ([][]byte, []string, error) {
+	return TransformMeshForTarget(raw, TargetV2)
+}
+
+// TransformMeshForTarget is TransformMesh for an explicit target. Under v3 it
+// also removes the Mesh fields 3.0 drops (mtls, routing.*, skipCreatingInitialPolicies)
+// and emits the companion policies needed to keep their behaviour (see v3_mesh.go).
+func TransformMeshForTarget(raw []byte, target TargetVersion) ([][]byte, []string, error) {
 	// Parse as a generic map so all unrecognised fields are preserved.
 	var obj map[string]interface{}
 	if err := yaml.Unmarshal(raw, &obj); err != nil {
@@ -202,17 +210,23 @@ func TransformMesh(raw []byte) ([][]byte, []string, error) {
 	}
 
 	// ── networking.outbound.passthrough → MeshPassthrough ─────────────────────
+	passthroughSet := false
 	if networking, ok := spec["networking"].(map[string]interface{}); ok {
 		if outbound, ok := networking["outbound"].(map[string]interface{}); ok {
 			if pt, exists := outbound["passthrough"]; exists {
+				passthroughSet = true
 				if ptBool, _ := pt.(bool); !ptBool {
 					// passthrough=false → generate MeshPassthrough with passthroughMode: None
-					if crd, ptWarns, err := buildMeshPassthrough(meshName, meshNamespace); err == nil {
+					if crd, ptWarns, err := buildMeshPassthroughMode(meshName, meshNamespace, "None"); err == nil {
 						companions = append(companions, crd)
 						warnings = append(warnings, ptWarns...)
 						warnings = append(warnings,
 							"Mesh.spec.networking.outbound.passthrough=false has been extracted to a MeshPassthrough CRD with passthroughMode: None")
 					}
+				} else {
+					crds, w := passthroughTrueCompanion(meshName, meshNamespace, target)
+					companions = append(companions, crds...)
+					warnings = append(warnings, w...)
 				}
 				delete(outbound, "passthrough")
 				if len(outbound) == 0 {
@@ -223,6 +237,9 @@ func TransformMesh(raw []byte) ([][]byte, []string, error) {
 				}
 			}
 		}
+	}
+	if !passthroughSet && target.IsV3() {
+		warnings = append(warnings, passthroughUnsetV3Warning(meshName))
 	}
 
 	// ── meshServices.mode: Exclusive ─────────────────────────────────────────────
@@ -236,8 +253,19 @@ func TransformMesh(raw []byte) ([][]byte, []string, error) {
 		meshSvc["mode"] = "Exclusive"
 		spec["meshServices"] = meshSvc
 		warnings = append(warnings,
-			"Mesh.spec.meshServices.mode set to Exclusive — required for MeshService-based policies to take effect (Kuma 2.6+). "+
-				"Verify that all policies and workloads in this mesh have been migrated before applying.")
+			"Mesh.spec.meshServices.mode set to Exclusive — required for MeshService-based policies to take effect (Kuma 2.9+). "+
+				"Verify that all policies and workloads in this mesh have been migrated before applying."+
+				meshServicesV3Note(target))
+	} else if target.IsV3() {
+		warnings = append(warnings, fmt.Sprintf(
+			"Mesh %q: keep spec.meshServices.mode: Exclusive.%s", meshName, meshServicesV3Note(target)))
+	}
+
+	// ── 3.0 schema removals ───────────────────────────────────────────────────
+	if target.IsV3() {
+		crds, w := applyMeshRemovalsForV3(obj, spec, meshName, meshNamespace)
+		companions = append(companions, crds...)
+		warnings = append(warnings, w...)
 	}
 
 	// Marshal the cleaned Mesh CRD.
@@ -381,14 +409,16 @@ func loggingToMeshAccessLog(l oldMeshLoggingSection, meshName, ns string) ([][]b
 	return [][]byte{b}, warnings
 }
 
-func buildMeshPassthrough(meshName, ns string) ([]byte, []string, error) {
+// buildMeshPassthroughMode builds a Mesh-wide MeshPassthrough with the given
+// passthroughMode (None or All).
+func buildMeshPassthroughMode(meshName, ns, mode string) ([]byte, []string, error) {
 	outName := meshName + "-passthrough"
 	var warnings []string
 	if w := ValidateResourceName(outName, "MeshPassthrough"); w != "" {
 		warnings = append(warnings, w)
 	}
 	crd := buildObservabilityCRD("MeshPassthrough", outName, ns, meshName, map[string]interface{}{
-		"passthroughMode": "None",
+		"passthroughMode": mode,
 	})
 	b, err := yaml.Marshal(crd)
 	return b, warnings, err
