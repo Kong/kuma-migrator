@@ -375,8 +375,10 @@ spec:
 	if _, ok := ms["name"]; ok || at(t, ms, "labels", "kuma.io/display-name") != "db-v2" || at(t, ms, "labels", "k8s.kuma.io/namespace") != "demo" {
 		t.Errorf("MeshService backendRef not rewritten: %v", ms)
 	}
-	// MeshServiceSubset is not this function's job.
-	if brs[1].(map[string]interface{})["name"] != "legacy" {
-		t.Errorf("MeshServiceSubset backendRef must be left alone: %v", brs[1])
+	// MeshServiceSubset is converted by fixRouteBackendRefsForV3 (v3_gateway.go)
+	// in the same scan pass; check the two fixes compose.
+	sub := brs[1].(map[string]interface{})
+	if sub["kind"] != "MeshService" || at(t, sub, "labels", "kuma.io/display-name") != "legacy" {
+		t.Errorf("MeshServiceSubset backendRef not converted by the gateway fix: %v", sub)
 	}
 }

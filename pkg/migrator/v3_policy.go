@@ -13,12 +13,8 @@ import (
 // scenario. Every function here is called from ScanForDeprecations or from the
 // legacy transforms; the v3-only ones are gated by their callers.
 
-const (
-	displayNameLabel   = "kuma.io/display-name"
-	kubeNamespaceLabel = "k8s.kuma.io/namespace"
-	zoneLabel          = "kuma.io/zone"
-	originLabel        = "kuma.io/origin"
-)
+// displayNameLabel and kubeNamespaceLabel live in v3_gateway.go, zoneLabel in v3_mes.go.
+const originLabel = "kuma.io/origin"
 
 // controlPlaneOwnedLabels are the labels the Kuma 3.0 control plane computes or
 // sets itself, minus kuma.io/mesh (which is how a Kubernetes resource states its

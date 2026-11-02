@@ -106,7 +106,7 @@ func warnMESZoneLabel(obj map[string]interface{}, name string, target TargetVers
 	if !target.IsV3() {
 		return nil
 	}
-	zone := objLabels(obj)[zoneLabel]
+	zone := objLabelStrings(obj)[zoneLabel]
 	if zone == "" {
 		return nil
 	}
@@ -180,9 +180,9 @@ func objKind(obj map[string]interface{}) string {
 	return kind
 }
 
-// objLabels returns metadata.labels (Kubernetes) merged over top-level labels
+// objLabelStrings returns metadata.labels (Kubernetes) merged over top-level labels
 // (Universal).
-func objLabels(obj map[string]interface{}) map[string]string {
+func objLabelStrings(obj map[string]interface{}) map[string]string {
 	out := map[string]string{}
 	collect := func(v interface{}) {
 		m, _ := v.(map[string]interface{})
@@ -205,7 +205,7 @@ func objMesh(obj map[string]interface{}) string {
 	if m, ok := obj["mesh"].(string); ok && m != "" {
 		return m
 	}
-	if m := objLabels(obj)[meshLabel]; m != "" {
+	if m := objLabelStrings(obj)[meshLabel]; m != "" {
 		return m
 	}
 	return "default"
