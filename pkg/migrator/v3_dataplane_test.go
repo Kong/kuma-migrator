@@ -19,7 +19,7 @@ func scanObj(t *testing.T, input string, target TargetVersion) (map[string]inter
 
 func joined(ws []string) string { return strings.Join(ws, "\n") }
 
-func dig(t *testing.T, v interface{}, path ...interface{}) interface{} {
+func digPath(t *testing.T, v interface{}, path ...interface{}) interface{} {
 	t.Helper()
 	for _, p := range path {
 		switch k := p.(type) {
@@ -56,16 +56,16 @@ networking:
 
 func TestFixDataplaneGateway_V3RemovesGatewayAndMovesTags(t *testing.T) {
 	obj, out, ws := scanObj(t, universalGatewayDP, TargetV3)
-	if dig(t, obj, "networking", "gateway") != nil {
+	if digPath(t, obj, "networking", "gateway") != nil {
 		t.Fatalf("networking.gateway must be removed under v3:\n%s", out)
 	}
-	if got := dig(t, obj, "labels", "region"); got != "eu" {
+	if got := digPath(t, obj, "labels", "region"); got != "eu" {
 		t.Errorf("gateway tag region must move to labels, got %v:\n%s", got, out)
 	}
-	if dig(t, obj, "labels", "kuma.io/service") != nil {
+	if digPath(t, obj, "labels", "kuma.io/service") != nil {
 		t.Errorf("reserved kuma.io/service must not become a label:\n%s", out)
 	}
-	if dig(t, obj, "labels", "kuma.io/gateway") != nil {
+	if digPath(t, obj, "labels", "kuma.io/gateway") != nil {
 		t.Errorf("kuma.io/gateway label must be removed under v3:\n%s", out)
 	}
 	j := joined(ws)
@@ -92,10 +92,10 @@ networking:
       kuma.io/service: kong
 `
 	obj, _, ws := scanObj(t, in, TargetV3)
-	if dig(t, obj, "networking", "gateway") != nil {
+	if digPath(t, obj, "networking", "gateway") != nil {
 		t.Errorf("DELEGATED gateway must be removed too")
 	}
-	if dig(t, obj, "labels") != nil {
+	if digPath(t, obj, "labels") != nil {
 		t.Errorf("no labels map should be created when nothing moves, got %v", obj["labels"])
 	}
 	if !strings.Contains(joined(ws), "type DELEGATED") {
@@ -129,13 +129,13 @@ spec:
         zone-group: a
 `
 	obj, out, _ := scanObj(t, in, TargetV3)
-	if dig(t, obj, "spec", "networking", "gateway") != nil {
+	if digPath(t, obj, "spec", "networking", "gateway") != nil {
 		t.Errorf("spec.networking.gateway must be removed:\n%s", out)
 	}
-	if dig(t, obj, "metadata", "labels", "zone-group") != "a" {
+	if digPath(t, obj, "metadata", "labels", "zone-group") != "a" {
 		t.Errorf("tag must move to metadata.labels:\n%s", out)
 	}
-	if dig(t, obj, "metadata", "labels", "kuma.io/gateway") != nil {
+	if digPath(t, obj, "metadata", "labels", "kuma.io/gateway") != nil {
 		t.Errorf("kuma.io/gateway label must be removed:\n%s", out)
 	}
 }
@@ -160,16 +160,16 @@ networking:
         kuma.io/protocol: http
 `
 	obj, out, ws := scanObj(t, in, TargetV3)
-	if got := dig(t, obj, "networking", "inbound", 0, "protocol"); got != "http" {
+	if got := digPath(t, obj, "networking", "inbound", 0, "protocol"); got != "http" {
 		t.Errorf("protocol must be copied from kuma.io/protocol, got %v:\n%s", got, out)
 	}
-	if got := dig(t, obj, "networking", "inbound", 1, "protocol"); got != "grpc" {
+	if got := digPath(t, obj, "networking", "inbound", 1, "protocol"); got != "grpc" {
 		t.Errorf("an explicit protocol must not be overwritten, got %v", got)
 	}
-	if dig(t, obj, "networking", "inbound", 0, "tags") != nil {
+	if digPath(t, obj, "networking", "inbound", 0, "tags") != nil {
 		t.Errorf("inbound tags must be removed after the move:\n%s", out)
 	}
-	if dig(t, obj, "labels", "version") != "v1" || dig(t, obj, "labels", "team") != "a" {
+	if digPath(t, obj, "labels", "version") != "v1" || digPath(t, obj, "labels", "team") != "a" {
 		t.Errorf("labels must hold moved tags and keep existing ones:\n%s", out)
 	}
 	j := joined(ws)
@@ -196,13 +196,13 @@ networking:
         app: b
 `
 	obj, out, ws := scanObj(t, in, TargetV3)
-	if dig(t, obj, "labels", "app") != "a" {
+	if digPath(t, obj, "labels", "app") != "a" {
 		t.Errorf("first value wins:\n%s", out)
 	}
-	if dig(t, obj, "networking", "inbound", 0, "tags") != nil {
+	if digPath(t, obj, "networking", "inbound", 0, "tags") != nil {
 		t.Errorf("non-conflicting inbound tags must be removed:\n%s", out)
 	}
-	if dig(t, obj, "networking", "inbound", 1, "tags", "app") != "b" {
+	if digPath(t, obj, "networking", "inbound", 1, "tags", "app") != "b" {
 		t.Errorf("conflicting inbound must keep its tags:\n%s", out)
 	}
 	j := joined(ws)
@@ -256,18 +256,18 @@ networking:
         port: 80
 `
 	obj, out, ws := scanObj(t, in, TargetV3)
-	ref := dig(t, obj, "networking", "outbound", 0, "backendRef")
-	if dig(t, ref, "kind") != "MeshService" || dig(t, ref, "labels", labelDisplayName) != "postgres" ||
-		dig(t, ref, "labels", labelK8sNamespace) != "db" || dig(t, ref, "port") != float64(5432) {
+	ref := digPath(t, obj, "networking", "outbound", 0, "backendRef")
+	if digPath(t, ref, "kind") != "MeshService" || digPath(t, ref, "labels", labelDisplayName) != "postgres" ||
+		digPath(t, ref, "labels", labelK8sNamespace) != "db" || digPath(t, ref, "port") != float64(5432) {
 		t.Errorf("decodable outbound must become a backendRef, got %v:\n%s", ref, out)
 	}
-	if dig(t, obj, "networking", "outbound", 0, "tags") != nil {
+	if digPath(t, obj, "networking", "outbound", 0, "tags") != nil {
 		t.Errorf("converted outbound must lose its tags:\n%s", out)
 	}
-	if dig(t, obj, "networking", "outbound", 1, "tags", "kuma.io/service") != "redis" {
+	if digPath(t, obj, "networking", "outbound", 1, "tags", "kuma.io/service") != "redis" {
 		t.Errorf("undecodable outbound must be left in place:\n%s", out)
 	}
-	if dig(t, obj, "networking", "outbound", 2, "tags") != nil {
+	if digPath(t, obj, "networking", "outbound", 2, "tags") != nil {
 		t.Errorf("tags next to a backendRef must be removed:\n%s", out)
 	}
 	j := joined(ws)
@@ -297,19 +297,19 @@ networking:
           port: 6379
 `
 	obj, out, ws := scanObj(t, in, TargetV3)
-	refs, _ := dig(t, obj, "networking", "transparentProxying", "reachableBackends", "refs").([]interface{})
+	refs, _ := digPath(t, obj, "networking", "transparentProxying", "reachableBackends", "refs").([]interface{})
 	if len(refs) != 2 {
 		t.Fatalf("expected 2 refs, got %v:\n%s", refs, out)
 	}
-	if dig(t, refs[0], "name") != nil || dig(t, refs[0], "labels", labelDisplayName) != "redis" ||
-		dig(t, refs[0], "labels", labelK8sNamespace) != "redis-system" {
+	if digPath(t, refs[0], "name") != nil || digPath(t, refs[0], "labels", labelDisplayName) != "redis" ||
+		digPath(t, refs[0], "labels", labelK8sNamespace) != "redis-system" {
 		t.Errorf("name/namespace must move to labels, got %v", refs[0])
 	}
-	if dig(t, refs[1], "labels", labelDisplayName) != "backend" || dig(t, refs[1], "labels", labelK8sNamespace) != "demo" ||
-		dig(t, refs[1], "port") != float64(8080) {
+	if digPath(t, refs[1], "labels", labelDisplayName) != "backend" || digPath(t, refs[1], "labels", labelK8sNamespace) != "demo" ||
+		digPath(t, refs[1], "port") != float64(8080) {
 		t.Errorf("reachableServices entry must become a ref, got %v", refs[1])
 	}
-	left, _ := dig(t, obj, "networking", "transparentProxying", "reachableServices").([]interface{})
+	left, _ := digPath(t, obj, "networking", "transparentProxying", "reachableServices").([]interface{})
 	if len(left) != 1 || left[0] != "legacy-universal" {
 		t.Errorf("undecodable entry must stay, got %v", left)
 	}

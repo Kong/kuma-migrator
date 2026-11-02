@@ -21,8 +21,8 @@ spec:
       appProtocol: tcp
 `
 	obj, out, ws := scanObj(t, in, TargetV3)
-	if dig(t, obj, "spec", "selector", "dataplaneTags") != nil ||
-		dig(t, obj, "spec", "selector", "dataplaneLabels", "matchLabels", "app") != "redis" {
+	if digPath(t, obj, "spec", "selector", "dataplaneTags") != nil ||
+		digPath(t, obj, "spec", "selector", "dataplaneLabels", "matchLabels", "app") != "redis" {
 		t.Errorf("expected dataplaneTags → dataplaneLabels.matchLabels:\n%s", out)
 	}
 	if !strings.Contains(joined(ws), "must exist as labels on the Dataplane") {
@@ -68,8 +68,8 @@ spec:
       value: spiffe://default/redis
 `
 	obj, out, ws := scanObj(t, in, TargetV3)
-	ids, _ := dig(t, obj, "spec", "identities").([]interface{})
-	if len(ids) != 1 || dig(t, ids[0], "type") != "SpiffeID" {
+	ids, _ := digPath(t, obj, "spec", "identities").([]interface{})
+	if len(ids) != 1 || digPath(t, ids[0], "type") != "SpiffeID" {
 		t.Errorf("ServiceTag identity must be dropped:\n%s", out)
 	}
 	if !strings.Contains(joined(ws), "ServiceTag is rejected in 3.0") {
@@ -281,8 +281,8 @@ spec:
         kuma.io/transparent-proxying-reachable-services: "backend_demo_svc_8080, legacy"
 `
 	obj, out, ws := scanObj(t, in, TargetV3)
-	anns := dig(t, obj, "spec", "template", "metadata", "annotations")
-	raw, _ := dig(t, anns, annotationReachableBackends).(string)
+	anns := digPath(t, obj, "spec", "template", "metadata", "annotations")
+	raw, _ := digPath(t, anns, annotationReachableBackends).(string)
 	var doc map[string]interface{}
 	if err := yaml.Unmarshal([]byte(raw), &doc); err != nil {
 		t.Fatalf("annotation must stay valid YAML: %v\n%s", err, out)
@@ -291,16 +291,16 @@ spec:
 	if len(refs) != 3 {
 		t.Fatalf("expected 3 refs, got %v", refs)
 	}
-	if dig(t, refs[0], "name") != nil || dig(t, refs[0], "labels", labelK8sNamespace) != "redis-system" {
+	if digPath(t, refs[0], "name") != nil || digPath(t, refs[0], "labels", labelK8sNamespace) != "redis-system" {
 		t.Errorf("ref 0 must use labels, got %v", refs[0])
 	}
-	if dig(t, refs[1], "labels", labelK8sNamespace) != "app" {
+	if digPath(t, refs[1], "labels", labelK8sNamespace) != "app" {
 		t.Errorf("name-only ref must be pinned to the workload namespace, got %v", refs[1])
 	}
-	if dig(t, refs[2], "labels", labelDisplayName) != "backend" || dig(t, refs[2], "port") != float64(8080) {
+	if digPath(t, refs[2], "labels", labelDisplayName) != "backend" || digPath(t, refs[2], "port") != float64(8080) {
 		t.Errorf("reachable-services entry must become a ref, got %v", refs[2])
 	}
-	if got := dig(t, anns, annotationReachableServices); got != "legacy" {
+	if got := digPath(t, anns, annotationReachableServices); got != "legacy" {
 		t.Errorf("undecodable entry must remain on the old annotation, got %v", got)
 	}
 	j := joined(ws)

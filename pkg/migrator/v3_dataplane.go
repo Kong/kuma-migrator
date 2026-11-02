@@ -2,7 +2,6 @@ package migrator
 
 import (
 	"fmt"
-	"sort"
 	"strconv"
 	"strings"
 )
@@ -150,15 +149,6 @@ func mergeTagsIntoLabels(labels, tags map[string]interface{}) labelMerge {
 		res.moved = append(res.moved, k+"="+v)
 	}
 	return res
-}
-
-func sortedMapKeys(m map[string]interface{}) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return keys
 }
 
 func joinNotes(notes []string) string {
