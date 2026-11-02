@@ -111,12 +111,16 @@ func v3TopLevelChecked(kind string) bool {
 //     MeshMultiZoneService or MeshHTTPRoute ref (labels only on 3.0).
 //   - a spec.to[] targetRef kind the policy's 3.0 validator does not list
 //     (warnV3ToTargetRefKinds).
+//   - removed fields the v3 rewrites could not convert (v3UnconvertedFieldReasons).
 func v3RejectionReasons(obj map[string]interface{}, name, kind string) []string {
+	// Removed fields the v3 rewrites leave in place when the manifest lacks what
+	// the replacement needs. Checked first: a Universal Dataplane has no spec.
+	reasons := v3UnconvertedFieldReasons(obj, kind)
+
 	spec, ok := obj["spec"].(map[string]interface{})
 	if !ok {
-		return nil
+		return reasons
 	}
-	var reasons []string
 
 	if meshSubsetFromKinds[kind] {
 		if from, ok := spec["from"].([]interface{}); ok && len(from) > 0 {
@@ -163,6 +167,70 @@ func v3RejectionReasons(obj map[string]interface{}, name, kind string) []string 
 		}
 	}
 	reasons = append(reasons, warnV3ToTargetRefKinds(obj, name, kind)...)
+	return reasons
+}
+
+// v3UnconvertedFieldReasons lists the fields 3.0 removes that are still in obj
+// because the v3 rewrite had too little information to convert them. Each was
+// confirmed rejected on write by Kong Mesh 3.0.1 (test/e2e/results):
+//   - Dataplane networking.outbound[] with tags and no backendRef: "backendRef:
+//     must be defined" (fixDataplaneOutboundTagsForV3 converts only a
+//     <name>_<ns>_svc_<port> service tag; the MeshService port is otherwise unknown).
+//   - MeshService spec.selector.dataplaneTags: "unknown field" (fixMeshServiceDataplaneTags
+//     leaves reserved kuma.io/ keys and conflicts to the operator).
+//   - MeshExternalService spec.tls.verification.{caCert,clientCert,clientKey} in
+//     the flat DataSource shape: "unknown field" (inline is base64 credential
+//     material and is deliberately not decoded; see fixMESDataSourcesForV3).
+func v3UnconvertedFieldReasons(obj map[string]interface{}, kind string) []string {
+	var reasons []string
+	switch kind {
+	case "Dataplane":
+		net := dataplaneNetworking(obj)
+		outs, _ := net["outbound"].([]interface{})
+		for i, o := range outs {
+			om, _ := o.(map[string]interface{})
+			if _, hasTags := om["tags"]; !hasTags {
+				continue
+			}
+			if _, hasRef := om["backendRef"]; hasRef {
+				continue
+			}
+			reasons = append(reasons, fmt.Sprintf(
+				"networking.outbound[%d] selects its service by tags, which 3.0 removes (rejected as "+
+					"\"networking.outbound[%d].backendRef: must be defined\"); write "+
+					"backendRef: {kind: MeshService, labels: {...}, port: <MeshService port>} by hand", i, i))
+		}
+	case "MeshService":
+		spec, _ := obj["spec"].(map[string]interface{})
+		selector, _ := spec["selector"].(map[string]interface{})
+		if _, ok := selector["dataplaneTags"]; ok {
+			reasons = append(reasons,
+				"spec.selector.dataplaneTags is removed in 3.0 (rejected as \"spec.selector.dataplaneTags: "+
+					"unknown field\"); rewrite it as spec.selector.dataplaneLabels.matchLabels on labels the "+
+					"Dataplanes carry")
+		}
+	case "MeshExternalService":
+		verification := mesTLSVerification(obj)
+		for _, field := range mesDataSourceFields {
+			ds, _ := verification[field].(map[string]interface{})
+			if ds == nil {
+				continue
+			}
+			if _, typed := ds["type"]; typed {
+				continue
+			}
+			for _, legacy := range []string{"inline", "inlineString", "secret"} {
+				if _, ok := ds[legacy]; ok {
+					reasons = append(reasons, fmt.Sprintf(
+						"spec.tls.verification.%s.%s is the flat DataSource shape 3.0 removes (rejected as "+
+							"\"spec.tls.verification.%s.%s: unknown field\"); rewrite it as a SecureDataSource "+
+							"(type: Secret + secretRef, or type: InsecureInline + insecureInline.value)",
+						field, legacy, field, legacy))
+					break
+				}
+			}
+		}
+	}
 	return reasons
 }
 

@@ -17,8 +17,9 @@ import (
 
 // fixMeshService handles the 3.0 MeshService removals:
 //   - spec.selector.dataplaneTags → spec.selector.dataplaneLabels.matchLabels
-//     ("dataplaneTags removed from the MeshService selector"). Un-migrated selectors
-//     are dropped silently and the MeshService matches no proxies.
+//     ("dataplaneTags removed from the MeshService selector"). A write that still
+//     carries it is rejected ("spec.selector.dataplaneTags: unknown field"); one
+//     already stored loses the selector and the MeshService matches no proxies.
 //   - spec.identities[] type ServiceTag ("MeshService.spec.identities now accepts
 //     SPIFFE IDs only"). The SPIFFE ID cannot be derived from the tag, so those
 //     entries are dropped.
@@ -83,16 +84,18 @@ func fixMeshServiceDataplaneTags(selector, tags map[string]interface{}, name str
 	}
 	if !target.IsV3() {
 		return false, []string{fmt.Sprintf(
-			"MeshService %q: spec.selector.dataplaneTags is removed in 3.0 and dropped silently — the "+
-				"MeshService then matches no proxies and goes Unavailable. Switch to "+
+			"MeshService %q: spec.selector.dataplaneTags is removed in 3.0 — a 3.0 control plane rejects "+
+				"the MeshService on write (unknown field), and one already stored loses its selector, matches "+
+				"no proxies and goes Unavailable. Switch to "+
 				"spec.selector.dataplaneLabels.matchLabels once the selected Dataplanes carry those keys as "+
 				"labels (2.14 supports dataplaneLabels). Re-run with --to-latest v3 to rewrite it.",
 			name)}
 	}
 	if len(untranslatable) > 0 {
 		return false, []string{fmt.Sprintf(
-			"MeshService %q: spec.selector.dataplaneTags is removed in 3.0 and dropped silently, leaving a "+
-				"MeshService that matches no proxies. Not converted: %s cannot be a Dataplane label (reserved "+
+			"MeshService %q: spec.selector.dataplaneTags is removed in 3.0 — a 3.0 control plane rejects "+
+				"the MeshService as written (unknown field), so it is kept out of the apply tree. Not "+
+				"converted: %s cannot be a Dataplane label (reserved "+
 				"kuma.io/ prefix), and dropping it would widen the selector. Rewrite as "+
 				"spec.selector.dataplaneLabels.matchLabels on labels the Dataplanes actually carry.",
 			name, strings.Join(untranslatable, ", "))}
