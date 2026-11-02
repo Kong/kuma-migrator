@@ -1138,22 +1138,28 @@
     status: converted
     output: [Gateway]
     notes: |
-      Converted to a Gateway API `Gateway`:
+      Converted to a Gateway API `Gateway` named after the `MeshGateway`:
 
-      - `conf.listeners[]` → `spec.listeners[]` (`name` from the `port` tag or
-        `<protocol>-<port>`, `hostname`, `tls.mode` recased, `certificates[].secret` →
-        `certificateRefs[]`).
-      - `spec.gatewayClassName` is the name of the GatewayClass generated from the companion
+      - `conf.listeners[]` → `spec.listeners[]` (`name` is `<protocol>-<port>`, with a `-2`,
+        `-3`, … suffix when two listeners share protocol and port; `hostname`, `tls.mode`
+        recased, `certificates[].secret` → `certificateRefs[]`).
+      - `metadata.namespace` is the namespace of the companion
         [MeshGatewayInstance](policy:MeshGatewayInstance), matched on the shared
-        `kuma.io/service` tag. Several matches pick the first and warn; none leaves
-        `REPLACE-WITH-YOUR-GATEWAYCLASS` and warns.
+        `kuma.io/service` tag. `MeshGateway` is cluster-scoped, the gateway pods run in the
+        instance's namespace, and Kuma creates a Gateway's instance in the Gateway's own
+        namespace. Instances in several namespaces pick the first and warn; none omits the
+        field and warns (apply with `-n`). An empty namespace is never emitted.
+      - `spec.gatewayClassName` is the name of the GatewayClass generated from the same
+        instance. An instance without `spec.tags["kuma.io/service"]` matches on the
+        `<name>_<namespace>_svc` tag Kuma gives it. Several matches pick the first and warn;
+        none leaves `REPLACE-WITH-YOUR-GATEWAYCLASS` and warns.
       - `spec.selectors` has no Gateway API equivalent and is reported.
   v3:
     status: converted
     output: [Gateway]
     notes: |
-      The listener block is converted as on v2, but `gatewayClassName` is always
-      `REPLACE-WITH-YOUR-GATEWAYCLASS`: 3.0 has no Gateway or GatewayClass reconciler. Set it to
+      The listener block and `metadata.namespace` are converted as on v2, but
+      `gatewayClassName` is always `REPLACE-WITH-YOUR-GATEWAYCLASS`: 3.0 has no Gateway or GatewayClass reconciler. Set it to
       the class of the gateway implementation you adopt, and rejoin the workload as a delegated
       gateway (`traffic.kuma.io/exclude-inbound-ports` on the pod, `kuma.io/ignore: "true"` on
       its Service).
@@ -1178,13 +1184,21 @@
     notes: |
       `conf.http` → Gateway API `HTTPRoute`, `conf.tcp` → `TCPRoute`.
 
-      - `parentRefs[]` come from `spec.selectors[]`: the `kuma.io/service` tag gives the
-        Gateway name (decoded from `<name>_<ns>_svc` when it has that form) and the remaining
-        tags give `sectionName`.
+      - `parentRefs[]` come from `spec.selectors[]`. The `kuma.io/service` tag is matched
+        against the [MeshGateway](policy:MeshGateway) documents in the input, so the parentRef
+        names the converted Gateway (named after the `MeshGateway`, not after the tag) in the
+        namespace that Gateway gets. The remaining tags select listeners by their `tags`, and
+        each match becomes a parentRef whose `sectionName` is that listener's emitted name.
+        A tag selected by several `MeshGateway`s emits one parentRef per Gateway and warns.
+        When no `MeshGateway` in the input selects the tag, the name is decoded from
+        `<name>_<ns>_svc` (or the raw tag is used) and a warning asks you to verify it.
+      - `MeshGatewayRoute` is cluster-scoped. When every parent Gateway resolves to one
+        namespace, the route is placed there: a Gateway listener accepts routes only from its
+        own namespace by default.
       - `backends[].destination["kuma.io/service"]` → `backendRefs[]` of `kind: Service` with
         the decoded name, namespace and port.
-      - A backend in another namespace than the route gets a `ReferenceGrant`. A route with no
-        namespace is reported instead.
+      - A backend in another namespace than the route gets a `ReferenceGrant`. A route whose
+        namespace is still unknown is reported instead.
 
       A warning states the alternative successor: if Kuma should keep routing this traffic,
       write a `MeshHTTPRoute`/`MeshTCPRoute`. Kuma never reconciles `TCPRoute`; only the
@@ -1211,12 +1225,20 @@
     status: converted
     output: [GatewayClass, MeshGatewayConfig]
     notes: |
-      Converted to a cluster-scoped `GatewayClass` named after the instance
+      Converted to a `GatewayClass` named after the instance
       (`controllerName: gateways.kuma.io/controller`) whose `parametersRef` points at a
       `MeshGatewayConfig` carrying the instance `spec` (`replicas`, `serviceType`, `tags`).
-      Set `gatewayClassName` on your Gateways to this name; the converted
-      [MeshGateway](policy:MeshGateway) does so automatically when the `kuma.io/service`
-      tags match.
+      Both are cluster-scoped, so neither the `MeshGatewayConfig` nor the `parametersRef`
+      has a namespace: Kuma marks a class whose `parametersRef` names a namespace as
+      `InvalidParameters` and ignores its Gateways.
+
+      `tags["kuma.io/service"]` is dropped from the `MeshGatewayConfig`, with a warning: Kuma
+      copies those tags onto the instance it creates for each Gateway, which must keep the
+      generated `<gateway>_<namespace>_svc` value.
+
+      Set `gatewayClassName` on your Gateways to this name and create them in the instance's
+      namespace; the converted [MeshGateway](policy:MeshGateway) does both automatically
+      when the `kuma.io/service` tags match.
   v3:
     status: error
     output: []
@@ -1243,15 +1265,14 @@
     status: passthrough
     output: [MeshGatewayConfig]
     notes: |
-      Copied unchanged when found in the input. Also emitted from a
-      [MeshGatewayInstance](policy:MeshGatewayInstance) conversion.
+      Copied unchanged when found in the input. Also emitted, cluster-scoped and without a
+      namespace, from a [MeshGatewayInstance](policy:MeshGatewayInstance) conversion.
   v3:
-    status: passthrough
-    output: [MeshGatewayConfig]
+    status: removed
+    output: []
     notes: |
-      Copied unchanged into the apply tree. 3.0 removes `MeshGatewayConfig` with the rest of
-      the built-in gateway API; the migrator does not report it yet. Delete it before
-      upgrading.
+      3.0 removes `MeshGatewayConfig` with the rest of the built-in gateway API. Copied to
+      `_manual/`, not to the apply tree, and listed under "Delete Before Upgrading to 3.0".
   timeline:
     - version: "3.0"
       change: Removed with the built-in gateway API (`meshgatewayconfigs.kuma.io` CRD deleted).

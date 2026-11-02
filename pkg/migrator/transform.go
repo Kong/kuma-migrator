@@ -38,6 +38,9 @@ type TransformOptions struct {
 	// GatewayClasses resolves the GatewayClass a converted MeshGateway must name,
 	// which lives on the companion MeshGatewayInstance.
 	GatewayClasses GatewayClassIndex
+	// Gateways resolves the name, namespace and listener names of the Gateway
+	// converted from the MeshGateway a MeshGatewayRoute selects.
+	Gateways *GatewayRefIndex
 	// MeshIdentities records the meshes that have a MeshIdentity, which every
 	// MeshExternalService needs on 3.0 (see warnMESRequiresMeshIdentity).
 	MeshIdentities MeshIdentityIndex
@@ -115,7 +118,7 @@ func TransformDocumentWithOptions(raw []byte, opts TransformOptions) ([][]byte, 
 
 	case ScenarioGatewayRoute:
 		var err error
-		docs, warnings, err = TransformMeshGatewayRoute(raw)
+		docs, warnings, err = TransformMeshGatewayRouteWithOptions(raw, opts)
 		if err != nil {
 			return nil, nil, scenario, err
 		}

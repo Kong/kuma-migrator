@@ -295,14 +295,34 @@ spec:
 	if mgcMeta["name"] != "edge-gateway" {
 		t.Errorf("expected MeshGatewayConfig name=edge-gateway, got %v", mgcMeta["name"])
 	}
-	if mgcMeta["namespace"] != "kuma-demo" {
-		t.Errorf("expected namespace=kuma-demo, got %v", mgcMeta["namespace"])
+	// meshgatewayconfigs.kuma.io is scope: Cluster (2.14 CRD), and Kuma's
+	// GatewayClass controller rejects a parametersRef that carries a namespace.
+	if ns, ok := mgcMeta["namespace"]; ok {
+		t.Errorf("MeshGatewayConfig is cluster-scoped; namespace must be absent, got %v", ns)
+	}
+	paramsRef := gcSpec["parametersRef"].(map[string]interface{})
+	if ns, ok := paramsRef["namespace"]; ok {
+		t.Errorf("parametersRef must not carry a namespace (class would be InvalidParameters), got %v", ns)
+	}
+	if paramsRef["name"] != "edge-gateway" || paramsRef["kind"] != "MeshGatewayConfig" {
+		t.Errorf("unexpected parametersRef: %v", paramsRef)
 	}
 
-	// Spec should be preserved from MeshGatewayInstance.
+	// Spec should be preserved from MeshGatewayInstance...
 	mgcSpec := mgc["spec"].(map[string]interface{})
 	if mgcSpec["serviceType"] != "LoadBalancer" {
 		t.Errorf("expected serviceType=LoadBalancer, got %v", mgcSpec["serviceType"])
+	}
+	// ...except kuma.io/service: Kuma generates <gateway>_<ns>_svc per Gateway,
+	// and a copied fixed value would stop the gateway selecting its own pods.
+	if tags, ok := mgcSpec["tags"]; ok {
+		t.Errorf("kuma.io/service must not be carried into MeshGatewayConfig.spec.tags, got %v", tags)
+	}
+	if !hasWarning(warnings, "is not carried into MeshGatewayConfig") {
+		t.Errorf("expected a warning about the dropped kuma.io/service tag, got: %v", warnings)
+	}
+	if !hasWarning(warnings, "belong in namespace kuma-demo") {
+		t.Errorf("expected the instance namespace to be named as the Gateways' namespace, got: %v", warnings)
 	}
 
 	// Warnings about migration.

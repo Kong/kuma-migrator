@@ -102,9 +102,9 @@ entries accept only the three service kinds (no `Mesh`). The full per-policy mat
 
 | Input | `--to-latest v2` | `--to-latest v3` |
 |---|---|---|
-| `MeshGateway` | `Gateway` (`gateway.networking.k8s.io/v1`). Listeners keep port, protocol, hostname, TLS `certificateRefs`; a bare `*` hostname is omitted. `gatewayClassName` resolved to the `GatewayClass` generated from the `MeshGatewayInstance` sharing its `kuma.io/service` tag | Same listeners. `gatewayClassName: REPLACE-WITH-YOUR-GATEWAYCLASS` with a warning. Advisory: delete the source `MeshGateway` before upgrading |
-| `MeshGatewayInstance` | `GatewayClass` (named after the instance, `controllerName: gateways.kuma.io/controller`) + `MeshGatewayConfig` carrying `replicas`, `serviceType`, `tags` | **Error**. Original written to `_manual/`. The message lists the settings to carry over to your own `Deployment`/`Service` and the delegated-gateway annotations |
-| `MeshGatewayRoute` (HTTP) | `HTTPRoute` with `parentRefs` to the `Gateway`, `kuma.io/mesh` as a **label**, integer `port`. A backend in another namespace gets a `ReferenceGrant`; a route with no namespace gets a warning instead | Same, plus the delete-before-upgrade advisory and a note that Kuma 3.0 ignores Gateway-parented routes (your gateway implementation reconciles them) |
+| `MeshGateway` | `Gateway` (`gateway.networking.k8s.io/v1`) named after the `MeshGateway`, in the namespace of the `MeshGatewayInstance` sharing its `kuma.io/service` tag. Listeners keep port, protocol, hostname, TLS `certificateRefs`; a bare `*` hostname is omitted; names are `<protocol>-<port>`, made unique. `gatewayClassName` resolved to the `GatewayClass` generated from that same instance | Same name, namespace and listeners. `gatewayClassName: REPLACE-WITH-YOUR-GATEWAYCLASS` with a warning. Advisory: delete the source `MeshGateway` before upgrading |
+| `MeshGatewayInstance` | `GatewayClass` (named after the instance, `controllerName: gateways.kuma.io/controller`) + `MeshGatewayConfig` carrying `replicas`, `serviceType`, `tags` minus `kuma.io/service`. Both cluster-scoped: no namespace on the `MeshGatewayConfig` or the `parametersRef` | **Error**. Original written to `_manual/`. The message lists the settings to carry over to your own `Deployment`/`Service` and the delegated-gateway annotations |
+| `MeshGatewayRoute` (HTTP) | `HTTPRoute` whose `parentRefs` name the converted `Gateway` (resolved through the `MeshGateway` selecting the route's `kuma.io/service` tag) and, from the other selector tags, its listener as `sectionName`. The route is placed in the Gateway's namespace. `kuma.io/mesh` as a **label**, integer `port`. A backend in another namespace gets a `ReferenceGrant`; a route whose namespace stays unknown gets a warning instead | Same, plus the delete-before-upgrade advisory and a note that Kuma 3.0 ignores Gateway-parented routes (your gateway implementation reconciles them) |
 | `MeshGatewayRoute` (TCP) | `TCPRoute` | Same |
 | `MeshHTTPRoute`, `MeshTCPRoute` | Copied unchanged (Passthrough) and scanned | `targetRef`/`to[]`/`backendRefs` `name`/`namespace` → labels; a `MeshServiceSubset` backendRef whose only tag is `kuma.io/service` → `MeshService`; other tags warned. Advisory when a `MeshHTTPRoute` has no catch-all rule (`404` change) |
 | Policy with top-level `targetRef.kind: MeshGateway` | Copied (valid on 2.14 for system-role policies) | Warning: rejected on 3.0, re-target the gateway's own proxies with `kind: Dataplane` + labels |
@@ -150,8 +150,9 @@ you are on, so the conversion warning states both.
 
 1. Choose the gateway implementation and install it on 2.14 next to the built-in gateway.
 2. Apply the converted `Gateway` and `HTTPRoute`/`TCPRoute` objects with the new
-   `gatewayClassName`, plus the generated `ReferenceGrant`s. Set `metadata.namespace` on routes
-   that have none.
+   `gatewayClassName`, plus the generated `ReferenceGrant`s. Set `metadata.namespace` on any
+   `Gateway` or route the tool left without one (it warns when the `MeshGatewayInstance` was not
+   in the input).
 3. Deploy the gateway workload as a delegated gateway: `traffic.kuma.io/exclude-inbound-ports` on
    the pod, `kuma.io/ignore: "true"` on its `Service`, settings from the `MeshGatewayInstance`
    (replicas, service type).
@@ -181,8 +182,9 @@ rules:
 
 ## Example
 
-Input — four files: a built-in gateway, its instance, a route, and a `MeshHTTPRoute` that only
-matches `/api`:
+Input — four documents: a built-in gateway, its instance, a route, and a `MeshHTTPRoute` that only
+matches `/api`. `MeshGateway` and `MeshGatewayRoute` are cluster-scoped, so they have no
+namespace:
 
 ```yaml
 apiVersion: kuma.io/v1alpha1
@@ -220,7 +222,6 @@ apiVersion: kuma.io/v1alpha1
 kind: MeshGatewayRoute
 metadata:
   name: edge-route
-  namespace: kong-mesh-system
   labels:
     kuma.io/mesh: default
 spec:
@@ -267,12 +268,12 @@ spec:
 Output with `--to-latest v2` (the `MeshHTTPRoute` is copied unchanged):
 
 ```yaml
-# routing/Gateway-edge-gateway.yaml
+# routing/Gateway-kong-mesh-system-edge-gateway.yaml
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
   name: edge-gateway
-  namespace: ""
+  namespace: kong-mesh-system
 spec:
   gatewayClassName: edge-gateway
   listeners:
@@ -294,23 +295,19 @@ spec:
     group: kuma.io
     kind: MeshGatewayConfig
     name: edge-gateway
-    namespace: kong-mesh-system
 ```
 
 ```yaml
-# routing/MeshGatewayConfig-kong-mesh-system-edge-gateway.yaml
+# routing/MeshGatewayConfig-edge-gateway.yaml
 apiVersion: kuma.io/v1alpha1
 kind: MeshGatewayConfig
 metadata:
   labels:
     kuma.io/mesh: default
   name: edge-gateway
-  namespace: kong-mesh-system
 spec:
   replicas: 2
   serviceType: LoadBalancer
-  tags:
-    kuma.io/service: edge-gateway_kong-mesh-system_svc
 ```
 
 ```yaml
@@ -358,8 +355,13 @@ spec:
     name: backend
 ```
 
-> **Note:** `MeshGateway` is cluster-scoped, so the generated `Gateway` has an empty namespace.
-> Set `metadata.namespace` to the namespace the `HTTPRoute` `parentRefs` expect before applying.
+The `Gateway` and the `HTTPRoute` both land in `kong-mesh-system`, the namespace of the
+`MeshGatewayInstance` whose `kuma.io/service` tag the `MeshGateway` and the route select. A
+Gateway listener accepts routes only from its own namespace by default, and Kuma 2.x creates the
+instance for a Gateway in the Gateway's namespace. `MeshGatewayConfig` is cluster-scoped, and
+Kuma rejects a `GatewayClass` whose `parametersRef` names a namespace, so neither carries one.
+`kuma.io/service` is dropped from the `MeshGatewayConfig` tags: Kuma generates
+`<gateway>_<namespace>_svc` for each Gateway of the class.
 
 With `--to-latest v3`:
 
