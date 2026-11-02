@@ -589,12 +589,16 @@ pre code { background: none; padding: 0; font-size: inherit; border-radius: 0 }
   <div class="wrap">
     <h2>Changelog</h2>
     <p class="changelog-stat">
-      <strong>19 releases</strong> since April 2026.
+      <strong>20 releases</strong> since April 2026.
       Full history: <a href="https://github.com/Kong/kuma-migrator/releases">Releases</a> ·
       <a href="https://github.com/Kong/kuma-migrator/compare">compare view</a>.
     </p>
 
     <ul class="changelog">
+      <li>
+        <div class="meta"><span class="ver">v0.9.0</span> · 2026-11-02</div>
+        <div class="desc"><strong>Kuma / Kong Mesh 3.0 GA support</strong> for <code>--to-latest v3</code>, audited against the released 3.0.0/3.0.1 upgrade notes: <code>Mesh.mtls</code> removal (MeshIdentity cutover first), labels-only selection, control-plane-owned labels, Dataplane, MeshService, MeshPassthrough, zone proxy, Gateway API and Kong Mesh RBAC changes. Documents 3.0 rejects go to a <code>_manual/</code> subtree, and the report gains a "Delete Before Upgrading to 3.0" section. <strong>Breaking:</strong> Mesh logging/tracing no longer produce mesh-wide companions; companions default to <code>kuma-system</code> unless the input shows Kong Mesh (override with <code>systemNamespace:</code>); v2 service references use <code>Dataplane</code> labels instead of a name. New documentation site with guides, topics and a per-policy v2/v3 reference.</div>
+      </li>
       <li>
         <div class="meta"><span class="ver">v0.8.0</span> · 2026-09-18</div>
         <div class="desc"><strong>Breaking:</strong> <code>MeshHTTPRoute</code>/<code>MeshTCPRoute</code> are no longer converted to Gateway API. Both are current policies on 2.x <em>and</em> 3.0 — Kuma compiles <code>HTTPRoute</code>/<code>GRPCRoute</code> <strong>into</strong> a <code>MeshHTTPRoute</code> — and Kuma has never reconciled Gateway API <code>TCPRoute</code> at all, so that output was dead on every version. They now pass through unchanged, and the 3.0 <code>404</code> catch-all advisory fires on the <code>MeshHTTPRoute</code> itself.</div>
