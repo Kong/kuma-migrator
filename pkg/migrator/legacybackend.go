@@ -26,7 +26,7 @@ import (
 // indexedDocPattern matches the kind/type line of the resources the pre-pass
 // indexes, in either layout. It is a cheap prefilter: without it the pre-pass
 // unmarshals every YAML file in the tree.
-var indexedDocPattern = regexp.MustCompile(`(?m)^\s*(kind|type)\s*:\s*["']?(Mesh|MeshGateway|MeshGatewayInstance|MeshIdentity|TrafficLog|TrafficTrace)["']?\s*$`)
+var indexedDocPattern = regexp.MustCompile(`(?m)^\s*(kind|type)\s*:\s*["']?(Mesh|MeshGateway|MeshGatewayInstance|MeshIdentity|MeshService|TrafficLog|TrafficTrace)["']?\s*$`)
 
 // System-namespace evidence for inferSystemNamespace. A resource stored in one of
 // the two control-plane namespaces names it directly; a Kong Mesh-only kind means
@@ -188,6 +188,7 @@ func BuildTransformOptions(inputDir string, target TargetVersion) TransformOptio
 	gateways := &GatewayRefIndex{}
 	identities := MeshIdentityIndex{}
 	observability := LegacyObservabilityIndex{}
+	servicePorts := newMeshServicePortIndex()
 	var nsEvidence systemNamespaceEvidence
 
 	_ = filepath.WalkDir(inputDir, func(path string, d fs.DirEntry, err error) error {
@@ -213,6 +214,7 @@ func BuildTransformOptions(inputDir string, target TargetVersion) TransformOptio
 				classes.add(serviceTag, className)
 			}
 			gateways.add(doc)
+			servicePorts.add(doc)
 			if mesh := parseMeshIdentityMesh(doc); mesh != "" {
 				identities[mesh] = true
 			}
@@ -227,6 +229,7 @@ func BuildTransformOptions(inputDir string, target TargetVersion) TransformOptio
 		Target:              target,
 		SystemNamespace:     nsEvidence.infer(),
 		LegacyObservability: observability,
+		MeshServicePorts:    servicePorts,
 	}
 	if len(backends) > 0 {
 		opts.MeshBackends = backends

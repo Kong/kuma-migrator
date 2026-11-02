@@ -891,15 +891,20 @@
       - Route with no catch-all rule (empty `matches[]` or `PathPrefix: /`) is reported: on
         3.0 an unmatched request gets a `404` across every HTTP port of the destination.
       - `MeshServiceSubset` backendRefs are reported.
+      - A `backendRefs[]` entry whose `port` or `sectionName` matches no port of the
+        `MeshService` in the input (by name or port number, never `targetPort`) is reported:
+        on 3.0 it is unresolved instead of falling through to another port, and a rule whose
+        backendRefs are all unresolved answers `500`. A `MeshService` missing from the input is
+        noted once per run.
       - Allowed `to[].targetRef.kind`: `MeshService`, `MeshExternalService`,
         `MeshMultiZoneService`.
 
-      The `targetRef` matrix is in [MeshHTTPRoute and 3.0](https://github.com/Kong/kuma-migrator/blob/main/docs/meshhttproute-3.0.md).
+      The `targetRef` matrix is in [Policy targeting](../topics/policy-targeting.md#kinds-accepted-per-policy).
   timeline:
     - version: "3.0"
-      change: Unmatched requests get a `404`. `MeshServiceSubset` backendRefs rejected. Real resources selected by labels only.
+      change: Unmatched requests get a `404`. `MeshServiceSubset` backendRefs rejected. Real resources selected by labels only. A backendRef naming a port the destination lacks fails closed.
   topics: [gateways, policy-targeting]
-  code: [pkg/migrator/deprecation.go, pkg/migrator/v3_policy.go, pkg/migrator/v3_gateway.go]
+  code: [pkg/migrator/deprecation.go, pkg/migrator/v3_policy.go, pkg/migrator/v3_gateway.go, pkg/migrator/v3_routeports.go]
 
 - kind: MeshTCPRoute
   group: mesh

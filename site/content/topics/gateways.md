@@ -106,7 +106,7 @@ entries accept only the three service kinds (no `Mesh`). The full per-policy mat
 | `MeshGatewayInstance` | `GatewayClass` (named after the instance, `controllerName: gateways.kuma.io/controller`) + `MeshGatewayConfig` carrying `replicas`, `serviceType`, `tags` minus `kuma.io/service`. Both cluster-scoped: no namespace on the `MeshGatewayConfig` or the `parametersRef` | **Error**. Original written to `_manual/`. The message lists the settings to carry over to your own `Deployment`/`Service` and the delegated-gateway annotations |
 | `MeshGatewayRoute` (HTTP) | `HTTPRoute` whose `parentRefs` name the converted `Gateway` (resolved through the `MeshGateway` selecting the route's `kuma.io/service` tag) and, from the other selector tags, its listener as `sectionName`. The route is placed in the Gateway's namespace. `kuma.io/mesh` as a **label**, integer `port`. A backend in another namespace gets a `ReferenceGrant`; a route whose namespace stays unknown gets a warning instead | Same, plus the delete-before-upgrade advisory and a note that Kuma 3.0 ignores Gateway-parented routes (your gateway implementation reconciles them) |
 | `MeshGatewayRoute` (TCP) | `TCPRoute` | Same |
-| `MeshHTTPRoute`, `MeshTCPRoute` | Copied unchanged (Passthrough) and scanned | `targetRef`/`to[]`/`backendRefs` `name`/`namespace` → labels; a `MeshServiceSubset` backendRef whose only tag is `kuma.io/service` → `MeshService`; other tags warned. Advisory when a `MeshHTTPRoute` has no catch-all rule (`404` change) |
+| `MeshHTTPRoute`, `MeshTCPRoute` | Copied unchanged (Passthrough) and scanned | `targetRef`/`to[]`/`backendRefs` `name`/`namespace` → labels; a `MeshServiceSubset` backendRef whose only tag is `kuma.io/service` → `MeshService`; other tags warned. Advisory when a `MeshHTTPRoute` has no catch-all rule (`404` change). Warning when a `MeshHTTPRoute` `backendRefs[]` entry names a `port`/`sectionName` that the `MeshService` in the input does not have (matched by port name or number, never `targetPort`); a `MeshService` missing from the input is noted once per run |
 | Policy with top-level `targetRef.kind: MeshGateway` | Copied (valid on 2.14 for system-role policies) | Warning: rejected on 3.0, re-target the gateway's own proxies with `kind: Dataplane` + labels |
 | `Dataplane` `networking.gateway` (any type) | Copied | Block removed; non-`kuma.io/` gateway tags moved to `Dataplane` labels |
 
@@ -143,6 +143,9 @@ you are on, so the conversion warning states both.
 - **Port gateway-scoped policies.** A `MeshTimeout` or `MeshRateLimit` that targeted a
   `MeshGateway` must be rewritten for the new gateway: as a `Dataplane` policy on the gateway's
   proxies, or as configuration of the gateway implementation.
+- **Check ports of services it did not extract.** The `backendRef` port check needs the
+  `MeshService` in the input. Extract the zones that own the destinations, or check those
+  routes by hand.
 - **Decide the catch-all.** Whether unmatched traffic should still reach a destination after 3.0
   is a routing decision. The tool reports routes without a catch-all; you add the rule.
 

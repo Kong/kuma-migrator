@@ -51,6 +51,10 @@ type TransformOptions struct {
 	// LegacyObservability records which Mesh logging/tracing backends the
 	// TrafficLog/TrafficTrace resources reference. nil when no pre-pass ran.
 	LegacyObservability LegacyObservabilityIndex
+	// MeshServicePorts records the ports of the input MeshServices, for the 3.0
+	// MeshHTTPRoute backendRef port check. Always set by BuildTransformOptions
+	// (possibly empty); nil skips the check.
+	MeshServicePorts *MeshServicePortIndex
 }
 
 // TransformDocumentWithOptions is TransformDocument with the cross-document
@@ -176,6 +180,7 @@ func TransformDocumentWithOptions(raw []byte, opts TransformOptions) ([][]byte, 
 		docs[i] = fixed
 		warnings = append(warnings, depWarns...)
 		warnings = append(warnings, warnMESRequiresMeshIdentity(fixed, opts)...)
+		warnings = append(warnings, warnRouteBackendRefPortsForV3(fixed, opts)...)
 	}
 
 	// Guard: a generated document without kind/type or name lost its identity in a

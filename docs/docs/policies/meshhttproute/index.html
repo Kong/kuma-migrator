@@ -84,10 +84,15 @@
 <li>Route with no catch-all rule (empty <code>matches[]</code> or <code>PathPrefix: /</code>) is reported: on
 3.0 an unmatched request gets a <code>404</code> across every HTTP port of the destination.</li>
 <li><code>MeshServiceSubset</code> backendRefs are reported.</li>
+<li>A <code>backendRefs[]</code> entry whose <code>port</code> or <code>sectionName</code> matches no port of the
+<code>MeshService</code> in the input (by name or port number, never <code>targetPort</code>) is reported:
+on 3.0 it is unresolved instead of falling through to another port, and a rule whose
+backendRefs are all unresolved answers <code>500</code>. A <code>MeshService</code> missing from the input is
+noted once per run.</li>
 <li>Allowed <code>to[].targetRef.kind</code>: <code>MeshService</code>, <code>MeshExternalService</code>,
 <code>MeshMultiZoneService</code>.</li>
 </ul>
-<p>The <code>targetRef</code> matrix is in <a href="https://github.com/Kong/kuma-migrator/blob/main/docs/meshhttproute-3.0.md">MeshHTTPRoute and 3.0</a>.</p>
+<p>The <code>targetRef</code> matrix is in <a href="../../topics/policy-targeting/#kinds-accepted-per-policy">Policy targeting</a>.</p>
 </div>
   </section>
 </div>
@@ -95,14 +100,14 @@
 <h2 id="timeline">Timeline</h2>
 <div class="table-wrap"><table>
   <thead><tr><th>Version</th><th>Change</th></tr></thead>
-  <tbody><tr><td class="version">3.0</td><td>Unmatched requests get a <code>404</code>. <code>MeshServiceSubset</code> backendRefs rejected. Real resources selected by labels only.</td></tr></tbody>
+  <tbody><tr><td class="version">3.0</td><td>Unmatched requests get a <code>404</code>. <code>MeshServiceSubset</code> backendRefs rejected. Real resources selected by labels only. A backendRef naming a port the destination lacks fails closed.</td></tr></tbody>
 </table></div>
 
 <h2 id="related-topics">Related topics</h2>
 <ul class="link-list"><li><a href="../../topics/gateways/">Gateways, Gateway API and GAMMA</a> — The built-in gateway removal in Kuma 3.0, MeshGateway* to Gateway API, delegated gateways, and why MeshHTTPRoute and MeshTCPRoute stay.</li><li><a href="../../topics/policy-targeting/">Policy targeting</a> — Which targetRef kinds each policy accepts at each position on 2.14 and 3.0, labels-only selection, policy roles, and control-plane-owned labels.</li></ul>
 
 <h2 id="source-files">Source files</h2>
-<ul class="link-list"><li><a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/deprecation.go"><code>pkg/migrator/deprecation.go</code></a></li><li><a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/v3_policy.go"><code>pkg/migrator/v3_policy.go</code></a></li><li><a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/v3_gateway.go"><code>pkg/migrator/v3_gateway.go</code></a></li></ul>
+<ul class="link-list"><li><a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/deprecation.go"><code>pkg/migrator/deprecation.go</code></a></li><li><a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/v3_policy.go"><code>pkg/migrator/v3_policy.go</code></a></li><li><a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/v3_gateway.go"><code>pkg/migrator/v3_gateway.go</code></a></li><li><a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/v3_routeports.go"><code>pkg/migrator/v3_routeports.go</code></a></li></ul>
 
     </article>
     <nav class="pager" aria-label="Previous and next page">

@@ -224,7 +224,7 @@ entries accept only the three service kinds (no <code>Mesh</code>). The full per
 <tr>
 <td><code>MeshHTTPRoute</code>, <code>MeshTCPRoute</code></td>
 <td>Copied unchanged (Passthrough) and scanned</td>
-<td><code>targetRef</code>/<code>to[]</code>/<code>backendRefs</code> <code>name</code>/<code>namespace</code> → labels; a <code>MeshServiceSubset</code> backendRef whose only tag is <code>kuma.io/service</code> → <code>MeshService</code>; other tags warned. Advisory when a <code>MeshHTTPRoute</code> has no catch-all rule (<code>404</code> change)</td>
+<td><code>targetRef</code>/<code>to[]</code>/<code>backendRefs</code> <code>name</code>/<code>namespace</code> → labels; a <code>MeshServiceSubset</code> backendRef whose only tag is <code>kuma.io/service</code> → <code>MeshService</code>; other tags warned. Advisory when a <code>MeshHTTPRoute</code> has no catch-all rule (<code>404</code> change). Warning when a <code>MeshHTTPRoute</code> <code>backendRefs[]</code> entry names a <code>port</code>/<code>sectionName</code> that the <code>MeshService</code> in the input does not have (matched by port name or number, never <code>targetPort</code>); a <code>MeshService</code> missing from the input is noted once per run</td>
 </tr>
 <tr>
 <td>Policy with top-level <code>targetRef.kind: MeshGateway</code></td>
@@ -266,6 +266,9 @@ implementation you adopt.</li>
 <li><strong>Port gateway-scoped policies.</strong> A <code>MeshTimeout</code> or <code>MeshRateLimit</code> that targeted a
 <code>MeshGateway</code> must be rewritten for the new gateway: as a <code>Dataplane</code> policy on the gateway's
 proxies, or as configuration of the gateway implementation.</li>
+<li><strong>Check ports of services it did not extract.</strong> The <code>backendRef</code> port check needs the
+<code>MeshService</code> in the input. Extract the zones that own the destinations, or check those
+routes by hand.</li>
 <li><strong>Decide the catch-all.</strong> Whether unmatched traffic should still reach a destination after 3.0
 is a routing decision. The tool reports routes without a catch-all; you add the rule.</li>
 </ul>
