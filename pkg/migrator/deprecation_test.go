@@ -1009,7 +1009,7 @@ spec:
 // across pkg/plugins/policies/*/api/v1alpha1/valid*.go on master, with no per-policy and no
 // system-role exception. Under v3 the advisory therefore has to fire on every other kind,
 // including the two that 2.14 still accepts: MeshGateway, and a MeshSubset carrying service
-// tags. See docs/meshhttproute-3.0.md.
+// tags. See site/content/topics/policy-targeting.md ("Kinds accepted per policy").
 func TestScanForDeprecations_TopLevelTargetRef_V3UniformRule(t *testing.T) {
 	const uniform = "Mesh and Dataplane are the only top-level"
 

@@ -1091,7 +1091,8 @@ func httpMatchesAreCatchAll(matches []interface{}) bool {
 // to allow MeshGateway now lists the same two kinds). So anything else is rejected outright,
 // including MeshGateway — valid at 2.14 for several policies, but removed with the rest of
 // the built-in gateway API — and MeshHTTPRoute, which was a valid top-level kind for
-// MeshTimeout, MeshRetry and MeshRateLimit at 2.14. See docs/meshhttproute-3.0.md.
+// MeshTimeout, MeshRetry and MeshRateLimit at 2.14. See
+// site/content/topics/policy-targeting.md ("Kinds accepted per policy").
 //
 // These are warn-only, not auto-converted: a MeshService/MeshServiceSubset selector cannot
 // be mechanically expanded to the equivalent Dataplane label set from the manifest alone

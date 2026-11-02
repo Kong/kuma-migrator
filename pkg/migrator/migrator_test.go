@@ -594,7 +594,7 @@ conf:
 // from[]-deprecated-for-rules[] advisory from ScanForDeprecations, which runs
 // on every document regardless of scenario. The "Already Migrated" section
 // used to print just the filename, silently dropping that advisory. Reported
-// here: docs/migration-report.md's Already-Migrated/Skipped sections must
+// here: the generated migration-report.md's Already-Migrated/Skipped sections must
 // surface any warnings the same way the migrated-files table does.
 func TestPlan_AlreadyMigratedFileStillShowsWarnings(t *testing.T) {
 	in := tempDir(t)

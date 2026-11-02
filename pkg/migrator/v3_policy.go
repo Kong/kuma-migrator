@@ -464,7 +464,8 @@ func fixRefToLabels(ref map[string]interface{}, path, kind, name, policyNS, poli
 // v3ToTargetRefKinds lists, per policy, the spec.to[].targetRef kinds the Kuma 3.0
 // validators accept. Extracted from validateTo in
 // pkg/plugins/policies/*/api/v1alpha1/validator.go on kuma master; also tabulated
-// in docs/meshhttproute-3.0.md. A policy listed with an empty set has no to[].
+// in site/content/topics/policy-targeting.md ("Kinds accepted per policy"). A
+// policy listed with an empty set has no to[].
 // MeshFaultInjection and MeshRateLimit additionally reject to[] unless the
 // top-level targetRef is Mesh (common_api.IncludesGateways).
 var v3ToTargetRefKinds = map[string]map[string]bool{
