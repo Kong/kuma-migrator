@@ -306,7 +306,7 @@ Five sub-scenarios, all labelled `[MIGRATED GW]`:
 - Kuma 3.0 deletes the built-in gateway API in full — `MeshGateway`, `MeshGatewayRoute`, `MeshGatewayInstance` and `MeshGatewayConfig`, their Go/proto types, their CRDs and their KDS sync — and `MeshGateway` stops being a valid `targetRef.kind` for any policy
 - `MeshGatewayInstance` is **reported instead of converted**: both of its v2 outputs are dead on 3.0. The error names the delegated-gateway replacement — `traffic.kuma.io/exclude-inbound-ports` on the pod (the `kuma.io/gateway` marking is *removed*, not renamed) plus `kuma.io/ignore: "true"` on the fronting `Service` — and carries over `replicas`/`serviceType`/`tags`
 - `MeshGateway` and `MeshGatewayRoute` are still converted (their listener and routing content is valid Gateway API), but each carries an advisory to **delete the source object before upgrading**: the 3.0 Helm chart removes their CRDs and anything still stored under them goes with it
-- `MeshHTTPRoute` and `MeshTCPRoute` are **not removed in 3.0** — Kuma's Gateway API reconcilers compile `HTTPRoute`/`GRPCRoute` *into* `MeshHTTPRoute`. Converting them is modernization rather than a requirement; see [docs/meshhttproute-3.0.md](docs/meshhttproute-3.0.md)
+- `MeshHTTPRoute` and `MeshTCPRoute` are **not removed in 3.0** — Kuma's Gateway API reconcilers compile `HTTPRoute`/`GRPCRoute` *into* `MeshHTTPRoute`. Converting them is modernization rather than a requirement; see [MeshHTTPRoute](https://kong.github.io/kuma-migrator/docs/policies/meshhttproute/) and [Policy targeting](https://kong.github.io/kuma-migrator/docs/topics/policy-targeting/)
 
 ---
 
@@ -341,7 +341,7 @@ Five sub-scenarios, all labelled `[MIGRATED GW]`:
 | `Dataplane` `transparentProxying.redirectPortInboundV6` | v2.9 | No | Remove field |
 | Any `Mesh*` policy `spec.targetRef.kind: MeshSubset` without service-identity tags | v2.10 | No | Replace with `kind: Dataplane` + labels |
 
-The table above lists the 2.x checks. The full list, including every Kuma / Kong Mesh 3.0 removal and what `--to-latest v3` rewrites, warns about or refuses, is in [docs/target-version.md](docs/target-version.md) and [docs/migration-paths.md](docs/migration-paths.md).
+The table above lists the 2.x checks. The full list, including every Kuma / Kong Mesh 3.0 removal and what `--to-latest v3` rewrites, warns about or refuses, is in [Target versions](https://kong.github.io/kuma-migrator/docs/guides/target-version/) and the [Policy reference](https://kong.github.io/kuma-migrator/docs/policies/).
 
 ---
 

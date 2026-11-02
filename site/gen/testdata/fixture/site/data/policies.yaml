@@ -1,0 +1,30 @@
+- kind: Timeout
+  group: legacy
+  product: kuma
+  summary: Legacy timeout policy.
+  v2:
+    status: converted
+    output: [MeshTimeout]
+    notes: |
+      Converted. See [meshes](../topics/meshes.md).
+  v3:
+    status: removed
+    output: []
+    notes: |
+      Removed in 3.0.
+  timeline:
+    - version: "2.6"
+      change: Deprecated in favour of [MeshTimeout](policy:MeshTimeout).
+    - version: "3.0"
+      change: Removed.
+  topics: [meshes]
+  code: [pkg/migrator/legacyconf.go]
+- kind: MeshTimeout
+  group: mesh
+  product: kuma
+  summary: Timeouts.
+  v2:
+    status: passthrough
+  v3:
+    status: rewritten
+    output: [MeshTimeout]

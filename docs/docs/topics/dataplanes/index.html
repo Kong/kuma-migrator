@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dataplanes – kuma-migrator docs</title>
+<meta name="description" content="Universal Dataplane fields and Kubernetes Pod annotations that change or disappear between 2.x and 3.0, and what kuma-migrator rewrites.">
+<link rel="canonical" href="https://kong.github.io/kuma-migrator/docs/topics/dataplanes/">
+<link rel="icon" href="../../static/favicon.svg" type="image/svg+xml">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="kuma-migrator">
+<meta property="og:title" content="Dataplanes – kuma-migrator docs">
+<meta property="og:description" content="Universal Dataplane fields and Kubernetes Pod annotations that change or disappear between 2.x and 3.0, and what kuma-migrator rewrites.">
+<meta property="og:url" content="https://kong.github.io/kuma-migrator/docs/topics/dataplanes/">
+<meta property="og:image" content="https://kong.github.io/kuma-migrator/assets/migration-overview.svg">
+<meta name="twitter:card" content="summary_large_image">
+
+<link rel="stylesheet" href="../../static/style.css">
+<link rel="stylesheet" href="../../static/chroma.css">
+</head>
+<body data-root="../../">
+<a class="skip" href="#content">Skip to content</a>
+<header class="site-header">
+  <div class="bar">
+    <a class="brand" href="../../../"><img src="../../static/favicon.svg" width="28" height="28" alt=""><span>kuma-migrator</span></a>
+    <a class="docs-home" href="../../">Docs</a>
+    <nav class="top-nav" aria-label="Sections">
+      <a href="../../guides/">Guides</a>
+      <a href="../" class="active" aria-current="true">Topics</a>
+      <a href="../../policies/">Policies</a>
+      <a href="https://github.com/Kong/kuma-migrator">GitHub</a>
+    </nav>
+    <div class="search">
+      <input id="search-input" type="search" placeholder="Search docs" aria-label="Search docs" autocomplete="off">
+      <ul id="search-results" hidden></ul>
+    </div>
+  </div>
+</header>
+
+<div class="layout">
+  <details class="nav-mobile">
+    <summary>Topics menu</summary>
+    <div class="nav-group"><ul><li><a href="../">Overview</a></li><li><a href="../meshes/">Meshes</a></li><li><a href="../mtls-identity/">mTLS &amp; identity</a></li><li><a href="../external-pki/">External PKI</a></li><li><a href="../meshservice/">MeshService</a></li><li><a href="../multizone/">Multizone</a></li><li><a href="../gateways/">Gateways &amp; GAMMA</a></li><li><a href="../external-services/">External services</a></li><li><a href="../access-control/">Access control</a></li><li><a href="../observability/">Observability</a></li><li><a href="../policy-targeting/">Policy targeting</a></li><li><a href="./" class="active" aria-current="page">Dataplanes</a></li><li><a href="../legacy-policies/">Legacy policies</a></li></ul></div>
+
+  </details>
+  <aside class="sidebar" aria-label="Topics pages">
+    <p class="sidebar-section"><a href="../">Topics</a></p>
+    <div class="nav-group"><ul><li><a href="../">Overview</a></li><li><a href="../meshes/">Meshes</a></li><li><a href="../mtls-identity/">mTLS &amp; identity</a></li><li><a href="../external-pki/">External PKI</a></li><li><a href="../meshservice/">MeshService</a></li><li><a href="../multizone/">Multizone</a></li><li><a href="../gateways/">Gateways &amp; GAMMA</a></li><li><a href="../external-services/">External services</a></li><li><a href="../access-control/">Access control</a></li><li><a href="../observability/">Observability</a></li><li><a href="../policy-targeting/">Policy targeting</a></li><li><a href="./" class="active" aria-current="page">Dataplanes</a></li><li><a href="../legacy-policies/">Legacy policies</a></li></ul></div>
+
+  </aside>
+  <main id="content">
+    <article class="doc">
+<p class="crumb"><a href="../">Topics</a></p>
+<h1>Dataplanes</h1>
+<p class="lede">Universal Dataplane fields and Kubernetes Pod annotations that change or disappear between 2.x and 3.0, and what kuma-migrator rewrites.</p>
+<p>On Kubernetes the control plane generates every <a href="../../policies/dataplane/">Dataplane</a> from the Pod and
+its <code>Service</code>, so the manifests to migrate are the Pod annotations. On Universal the <code>Dataplane</code>
+is hand-written and is the manifest. Kuma 3.0 removes most of the 2.x tag-based <code>Dataplane</code>
+model, and many removals are <strong>silent</strong>: the field is dropped on read, the resource still applies,
+and traffic changes.</p>
+<h2 id="what-changed-upstream">What changed upstream</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Field or annotation</th>
+<th>3.0 change</th>
+<th>Silent?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>networking.inbound[].tags</code></td>
+<td>Removed. Use <code>Dataplane</code> <code>labels</code> (<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#inbound-tags-removed-from-dataplane">UPGRADE</a>)</td>
+<td>Yes: anything selecting on the tags stops matching</td>
+</tr>
+<tr>
+<td><code>kuma.io/protocol</code> inbound tag</td>
+<td>No longer sets the protocol; set <code>inbound[].protocol</code> (<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#kumaioprotocol-inbound-tag-no-longer-sets-the-protocol">UPGRADE</a>)</td>
+<td>Yes: the inbound becomes plain TCP and loses L7 policies</td>
+</tr>
+<tr>
+<td><code>networking.outbound[].tags</code></td>
+<td>Removed; outbounds use <code>backendRef</code> to a <code>MeshService</code>, <code>MeshExternalService</code> or <code>MeshMultiZoneService</code> (<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#dataplane-outbounds-must-use-backendref">UPGRADE</a>)</td>
+<td>Stored ones lose their listener; new writes rejected</td>
+</tr>
+<tr>
+<td><code>transparentProxying.reachableServices</code>, <code>kuma.io/transparent-proxying-reachable-services</code></td>
+<td>Removed; use <code>reachableBackends</code> (<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#reachableservices--kumaiotransparent-proxying-reachable-services-removed">UPGRADE</a>)</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>reachableBackends.refs[]</code> <code>name</code>/<code>namespace</code></td>
+<td>Labels only (<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#reachablebackends-refs-select-backends-by-labels-only">UPGRADE</a>)</td>
+<td>Yes: refs resolve to nothing, the proxy gets no outbounds</td>
+</tr>
+<tr>
+<td>No <code>reachableBackends</code></td>
+<td>A transparent-proxy data plane gets <strong>no outbounds</strong>, unless <code>defaults.restrictOutbound=false</code> (<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#data-plane-proxies-without-reachablebackends-get-no-outbounds">UPGRADE</a>)</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td><code>networking.advertisedAddress</code></td>
+<td>Removed; other proxies use <code>networking.address</code> (<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#advertisedaddress-removed-from-dataplane-networking">UPGRADE</a>)</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td><code>transparentProxying.redirectPortInbound</code> / <code>redirectPortOutbound</code></td>
+<td>Deprecated; read from <code>kuma-dp --transparent-proxy</code> instead. Removed in 3.1 (<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#redirect-ports-and-ip-family-mode-removed-from-dataplane">UPGRADE</a>)</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>transparentProxying.ipFamilyMode</code></td>
+<td>Removed</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td><code>probes</code>, <code>kuma.io/virtual-probes</code>, <code>kuma.io/virtual-probes-port</code></td>
+<td>Virtual probes removed; Application Probe Proxy only (<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#virtual-probes-removed">UPGRADE</a>)</td>
+<td>Yes on Universal</td>
+</tr>
+<tr>
+<td><code>networking.gateway</code> (any type), <code>kuma.io/gateway</code></td>
+<td>Removed. See <a href="../gateways/">Gateways</a> (<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#kumaiogateway-is-removed">UPGRADE</a>)</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td><code>kuma.io/ingress</code>, <code>kuma.io/egress</code> Pod annotations</td>
+<td>Removed (<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#kumaioingress-and-kumaioegress-pod-annotations-removed">UPGRADE</a>)</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>kuma.io/mesh</code> annotation</td>
+<td>No longer honoured; use the label (<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#kumaiomesh-annotation-no-longer-honored-on-kubernetes">UPGRADE</a>)</td>
+<td>Yes: the resource lands in the <code>default</code> mesh</td>
+</tr>
+<tr>
+<td><code>kuma.io/transparent-proxying-ebpf*</code></td>
+<td>eBPF transparent proxy removed (<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#ebpf-transparent-proxy-removed">UPGRADE</a>)</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>kuma.io/</code> and <code>k8s.kuma.io/</code> labels</td>
+<td>Reserved; an unknown one on a Universal <code>Dataplane</code> fails registration (<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#reserved-label-prefixes">UPGRADE</a>)</td>
+<td>—</td>
+</tr>
+<tr>
+<td>Sidecar probes on admin port <code>9901</code></td>
+<td>Kubernetes probes on the sidecar use the readiness port (<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#kubernetes-probes-on-the-sidecar-always-use-the-readiness-port">UPGRADE</a>)</td>
+<td>—</td>
+</tr>
+</tbody>
+</table></div>
+<p>Earlier 2.x deprecations still worth checking:</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Annotation or field</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>transparentProxying.redirectPortInboundV6</code></td>
+<td>Removed in 2.9</td>
+</tr>
+<tr>
+<td><code>kuma.io/*</code> annotation values <code>yes</code>/<code>no</code></td>
+<td>Use <code>true</code>/<code>false</code> (2.9)</td>
+</tr>
+<tr>
+<td><code>kuma.io/builtindns</code>, <code>kuma.io/builtindnsport</code></td>
+<td>Not supported and ignored; use <code>kuma.io/builtin-dns</code>, <code>kuma.io/builtin-dns-port</code></td>
+</tr>
+<tr>
+<td><code>kuma.io/sidecar-injection</code> as an annotation</td>
+<td>No effect; it must be a label</td>
+</tr>
+<tr>
+<td><code>prometheus.metrics.kuma.io/port</code>, <code>/path</code></td>
+<td>Deprecated; use <a href="../../policies/meshmetric/">MeshMetric</a>. The <code>aggregate-&lt;name&gt;-*</code> annotations are not deprecated</td>
+</tr>
+</tbody>
+</table></div>
+<h2 id="what-kuma-migrator-does">What kuma-migrator does</h2>
+<p><code>Dataplane</code> is skipped on Kubernetes extractions (the control plane owns it) and extracted on
+Universal. Pod annotations are scanned wherever they appear in the input: <code>metadata.annotations</code>,
+pod templates (<code>Deployment</code>, <code>StatefulSet</code>, <code>DaemonSet</code>, <code>ReplicaSet</code>, <code>Job</code>) and <code>CronJob</code> job
+templates. <code>extract</code> does not export workloads; add their manifests to the input directory to have
+them scanned.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Input</th>
+<th><code>--to-latest v2</code></th>
+<th><code>--to-latest v3</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>inbound[].tags</code></td>
+<td>Nothing (inbound tags are required on 2.x)</td>
+<td>Non-<code>kuma.io/</code> tags moved to <code>labels</code>; <code>kuma.io/service</code>/<code>kuma.io/protocol</code> dropped (reserved prefix); warned</td>
+</tr>
+<tr>
+<td><code>kuma.io/protocol</code> inbound tag</td>
+<td>—</td>
+<td>Copied to <code>inbound[].protocol</code></td>
+</tr>
+<tr>
+<td><code>outbound[].tags</code></td>
+<td>—</td>
+<td>Converted to <code>backendRef</code> when the <code>kuma.io/service</code> value decodes to name, namespace and port; warned otherwise</td>
+</tr>
+<tr>
+<td><code>reachableServices</code></td>
+<td>Warning</td>
+<td>Converted to <code>reachableBackends</code> refs with labels where the value decodes; warned otherwise</td>
+</tr>
+<tr>
+<td><code>reachableBackends</code> refs with <code>name</code>/<code>namespace</code>, on the <code>Dataplane</code> or in the <code>kuma.io/reachable-backends</code> annotation</td>
+<td>Warning</td>
+<td>Rewritten to labels (v3 only: on 2.14 a label selector also matches same-named services from other zones)</td>
+</tr>
+<tr>
+<td>Transparent proxy without <code>reachableBackends</code></td>
+<td>—</td>
+<td>Warning: no outbounds on 3.0</td>
+</tr>
+<tr>
+<td><code>advertisedAddress</code>, redirect ports, <code>ipFamilyMode</code>, <code>probes</code></td>
+<td>—</td>
+<td>Warning</td>
+</tr>
+<tr>
+<td><code>networking.gateway</code></td>
+<td>—</td>
+<td>Block removed; non-<code>kuma.io/</code> gateway tags moved to labels</td>
+</tr>
+<tr>
+<td><code>redirectPortInboundV6</code></td>
+<td>Warning</td>
+<td>Warning</td>
+</tr>
+<tr>
+<td>Removed Pod annotations (<code>kuma.io/ingress</code>, <code>kuma.io/egress</code>, <code>kuma.io/mesh</code>, <code>kuma.io/transparent-proxying-reachable-services</code>, <code>kuma.io/transparent-proxying-ebpf*</code>, <code>kuma.io/virtual-probes*</code>)</td>
+<td>Deprecated ones warned</td>
+<td>All warned</td>
+</tr>
+<tr>
+<td>Deprecated Pod annotations (table above)</td>
+<td>Warning</td>
+<td>Warning</td>
+</tr>
+<tr>
+<td><code>ContainerPatch</code></td>
+<td>Copied unchanged</td>
+<td>Copied; warning for probes on admin port <code>9901</code> (use <code>9902</code>)</td>
+</tr>
+</tbody>
+</table></div>
+<p>Code: <a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/v3_dataplane.go"><code>v3_dataplane.go</code></a>,
+<a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/v3_scan.go"><code>v3_scan.go</code></a>,
+<a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/deprecation.go"><code>deprecation.go</code></a>.</p>
+<h2 id="what-it-cannot-do">What it cannot do</h2>
+<ul>
+<li><strong>Find a MeshService port.</strong> A Universal outbound <code>kuma.io/service: backend</code> does not say which
+<code>MeshService</code> port it maps to. The warning gives the <code>backendRef</code> to fill in.</li>
+<li><strong>Choose <code>reachableBackends</code>.</strong> Which services a workload calls is not in its <code>Dataplane</code>. On
+3.0 a missing list means no outbounds.</li>
+<li><strong>Keep <code>kuma.io/</code> tags.</strong> <code>kuma.io/service</code> and other reserved-prefix tags cannot become
+labels. Policies or <code>MeshService</code> selectors that matched on them must select on another label or
+on the <code>MeshService</code>.</li>
+<li><strong>Restart workloads.</strong> Pods injected before 3.0 keep stale annotations and sidecar
+configuration until redeployed.</li>
+</ul>
+<h2 id="manual-steps">Manual steps</h2>
+<ol>
+<li>Universal: on 2.14, set <code>inbound[].protocol</code> on every inbound and move non-reserved inbound
+tags to <code>labels</code>.</li>
+<li>Universal: replace outbound <code>tags</code> with <code>backendRef</code>, and list <code>reachableBackends</code> refs
+by labels for every transparent-proxy data plane.</li>
+<li>Make every Universal proxy reachable on <code>networking.address</code>.</li>
+<li>Start <code>kuma-dp</code> with <code>--transparent-proxy</code> (or <code>--transparent-proxy-config</code>) and drop the
+redirect port fields before 3.1.</li>
+<li>Kubernetes: replace removed and deprecated Pod annotations; switch <code>kuma.io/mesh</code> and
+<code>kuma.io/sidecar-injection</code> to labels.</li>
+<li>Upgrade the control plane and all data planes together (CoreDNS is removed from the data
+plane, <a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#coredns-removed-from-the-data-plane">UPGRADE</a>),
+then re-inject every pod.</li>
+</ol>
+<h2 id="example">Example</h2>
+<p>Input — a Universal <code>Dataplane</code>:</p>
+<pre class="chroma"><code><span class="line"><span class="cl"><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l">Dataplane</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">mesh</span><span class="p">:</span><span class="w"> </span><span class="l">default</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">web-01</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">networking</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">address</span><span class="p">:</span><span class="w"> </span><span class="m">10.0.0.12</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">advertisedAddress</span><span class="p">:</span><span class="w"> </span><span class="m">192.168.1.12</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">inbound</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span>- <span class="nt">port</span><span class="p">:</span><span class="w"> </span><span class="m">8080</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">servicePort</span><span class="p">:</span><span class="w"> </span><span class="m">8081</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">tags</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">kuma.io/service</span><span class="p">:</span><span class="w"> </span><span class="l">web</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">kuma.io/protocol</span><span class="p">:</span><span class="w"> </span><span class="l">http</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l">v1</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">outbound</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span>- <span class="nt">port</span><span class="p">:</span><span class="w"> </span><span class="m">33033</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">tags</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">kuma.io/service</span><span class="p">:</span><span class="w"> </span><span class="l">backend</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">transparentProxying</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">redirectPortInbound</span><span class="p">:</span><span class="w"> </span><span class="m">15006</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">redirectPortOutbound</span><span class="p">:</span><span class="w"> </span><span class="m">15001</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">reachableServices</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span>- <span class="l">backend</span><span class="w">
+</span></span></span></code></pre><p>With <code>--to-latest v2</code> the document is copied unchanged, with one warning about
+<code>reachableServices</code>.</p>
+<p>With <code>--to-latest v3</code>:</p>
+<pre class="chroma"><code><span class="line"><span class="cl"><span class="c"># other/Dataplane-web-01.yaml</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">labels</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l">v1</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">mesh</span><span class="p">:</span><span class="w"> </span><span class="l">default</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">web-01</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">networking</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">address</span><span class="p">:</span><span class="w"> </span><span class="m">10.0.0.12</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">advertisedAddress</span><span class="p">:</span><span class="w"> </span><span class="m">192.168.1.12</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">inbound</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span>- <span class="nt">port</span><span class="p">:</span><span class="w"> </span><span class="m">8080</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">protocol</span><span class="p">:</span><span class="w"> </span><span class="l">http</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">servicePort</span><span class="p">:</span><span class="w"> </span><span class="m">8081</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">outbound</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span>- <span class="nt">port</span><span class="p">:</span><span class="w"> </span><span class="m">33033</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">tags</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">kuma.io/service</span><span class="p">:</span><span class="w"> </span><span class="l">backend</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">transparentProxying</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">reachableServices</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span>- <span class="l">backend</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">redirectPortInbound</span><span class="p">:</span><span class="w"> </span><span class="m">15006</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">redirectPortOutbound</span><span class="p">:</span><span class="w"> </span><span class="m">15001</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l">Dataplane</span><span class="w">
+</span></span></span></code></pre><p>The inbound is converted; the outbound and <code>reachableServices</code> are not, because <code>backend</code> is a
+Universal name with no port. Warnings (shortened):</p>
+<pre><code>⚠  3.0 no longer reads the inbound protocol from the kuma.io/protocol tag … Auto-set
+   inbound[].protocol from the tag: inbound port 8080=http.
+⚠  networking.inbound[].tags is removed in 3.0 and dropped silently on apply … Auto-moved to
+   Dataplane labels: version=v1. Dropped, because kuma.io/ and k8s.kuma.io/ are reserved label
+   prefixes: kuma.io/protocol=http, kuma.io/service=web. …
+⚠  networking.outbound[].tags is removed in 3.0 … Not converted, because the MeshService port is
+   not in the manifest: outbound[0] (port 33033): replace tags with
+   `backendRef: {kind: MeshService, name: backend, port: &lt;MeshService port&gt;}`.
+⚠  transparentProxying.reachableServices is removed in 3.0 … these entries could not be
+   converted: [backend]. …
+⚠  networking.advertisedAddress (192.168.1.12) is removed in 3.0 and dropped silently. …
+⚠  transparentProxying.redirectPortInbound / redirectPortOutbound still works on 3.0 but is
+   removed in 3.1. …
+⚠  transparent proxying without reachableBackends. On 3.0 such a proxy gets no generated
+   outbounds and cannot reach any service …
+</code></pre>
+<h2 id="related">Related</h2>
+<ul>
+<li><a href="../meshservice/">MeshService</a> — <code>reachableBackends</code> and display names</li>
+<li><a href="../gateways/">Gateways, Gateway API and GAMMA</a> — <code>networking.gateway</code> and delegated gateways</li>
+<li><a href="../multizone/">Multizone</a> — zone proxies as <code>Dataplane</code>s</li>
+</ul>
+
+    </article>
+    <nav class="pager" aria-label="Previous and next page">
+      <a class="prev" href="../policy-targeting/"><span>Previous</span>Policy targeting</a>
+      <a class="next" href="../legacy-policies/"><span>Next</span>Legacy policies</a>
+    </nav>
+  </main>
+  <nav class="toc" aria-label="On this page">
+    <p class="toc-title">On this page</p>
+    <ul><li class="toc-l2"><a href="#what-changed-upstream">What changed upstream</a></li><li class="toc-l2"><a href="#what-kuma-migrator-does">What kuma-migrator does</a></li><li class="toc-l2"><a href="#what-it-cannot-do">What it cannot do</a></li><li class="toc-l2"><a href="#manual-steps">Manual steps</a></li><li class="toc-l2"><a href="#example">Example</a></li><li class="toc-l2"><a href="#related">Related</a></li></ul>
+  </nav>
+</div>
+<footer class="site-footer">
+  <p>
+    <a href="../../../">kuma-migrator</a> ·
+    <a href="https://github.com/Kong/kuma-migrator">Source</a> ·
+    <a href="https://github.com/Kong/kuma-migrator/releases">Releases</a> ·
+    <a href="https://github.com/Kong/kuma-migrator/issues">Issues</a> ·
+    <a href="https://github.com/Kong/kuma-migrator/blob/main/site/content/topics/dataplanes.md">View source of this page</a>
+  </p>
+  <p>Apache-2.0 licensed. Part of Kong's <a href="https://konghq.com/products/kong-mesh">Kong Mesh</a> tooling.</p>
+</footer>
+<script src="../../static/search-index.js"></script>
+<script src="../../static/search.js"></script>
+</body>
+</html>

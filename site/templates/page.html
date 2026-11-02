@@ -1,0 +1,4 @@
+{{define "main"}}<p class="crumb"><a href="{{.SectionURL}}">{{.SectionName}}</a></p>
+<h1>{{.Title}}</h1>
+{{with .Description}}<p class="lede">{{.}}</p>{{end}}
+{{.Content}}{{end}}

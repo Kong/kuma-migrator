@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Documentation – kuma-migrator docs</title>
+<meta name="description" content="How to use kuma-migrator to move Kuma and Kong Mesh manifests across the 2.x API changes and into 3.0.">
+<link rel="canonical" href="https://kong.github.io/kuma-migrator/docs/">
+<link rel="icon" href="static/favicon.svg" type="image/svg+xml">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="kuma-migrator">
+<meta property="og:title" content="Documentation – kuma-migrator docs">
+<meta property="og:description" content="How to use kuma-migrator to move Kuma and Kong Mesh manifests across the 2.x API changes and into 3.0.">
+<meta property="og:url" content="https://kong.github.io/kuma-migrator/docs/">
+<meta property="og:image" content="https://kong.github.io/kuma-migrator/assets/migration-overview.svg">
+<meta name="twitter:card" content="summary_large_image">
+
+<link rel="stylesheet" href="static/style.css">
+<link rel="stylesheet" href="static/chroma.css">
+</head>
+<body data-root="">
+<a class="skip" href="#content">Skip to content</a>
+<header class="site-header">
+  <div class="bar">
+    <a class="brand" href="../"><img src="static/favicon.svg" width="28" height="28" alt=""><span>kuma-migrator</span></a>
+    <a class="docs-home" href="./">Docs</a>
+    <nav class="top-nav" aria-label="Sections">
+      <a href="guides/">Guides</a>
+      <a href="topics/">Topics</a>
+      <a href="policies/">Policies</a>
+      <a href="https://github.com/Kong/kuma-migrator">GitHub</a>
+    </nav>
+    <div class="search">
+      <input id="search-input" type="search" placeholder="Search docs" aria-label="Search docs" autocomplete="off">
+      <ul id="search-results" hidden></ul>
+    </div>
+  </div>
+</header>
+
+<div class="layout no-sidebar no-toc">
+  
+  <main id="content">
+    <article class="doc">
+<h1>Documentation</h1>
+<p class="lede">How to use kuma-migrator to move Kuma and Kong Mesh manifests across the 2.x API changes and into 3.0.</p>
+<p><code>kuma-migrator</code> reads the resources of a running Kuma or Kong Mesh control plane, rewrites
+them for the latest 2.x line or for 3.0, and writes a report of every change, every warning
+and every step left to you. It never writes to a control plane: you review the output and
+apply it yourself.</p>
+<h2 id="quick-start">Quick start</h2>
+<pre class="chroma"><code><span class="line"><span class="cl">brew install --cask bcollard/kuma-migrator/kuma-migrator
+</span></span><span class="line"><span class="cl">kuma-migrator extract --kube-context prod-eks --output-dir ./raw-policies
+</span></span><span class="line"><span class="cl">kuma-migrator migrate --input-dir ./raw-policies --output-dir ./migrated --dry-run
+</span></span><span class="line"><span class="cl">kuma-migrator migrate --input-dir ./raw-policies --output-dir ./migrated
+</span></span><span class="line"><span class="cl">less ./migrated/migration-report.md   <span class="c1"># follow its Apply Checklist</span>
+</span></span></code></pre><p>Add <code>--to-latest v3</code> to <code>migrate</code> to target Kuma / Kong Mesh 3.0. Start with
+<a href="guides/usage/">Typical usage</a> for your setup.</p>
+<h2 id="how-the-documentation-is-organised">How the documentation is organised</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Section</th>
+<th>Organised by</th>
+<th>Use it to</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="guides/">Guides</a></td>
+<td>Task</td>
+<td>Install the tool, run <code>extract</code> and <code>migrate</code>, read the report, plan an upgrade, apply the output</td>
+</tr>
+<tr>
+<td><a href="topics/">Topics</a></td>
+<td>Area of the mesh</td>
+<td>Plan one area (identity, gateways, multizone, access control, observability, …) across every kind that touches it</td>
+</tr>
+<tr>
+<td><a href="policies/">Policies</a></td>
+<td>Resource kind</td>
+<td>Look up what the tool does with one kind on each target, the kinds it emits, and the upstream changes behind it</td>
+</tr>
+</tbody>
+</table></div>
+<p>A typical path: <a href="guides/upgrade-plans/">Upgrade plans</a> for the order of work, the topics
+for the areas your plan flags, and the policy pages for the kinds in your report.</p>
+
+<div class="cards cards-sections">
+  <a class="card" href="guides/"><h2>Guides</h2><p>Install kuma-migrator, run it against your control planes, plan an upgrade, and apply the result.</p></a>
+  <a class="card" href="topics/"><h2>Topics</h2><p>Migration planning by area of the mesh — what changed upstream, what kuma-migrator does on each target, and the manual steps left to you.</p></a>
+  <a class="card" href="policies/"><h2>Policy reference</h2><p>One page per Kuma and Kong Mesh resource kind — what kuma-migrator does with it under --to-latest v2 and v3, and the upstream changes behind it.</p></a>
+  
+</div>
+    </article>
+    
+  </main>
+  
+</div>
+<footer class="site-footer">
+  <p>
+    <a href="../">kuma-migrator</a> ·
+    <a href="https://github.com/Kong/kuma-migrator">Source</a> ·
+    <a href="https://github.com/Kong/kuma-migrator/releases">Releases</a> ·
+    <a href="https://github.com/Kong/kuma-migrator/issues">Issues</a> ·
+    <a href="https://github.com/Kong/kuma-migrator/blob/main/site/content/_index.md">View source of this page</a>
+  </p>
+  <p>Apache-2.0 licensed. Part of Kong's <a href="https://konghq.com/products/kong-mesh">Kong Mesh</a> tooling.</p>
+</footer>
+<script src="static/search-index.js"></script>
+<script src="static/search.js"></script>
+</body>
+</html>

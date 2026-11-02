@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Guides – kuma-migrator docs</title>
+<meta name="description" content="Install kuma-migrator, run it against your control planes, plan an upgrade, and apply the result.">
+<link rel="canonical" href="https://kong.github.io/kuma-migrator/docs/guides/">
+<link rel="icon" href="../static/favicon.svg" type="image/svg+xml">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="kuma-migrator">
+<meta property="og:title" content="Guides – kuma-migrator docs">
+<meta property="og:description" content="Install kuma-migrator, run it against your control planes, plan an upgrade, and apply the result.">
+<meta property="og:url" content="https://kong.github.io/kuma-migrator/docs/guides/">
+<meta property="og:image" content="https://kong.github.io/kuma-migrator/assets/migration-overview.svg">
+<meta name="twitter:card" content="summary_large_image">
+
+<link rel="stylesheet" href="../static/style.css">
+<link rel="stylesheet" href="../static/chroma.css">
+</head>
+<body data-root="../">
+<a class="skip" href="#content">Skip to content</a>
+<header class="site-header">
+  <div class="bar">
+    <a class="brand" href="../../"><img src="../static/favicon.svg" width="28" height="28" alt=""><span>kuma-migrator</span></a>
+    <a class="docs-home" href="../">Docs</a>
+    <nav class="top-nav" aria-label="Sections">
+      <a href="./" class="active" aria-current="true">Guides</a>
+      <a href="../topics/">Topics</a>
+      <a href="../policies/">Policies</a>
+      <a href="https://github.com/Kong/kuma-migrator">GitHub</a>
+    </nav>
+    <div class="search">
+      <input id="search-input" type="search" placeholder="Search docs" aria-label="Search docs" autocomplete="off">
+      <ul id="search-results" hidden></ul>
+    </div>
+  </div>
+</header>
+
+<div class="layout">
+  <details class="nav-mobile">
+    <summary>Guides menu</summary>
+    <div class="nav-group"><ul><li><a href="./" class="active" aria-current="page">Overview</a></li><li><a href="installation/">Installation</a></li><li><a href="usage/">Typical usage</a></li><li><a href="upgrade-plans/">Upgrade plans</a></li><li><a href="cli/">CLI reference</a></li><li><a href="extract/">Extract</a></li><li><a href="migrate/">Migrate</a></li><li><a href="target-version/">Target versions (--to-latest)</a></li><li><a href="apply/">Apply</a></li><li><a href="output-and-reports/">Output and reports</a></li><li><a href="examples/">Examples</a></li><li><a href="architecture/">Architecture</a></li><li><a href="notes/">Notes and caveats</a></li></ul></div>
+
+  </details>
+  <aside class="sidebar" aria-label="Guides pages">
+    <p class="sidebar-section"><a href="./">Guides</a></p>
+    <div class="nav-group"><ul><li><a href="./" class="active" aria-current="page">Overview</a></li><li><a href="installation/">Installation</a></li><li><a href="usage/">Typical usage</a></li><li><a href="upgrade-plans/">Upgrade plans</a></li><li><a href="cli/">CLI reference</a></li><li><a href="extract/">Extract</a></li><li><a href="migrate/">Migrate</a></li><li><a href="target-version/">Target versions (--to-latest)</a></li><li><a href="apply/">Apply</a></li><li><a href="output-and-reports/">Output and reports</a></li><li><a href="examples/">Examples</a></li><li><a href="architecture/">Architecture</a></li><li><a href="notes/">Notes and caveats</a></li></ul></div>
+
+  </aside>
+  <main id="content">
+    <article class="doc">
+<h1>Guides</h1>
+<p class="lede">Install kuma-migrator, run it against your control planes, plan an upgrade, and apply the result.</p>
+<p>The guides cover the tool itself: how to install it, how to run each command, what it writes,
+and how to use its output to plan and carry out an upgrade. For what happens to a specific
+resource kind, see the <a href="../policies/">policy pages</a>; for one area of the mesh across
+kinds, see the <a href="../topics/">topics</a>.</p>
+<h2 id="getting-started">Getting started</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Guide</th>
+<th>What it covers</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="installation/">Installation</a></td>
+<td>Homebrew, release archives, building from source, verifying a release</td>
+</tr>
+<tr>
+<td><a href="usage/">Typical usage</a></td>
+<td>End-to-end runs for a single Kubernetes zone, multizone, self-hosted Kong Mesh, Konnect and Universal</td>
+</tr>
+<tr>
+<td><a href="upgrade-plans/">Upgrade plans</a></td>
+<td>Supported upgrade paths, which target to use when, the sequence for 3.0, rollback</td>
+</tr>
+</tbody>
+</table></div>
+<h2 id="running-the-tool">Running the tool</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Guide</th>
+<th>What it covers</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="cli/">CLI reference</a></td>
+<td>Every command, flag and configuration file setting</td>
+</tr>
+<tr>
+<td><a href="extract/">Extract</a></td>
+<td>Reading a control plane: connection modes, control plane modes, origin filtering, layout</td>
+</tr>
+<tr>
+<td><a href="migrate/">Migrate</a></td>
+<td><code>--dry-run</code>, the real run, input and output layout, scenarios</td>
+</tr>
+<tr>
+<td><a href="target-version/">Target versions</a></td>
+<td><code>--to-latest v2</code> and <code>v3</code>: what each rewrites, warns about or refuses</td>
+</tr>
+<tr>
+<td><a href="apply/">Apply</a></td>
+<td>The Apply Checklist, apply order, removing originals, the <code>_manual/</code> subtree</td>
+</tr>
+<tr>
+<td><a href="output-and-reports/">Output and reports</a></td>
+<td>Console output and the sections of the Markdown report</td>
+</tr>
+</tbody>
+</table></div>
+<h2 id="reference">Reference</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Guide</th>
+<th>What it covers</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="examples/">Transformation examples</a></td>
+<td>Before-and-after YAML per scenario, on both targets</td>
+</tr>
+<tr>
+<td><a href="architecture/">Architecture</a></td>
+<td>How the pipeline is built, with links to the source</td>
+</tr>
+<tr>
+<td><a href="notes/">Notes and caveats</a></td>
+<td>Behaviour to know before relying on the output</td>
+</tr>
+</tbody>
+</table></div>
+
+<div class="cards">
+  <a class="card" href="installation/"><h3>Installation</h3><p>Install kuma-migrator with Homebrew, from a release archive, or from source, and verify a release archive.</p></a>
+  <a class="card" href="usage/"><h3>Typical usage</h3><p>End-to-end walkthroughs for a single Kubernetes zone, a multizone deployment, self-hosted Kong Mesh, Konnect and Universal.</p></a>
+  <a class="card" href="upgrade-plans/"><h3>Upgrade plans</h3><p>Plan a Kuma or Kong Mesh upgrade with kuma-migrator, from the next 2.x minor to 3.0, and read the report sections that drive it.</p></a>
+  <a class="card" href="cli/"><h3>CLI reference</h3><p>Every command, flag and configuration file setting of kuma-migrator.</p></a>
+  <a class="card" href="extract/"><h3>Extract</h3><p>Pull resources out of a running Kuma or Kong Mesh control plane, and the control plane mode rules that decide what is kept.</p></a>
+  <a class="card" href="migrate/"><h3>Migrate</h3><p>Preview the migration with --dry-run, write the migrated manifests, and the output layout they land in.</p></a>
+  <a class="card" href="target-version/"><h3>Target versions</h3><p>Why the 2.x and 3.0 lines need different output, and what --to-latest v3 rewrites, warns about or refuses.</p></a>
+  <a class="card" href="apply/"><h3>Apply</h3><p>The order to apply the migrated manifests in, why the order matters, and how to remove the originals afterwards.</p></a>
+  <a class="card" href="output-and-reports/"><h3>Output and reports</h3><p>What migrate prints while it runs, and what the Markdown report contains.</p></a>
+  <a class="card" href="examples/"><h3>Transformation examples</h3><p>Before-and-after YAML for each migration scenario, as produced by the current release.</p></a>
+  <a class="card" href="architecture/"><h3>Architecture</h3><p>How kuma-migrator is built, from reading the control plane to writing the report.</p></a>
+  <a class="card" href="notes/"><h3>Notes and caveats</h3><p>Behaviour worth knowing before you rely on the output.</p></a>
+  
+</div>
+    </article>
+    
+  </main>
+  <nav class="toc" aria-label="On this page">
+    <p class="toc-title">On this page</p>
+    <ul><li class="toc-l2"><a href="#getting-started">Getting started</a></li><li class="toc-l2"><a href="#running-the-tool">Running the tool</a></li><li class="toc-l2"><a href="#reference">Reference</a></li></ul>
+  </nav>
+</div>
+<footer class="site-footer">
+  <p>
+    <a href="../../">kuma-migrator</a> ·
+    <a href="https://github.com/Kong/kuma-migrator">Source</a> ·
+    <a href="https://github.com/Kong/kuma-migrator/releases">Releases</a> ·
+    <a href="https://github.com/Kong/kuma-migrator/issues">Issues</a> ·
+    <a href="https://github.com/Kong/kuma-migrator/blob/main/site/content/guides/_index.md">View source of this page</a>
+  </p>
+  <p>Apache-2.0 licensed. Part of Kong's <a href="https://konghq.com/products/kong-mesh">Kong Mesh</a> tooling.</p>
+</footer>
+<script src="../static/search-index.js"></script>
+<script src="../static/search.js"></script>
+</body>
+</html>

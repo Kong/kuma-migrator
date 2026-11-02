@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Legacy policies – kuma-migrator docs</title>
+<meta name="description" content="The twelve source/destination policies Kuma 3.0 removes, how kuma-migrator maps their selectors and conf to the Mesh* successors, and the two it leaves to you.">
+<link rel="canonical" href="https://kong.github.io/kuma-migrator/docs/topics/legacy-policies/">
+<link rel="icon" href="../../static/favicon.svg" type="image/svg+xml">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="kuma-migrator">
+<meta property="og:title" content="Legacy policies – kuma-migrator docs">
+<meta property="og:description" content="The twelve source/destination policies Kuma 3.0 removes, how kuma-migrator maps their selectors and conf to the Mesh* successors, and the two it leaves to you.">
+<meta property="og:url" content="https://kong.github.io/kuma-migrator/docs/topics/legacy-policies/">
+<meta property="og:image" content="https://kong.github.io/kuma-migrator/assets/migration-overview.svg">
+<meta name="twitter:card" content="summary_large_image">
+
+<link rel="stylesheet" href="../../static/style.css">
+<link rel="stylesheet" href="../../static/chroma.css">
+</head>
+<body data-root="../../">
+<a class="skip" href="#content">Skip to content</a>
+<header class="site-header">
+  <div class="bar">
+    <a class="brand" href="../../../"><img src="../../static/favicon.svg" width="28" height="28" alt=""><span>kuma-migrator</span></a>
+    <a class="docs-home" href="../../">Docs</a>
+    <nav class="top-nav" aria-label="Sections">
+      <a href="../../guides/">Guides</a>
+      <a href="../" class="active" aria-current="true">Topics</a>
+      <a href="../../policies/">Policies</a>
+      <a href="https://github.com/Kong/kuma-migrator">GitHub</a>
+    </nav>
+    <div class="search">
+      <input id="search-input" type="search" placeholder="Search docs" aria-label="Search docs" autocomplete="off">
+      <ul id="search-results" hidden></ul>
+    </div>
+  </div>
+</header>
+
+<div class="layout">
+  <details class="nav-mobile">
+    <summary>Topics menu</summary>
+    <div class="nav-group"><ul><li><a href="../">Overview</a></li><li><a href="../meshes/">Meshes</a></li><li><a href="../mtls-identity/">mTLS &amp; identity</a></li><li><a href="../external-pki/">External PKI</a></li><li><a href="../meshservice/">MeshService</a></li><li><a href="../multizone/">Multizone</a></li><li><a href="../gateways/">Gateways &amp; GAMMA</a></li><li><a href="../external-services/">External services</a></li><li><a href="../access-control/">Access control</a></li><li><a href="../observability/">Observability</a></li><li><a href="../policy-targeting/">Policy targeting</a></li><li><a href="../dataplanes/">Dataplanes</a></li><li><a href="./" class="active" aria-current="page">Legacy policies</a></li></ul></div>
+
+  </details>
+  <aside class="sidebar" aria-label="Topics pages">
+    <p class="sidebar-section"><a href="../">Topics</a></p>
+    <div class="nav-group"><ul><li><a href="../">Overview</a></li><li><a href="../meshes/">Meshes</a></li><li><a href="../mtls-identity/">mTLS &amp; identity</a></li><li><a href="../external-pki/">External PKI</a></li><li><a href="../meshservice/">MeshService</a></li><li><a href="../multizone/">Multizone</a></li><li><a href="../gateways/">Gateways &amp; GAMMA</a></li><li><a href="../external-services/">External services</a></li><li><a href="../access-control/">Access control</a></li><li><a href="../observability/">Observability</a></li><li><a href="../policy-targeting/">Policy targeting</a></li><li><a href="../dataplanes/">Dataplanes</a></li><li><a href="./" class="active" aria-current="page">Legacy policies</a></li></ul></div>
+
+  </aside>
+  <main id="content">
+    <article class="doc">
+<p class="crumb"><a href="../">Topics</a></p>
+<h1>Legacy policies</h1>
+<p class="lede">The twelve source/destination policies Kuma 3.0 removes, how kuma-migrator maps their selectors and conf to the Mesh* successors, and the two it leaves to you.</p>
+<p>Before the targetRef policies, Kuma configured traffic with twelve policies that select proxies
+by tag with <code>sources</code>, <code>destinations</code> or <code>selectors</code>, and carry their settings in <code>conf</code>. They
+stopped affecting Envoy configuration during the 2.x line, and 3.0 removes them from the resource
+registry: CRDs, API, <code>kumactl</code> and KDS sync
+(<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#legacy-policy-resources-removed">UPGRADE</a>).
+Stored objects of these types are not migrated, so they must be converted and deleted before the
+upgrade.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Legacy</th>
+<th>Successor</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="../../policies/timeout/">Timeout</a></td>
+<td><a href="../../policies/meshtimeout/">MeshTimeout</a></td>
+</tr>
+<tr>
+<td><a href="../../policies/circuitbreaker/">CircuitBreaker</a></td>
+<td><a href="../../policies/meshcircuitbreaker/">MeshCircuitBreaker</a></td>
+</tr>
+<tr>
+<td><a href="../../policies/retry/">Retry</a></td>
+<td><a href="../../policies/meshretry/">MeshRetry</a></td>
+</tr>
+<tr>
+<td><a href="../../policies/healthcheck/">HealthCheck</a></td>
+<td><a href="../../policies/meshhealthcheck/">MeshHealthCheck</a></td>
+</tr>
+<tr>
+<td><a href="../../policies/trafficlog/">TrafficLog</a></td>
+<td><a href="../../policies/meshaccesslog/">MeshAccessLog</a></td>
+</tr>
+<tr>
+<td><a href="../../policies/trafficpermission/">TrafficPermission</a></td>
+<td><a href="../../policies/meshtrafficpermission/">MeshTrafficPermission</a></td>
+</tr>
+<tr>
+<td><a href="../../policies/faultinjection/">FaultInjection</a></td>
+<td><a href="../../policies/meshfaultinjection/">MeshFaultInjection</a></td>
+</tr>
+<tr>
+<td><a href="../../policies/ratelimit/">RateLimit</a></td>
+<td><a href="../../policies/meshratelimit/">MeshRateLimit</a></td>
+</tr>
+<tr>
+<td><a href="../../policies/traffictrace/">TrafficTrace</a></td>
+<td><a href="../../policies/meshtrace/">MeshTrace</a></td>
+</tr>
+<tr>
+<td><a href="../../policies/proxytemplate/">ProxyTemplate</a></td>
+<td><a href="../../policies/meshproxypatch/">MeshProxyPatch</a></td>
+</tr>
+<tr>
+<td><a href="../../policies/trafficroute/">TrafficRoute</a></td>
+<td><a href="../../policies/meshhttproute/">MeshHTTPRoute</a> or <a href="../../policies/meshtcproute/">MeshTCPRoute</a> — manual</td>
+</tr>
+<tr>
+<td><a href="../../policies/virtualoutbound/">VirtualOutbound</a></td>
+<td>No single successor — manual</td>
+</tr>
+</tbody>
+</table></div>
+<p><a href="../../policies/externalservice/">ExternalService</a> is also removed in 3.0 and has its own page:
+<a href="../external-services/">External services</a>. <code>ContainerPatch</code> is not a legacy policy: it has no
+targetRef successor, 3.0 still serves it, and the tool copies it unchanged.</p>
+<p>The upstream guide is <a href="https://kuma.io/docs/latest/guides/migration-to-the-new-policies/">Migration to the new policies</a>.</p>
+<h2 id="selector-shapes">Selector shapes</h2>
+<p>The legacy selectors do not map the same way for every kind. Getting the direction wrong attaches
+the policy to the wrong proxy.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Shape</th>
+<th>Kinds</th>
+<th>Mapping</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Outbound</td>
+<td><code>Timeout</code>, <code>CircuitBreaker</code>, <code>Retry</code>, <code>HealthCheck</code>, <code>TrafficLog</code></td>
+<td><code>sources</code> → <code>spec.targetRef</code>; <code>destinations</code> → <code>to[].targetRef</code></td>
+</tr>
+<tr>
+<td>Inbound</td>
+<td><code>TrafficPermission</code>, <code>FaultInjection</code>, <code>RateLimit</code></td>
+<td><code>destinations</code> → <code>spec.targetRef</code>; <code>sources</code> → <code>from[]</code> (or <code>rules[]</code>)</td>
+</tr>
+<tr>
+<td>Selector</td>
+<td><code>TrafficTrace</code>, <code>ProxyTemplate</code></td>
+<td><code>selectors</code> → <code>spec.targetRef</code>; <code>conf</code> → <code>spec.default</code> (no <code>to[]</code>/<code>from[]</code>)</td>
+</tr>
+</tbody>
+</table></div>
+<p><code>FaultInjection</code> and <code>RateLimit</code> are enforced by the destination's sidecar, like
+<code>TrafficPermission</code>.</p>
+<p>Selector values:</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Legacy match</th>
+<th>New reference</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>kuma.io/service: '*'</code></td>
+<td><code>kind: Mesh</code></td>
+</tr>
+<tr>
+<td><code>kuma.io/service: backend_demo_svc_3001</code> (top level)</td>
+<td><code>kind: Dataplane</code> (see below)</td>
+</tr>
+<tr>
+<td><code>kuma.io/service: backend_demo_svc_3001</code> (<code>to[]</code>/<code>from[]</code>)</td>
+<td><code>kind: MeshService</code>, <code>name: backend</code>, <code>namespace: demo</code> (v2) or <code>labels</code> (v3)</td>
+</tr>
+<tr>
+<td>Service tag plus other tags</td>
+<td>Other tags kept as <code>labels</code></td>
+</tr>
+<tr>
+<td>Empty <code>destinations</code></td>
+<td>Wildcard, so the conf keeps a <code>to[]</code> entry</td>
+</tr>
+<tr>
+<td>Several specific <code>sources</code></td>
+<td>One output policy per source, named <code>&lt;name&gt;-0</code>, <code>&lt;name&gt;-1</code>, …</td>
+</tr>
+</tbody>
+</table></div>
+<h2 id="conf-mapping">Conf mapping</h2>
+<p>No legacy <code>conf</code> is structurally compatible with the successor's <code>default</code>. A verbatim copy
+applies cleanly and does nothing. Each kind has its own converter
+(<a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/legacyconf.go"><code>legacyconf.go</code></a>),
+and any input field no converter consumes is reported.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Legacy</th>
+<th>Notable changes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Timeout</code></td>
+<td><code>connectTimeout</code> → <code>connectionTimeout</code>; <code>tcp.idleTimeout</code> → <code>idleTimeout</code>; no <code>grpc</code> section (folds into <code>http</code>)</td>
+</tr>
+<tr>
+<td><code>CircuitBreaker</code></td>
+<td><code>thresholds.*</code> → <code>connectionLimits.*</code>; the rest under <code>outlierDetection</code>; detectors renamed (<code>totalErrors</code> → <code>totalFailures</code>, <code>gatewayErrors</code> → <code>gatewayFailures</code>, <code>localErrors</code> → <code>localOriginFailures</code>, <code>standardDeviation</code> → <code>successRate</code>, <code>failure</code> → <code>failurePercentage</code>)</td>
+</tr>
+<tr>
+<td><code>Retry</code></td>
+<td><code>tcp.maxConnectAttempts</code> → <code>maxConnectAttempt</code>; <code>retryOn</code> values recased (<code>gateway_error</code> → <code>GatewayError</code>); <code>retriableMethods</code> → <code>retryOn: [HttpMethodGet, …]</code>; gRPC <code>cancelled</code> → <code>Canceled</code>; <code>retriableStatusCodes</code> has no equivalent (dropped, warned)</td>
+</tr>
+<tr>
+<td><code>HealthCheck</code></td>
+<td><code>http.requestHeadersToAdd</code> → <code>{add, set}</code> (<code>append</code> unset means <code>add</code>); <code>tcp.send</code>/<code>receive</code> stay base64</td>
+</tr>
+<tr>
+<td><code>FaultInjection</code></td>
+<td>The single conf becomes a one-element <code>default.http[]</code></td>
+</tr>
+<tr>
+<td><code>RateLimit</code></td>
+<td><code>http.{requests, interval}</code> → <code>local.http.requestRate.{num, interval}</code>; emitted as <code>rules[]</code> (a specific <code>sources</code> selector is lost and warned)</td>
+</tr>
+<tr>
+<td><code>TrafficLog</code></td>
+<td><code>conf.backend</code> resolved against <code>Mesh.logging.backends</code> and inlined as <code>default.backends[]</code></td>
+</tr>
+<tr>
+<td><code>TrafficTrace</code></td>
+<td>Backend resolved against <code>Mesh.tracing.backends</code>; its <code>sampling</code> → <code>default.sampling.overall</code></td>
+</tr>
+<tr>
+<td><code>ProxyTemplate</code></td>
+<td><code>modifications</code> → <code>appendModifications</code>; operations recased; <code>httpFilter</code>/<code>networkFilter</code>/<code>virtualHost</code> <code>add</code> → <code>AddLast</code> (warned); <code>imports</code> and <code>resources</code> have no equivalent</td>
+</tr>
+<tr>
+<td><code>TrafficPermission</code></td>
+<td>No conf; one <code>from[]</code> entry with <code>action: Allow</code> per source</td>
+</tr>
+</tbody>
+</table></div>
+<p>Percentages stay numbers when whole and become strings when fractional, as the new schemas type
+them <code>anyOf: [integer, string]</code>.</p>
+<h2 id="what-kuma-migrator-does">What kuma-migrator does</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Input</th>
+<th><code>--to-latest v2</code></th>
+<th><code>--to-latest v3</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Outbound-shape kinds</td>
+<td>Converted. Top-level specific service → <code>Dataplane</code> <code>name</code>/<code>namespace</code>; destinations → <code>MeshService</code> <code>name</code>/<code>namespace</code></td>
+<td>Converted. Top-level → <code>Dataplane</code> <code>labels: {app, k8s.kuma.io/namespace}</code> (warned as a best guess); destinations → <code>MeshService</code> labels. Delete-before-upgrade advisory</td>
+</tr>
+<tr>
+<td><code>HealthCheck</code> with <code>healthyPanicThreshold</code></td>
+<td>Kept on <code>MeshHealthCheck</code>, warned</td>
+<td>Moved to a companion <code>MeshCircuitBreaker</code> <code>&lt;name&gt;-panic-threshold</code> with <code>outlierDetection.healthyPanicThreshold</code> and <code>detectors.totalFailures.consecutive: 5</code></td>
+</tr>
+<tr>
+<td><code>TrafficPermission</code></td>
+<td><code>MeshTrafficPermission</code> with <code>from[]</code></td>
+<td><strong>Error</strong>, original to <code>_manual/</code>. See <a href="../access-control/">Access control</a></td>
+</tr>
+<tr>
+<td><code>FaultInjection</code></td>
+<td><code>MeshFaultInjection</code> with <code>from[]</code></td>
+<td><code>rules[]</code> when every source is <code>kuma.io/service: '*'</code>; error otherwise</td>
+</tr>
+<tr>
+<td><code>RateLimit</code></td>
+<td><code>MeshRateLimit</code> with <code>rules[]</code></td>
+<td>Same</td>
+</tr>
+<tr>
+<td><code>TrafficLog</code>, <code>TrafficTrace</code></td>
+<td>Converted with the backend from the <code>Mesh</code> in the input; warning naming the backend if the <code>Mesh</code> is missing</td>
+<td>Same</td>
+</tr>
+<tr>
+<td><code>ProxyTemplate</code></td>
+<td><code>MeshProxyPatch</code></td>
+<td>Same; warning when it patches cluster <code>circuitBreakers</code> (on 3.0 it overrides <code>MeshCircuitBreaker</code>)</td>
+</tr>
+<tr>
+<td>Selector with no service tag in a destination</td>
+<td><code>to[].targetRef</code> <code>kind: MeshSubset</code> with the tags</td>
+<td>Error: 3.0 accepts no tag selector in <code>to[]</code></td>
+</tr>
+<tr>
+<td><code>TrafficRoute</code></td>
+<td>Error; original copied to the output tree</td>
+<td>Error; original to <code>_manual/</code></td>
+</tr>
+<tr>
+<td><code>VirtualOutbound</code></td>
+<td>Error; original copied to the output tree</td>
+<td>Error; original to <code>_manual/</code></td>
+</tr>
+</tbody>
+</table></div>
+<p>Code: <a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/transform.go"><code>transform.go</code></a>
+(<code>legacyShapes</code>), <a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/legacyconf.go"><code>legacyconf.go</code></a>,
+<a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/legacybackend.go"><code>legacybackend.go</code></a>.</p>
+<blockquote class="callout callout-warning"><p><strong>Warning:</strong> Under <code>v2</code>, a top-level <code>kuma.io/service</code> selector becomes
+<code>kind: Dataplane</code> with <code>name</code> and <code>namespace</code>. A <code>Dataplane</code> <code>name</code> selects one <code>Dataplane</code>
+resource by name, and on Kubernetes a <code>Dataplane</code> is named after its pod
+(<code>web-6d4f8c-xk2pq</code>), not after the service. Check what it selects, or replace it with <code>labels</code>
+before applying. The <code>v3</code> output already uses labels.</p>
+</blockquote>
+<h2 id="what-it-cannot-do">What it cannot do</h2>
+<h3 id="trafficroute">TrafficRoute</h3>
+<p>A <code>TrafficRoute</code> splits or redirects traffic by tag. Whether its successor is a <code>MeshHTTPRoute</code>
+or a <code>MeshTCPRoute</code> depends on the protocol of the destination, which the policy does not state.
+Write the route by hand, targeting <code>MeshService</code> backends. Default route-all <code>TrafficRoute</code>s
+created by older control planes can be deleted; 3.0 no longer creates them
+(<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#default-trafficpermissiontrafficroute-creation-removed">UPGRADE</a>).</p>
+<h3 id="virtualoutbound">VirtualOutbound</h3>
+<p><code>VirtualOutbound</code> renders a hostname <strong>and</strong> a port from arbitrary <code>Dataplane</code> tags, and allocates
+a VIP per result. No single resource does that:</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th></th>
+<th><code>VirtualOutbound</code></th>
+<th><code>HostnameGenerator</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Selects</td>
+<td><code>Dataplane</code>s by tags</td>
+<td><code>MeshService</code>/<code>MeshExternalService</code>/<code>MeshMultiZoneService</code> by label selector</td>
+</tr>
+<tr>
+<td>Template variables</td>
+<td>Any <code>Dataplane</code> tag via <code>parameters[]</code></td>
+<td><code>.Name</code>, <code>.DisplayName</code>, <code>.Namespace</code>, <code>.Mesh</code>, <code>.Zone</code> and a <code>label</code> function</td>
+</tr>
+<tr>
+<td>Port</td>
+<td>Templatable (<code>conf.port</code>)</td>
+<td>Not templatable; ports come from the <code>MeshService</code></td>
+</tr>
+<tr>
+<td>Result</td>
+<td>VIP + hostname</td>
+<td>Hostname in the resource's <code>status.addresses</code></td>
+</tr>
+</tbody>
+</table></div>
+<p><code>HostnameGenerator</code> covers the hostname half
+(<a href="https://kuma.io/docs/latest/networking/hostnamegenerator/">docs</a>). For the routing half,
+<code>UPGRADE.md</code> points to <code>MeshHTTPRoute</code>/<code>MeshTCPRoute</code>
+(<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#virtualoutbound-no-longer-affects-generated-envoy-config">UPGRADE</a>).</p>
+<h3 id="other-gaps">Other gaps</h3>
+<ul>
+<li><strong>Source scope on inbound policies.</strong> <code>MeshRateLimit</code> <code>rules[]</code> and, on 3.0,
+<code>MeshFaultInjection</code> and <code>MeshTrafficPermission</code> match clients by SPIFFE ID or not at all. A
+specific legacy <code>sources</code> selector cannot be carried over.</li>
+<li><strong>Retry on status codes.</strong> <code>MeshRetry</code> cannot retry on specific status codes.</li>
+<li><strong>Pod labels.</strong> The top-level <code>app: &lt;name&gt;</code> label under <code>v3</code> is a guess.</li>
+<li><strong><code>ProxyTemplate</code> <code>imports</code> and <code>resources</code>.</strong> No equivalent in <code>MeshProxyPatch</code>.</li>
+</ul>
+<h2 id="manual-steps">Manual steps</h2>
+<ol>
+<li>Put the <code>Mesh</code> resources in the input directory (needed for <code>TrafficLog</code>/<code>TrafficTrace</code>).</li>
+<li>Run <code>migrate --dry-run --to-latest v2</code> and read every unmapped-field warning.</li>
+<li>Apply the converted policies on 2.x and check proxy configuration
+(<code>kumactl inspect dataplane &lt;name&gt; --type=config</code>).</li>
+<li>Write <code>TrafficRoute</code> and <code>VirtualOutbound</code> replacements by hand.</li>
+<li>Delete the legacy objects. 3.0 does not migrate stored objects of these types.</li>
+<li>Before the 3.0 upgrade, re-run with <code>--to-latest v3</code>: legacy <code>TrafficPermission</code> needs the
+SPIFFE <code>rules[]</code> work in <a href="../access-control/">Access control</a>, and <code>HealthCheck</code> panic
+thresholds move to <code>MeshCircuitBreaker</code>.</li>
+</ol>
+<h2 id="example">Example</h2>
+<p>Input — three Universal files:</p>
+<pre class="chroma"><code><span class="line"><span class="cl"><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l">Timeout</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">mesh</span><span class="p">:</span><span class="w"> </span><span class="l">default</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">backend-timeout</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">sources</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span>- <span class="nt">match</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">kuma.io/service</span><span class="p">:</span><span class="w"> </span><span class="s1">&#39;*&#39;</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">destinations</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span>- <span class="nt">match</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">kuma.io/service</span><span class="p">:</span><span class="w"> </span><span class="l">backend_demo_svc_3001</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">conf</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">connectTimeout</span><span class="p">:</span><span class="w"> </span><span class="l">5s</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">tcp</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">idleTimeout</span><span class="p">:</span><span class="w"> </span><span class="l">1h</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">http</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">requestTimeout</span><span class="p">:</span><span class="w"> </span><span class="l">15s</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nn">---</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l">Retry</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">mesh</span><span class="p">:</span><span class="w"> </span><span class="l">default</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">web-retry</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">sources</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span>- <span class="nt">match</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">kuma.io/service</span><span class="p">:</span><span class="w"> </span><span class="l">web_demo_svc_8080</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">destinations</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span>- <span class="nt">match</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">kuma.io/service</span><span class="p">:</span><span class="w"> </span><span class="l">backend_demo_svc_3001</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">conf</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">http</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">numRetries</span><span class="p">:</span><span class="w"> </span><span class="m">3</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">retryOn</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="l">gateway_error, connect_failure]</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">retriableStatusCodes</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="m">503</span><span class="p">]</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">tcp</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">maxConnectAttempts</span><span class="p">:</span><span class="w"> </span><span class="m">4</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nn">---</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l">TrafficRoute</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">mesh</span><span class="p">:</span><span class="w"> </span><span class="l">default</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">route-all</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">sources</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span>- <span class="nt">match</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">kuma.io/service</span><span class="p">:</span><span class="w"> </span><span class="s1">&#39;*&#39;</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">destinations</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span>- <span class="nt">match</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">kuma.io/service</span><span class="p">:</span><span class="w"> </span><span class="s1">&#39;*&#39;</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">conf</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">destination</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kuma.io/service</span><span class="p">:</span><span class="w"> </span><span class="s1">&#39;*&#39;</span><span class="w">
+</span></span></span></code></pre><p>Output with <code>--to-latest v2</code>:</p>
+<pre class="chroma"><code><span class="line"><span class="cl"><span class="c"># resiliency/MeshTimeout-backend-timeout.yaml</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l">kuma.io/v1alpha1</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshTimeout</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">metadata</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">labels</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kuma.io/mesh</span><span class="p">:</span><span class="w"> </span><span class="l">default</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">backend-timeout</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">spec</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">targetRef</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">Mesh</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">to</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span>- <span class="nt">default</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">connectionTimeout</span><span class="p">:</span><span class="w"> </span><span class="l">5s</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">http</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">requestTimeout</span><span class="p">:</span><span class="w"> </span><span class="l">15s</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">idleTimeout</span><span class="p">:</span><span class="w"> </span><span class="l">1h</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">targetRef</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshService</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">backend</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l">demo</span><span class="w">
+</span></span></span></code></pre><pre class="chroma"><code><span class="line"><span class="cl"><span class="c"># resiliency/MeshRetry-web-retry.yaml</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l">kuma.io/v1alpha1</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshRetry</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">metadata</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">labels</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kuma.io/mesh</span><span class="p">:</span><span class="w"> </span><span class="l">default</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">web-retry</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">spec</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">targetRef</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">Dataplane</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">web</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l">demo</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">to</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span>- <span class="nt">default</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">http</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">numRetries</span><span class="p">:</span><span class="w"> </span><span class="m">3</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">retryOn</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span>- <span class="l">GatewayError</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span>- <span class="l">ConnectFailure</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">tcp</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">maxConnectAttempt</span><span class="p">:</span><span class="w"> </span><span class="m">4</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">targetRef</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshService</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">backend</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l">demo</span><span class="w">
+</span></span></span></code></pre><p>The <code>TrafficRoute</code> is copied to <code>routing/TrafficRoute-route-all.yaml</code> unchanged, with an error:</p>
+<pre><code>⚠  Retry &quot;web-retry&quot;: conf.http.retriableStatusCodes ([503]) has no MeshRetry equivalent and was
+   dropped — MeshRetry cannot retry on specific status codes. …
+✗  TrafficRoute requires manual migration to MeshHTTPRoute or MeshTCPRoute
+</code></pre>
+<p>With <code>--to-latest v3</code> the selectors use labels, the <code>TrafficRoute</code> goes to <code>_manual/</code>, and every
+converted source gets a delete-before-upgrade advisory:</p>
+<pre class="chroma"><code><span class="line"><span class="cl"><span class="c"># resiliency/MeshRetry-web-retry.yaml (v3)</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l">kuma.io/v1alpha1</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshRetry</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">metadata</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">labels</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kuma.io/mesh</span><span class="p">:</span><span class="w"> </span><span class="l">default</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">web-retry</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">spec</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">targetRef</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">Dataplane</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">labels</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">app</span><span class="p">:</span><span class="w"> </span><span class="l">web</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">k8s.kuma.io/namespace</span><span class="p">:</span><span class="w"> </span><span class="l">demo</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">to</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span>- <span class="nt">default</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">http</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">numRetries</span><span class="p">:</span><span class="w"> </span><span class="m">3</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">retryOn</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span>- <span class="l">GatewayError</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span>- <span class="l">ConnectFailure</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">tcp</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">maxConnectAttempt</span><span class="p">:</span><span class="w"> </span><span class="m">4</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">targetRef</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshService</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">labels</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">k8s.kuma.io/namespace</span><span class="p">:</span><span class="w"> </span><span class="l">demo</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">kuma.io/display-name</span><span class="p">:</span><span class="w"> </span><span class="l">backend</span><span class="w">
+</span></span></span></code></pre><p>A <code>HealthCheck</code> with <code>healthyPanicThreshold: 60</code> under <code>--to-latest v3</code> produces the
+<code>MeshHealthCheck</code> without the field and this companion:</p>
+<pre class="chroma"><code><span class="line"><span class="cl"><span class="c"># resiliency/MeshCircuitBreaker-backend-hc-panic-threshold.yaml</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l">kuma.io/v1alpha1</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshCircuitBreaker</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">metadata</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">labels</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kuma.io/mesh</span><span class="p">:</span><span class="w"> </span><span class="l">default</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">backend-hc-panic-threshold</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">spec</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">targetRef</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">Mesh</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">to</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span>- <span class="nt">default</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">outlierDetection</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">detectors</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">          </span><span class="nt">totalFailures</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">            </span><span class="nt">consecutive</span><span class="p">:</span><span class="w"> </span><span class="m">5</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">healthyPanicThreshold</span><span class="p">:</span><span class="w"> </span><span class="m">60</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">targetRef</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshService</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">labels</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">k8s.kuma.io/namespace</span><span class="p">:</span><span class="w"> </span><span class="l">demo</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">kuma.io/display-name</span><span class="p">:</span><span class="w"> </span><span class="l">backend</span><span class="w">
+</span></span></span></code></pre><p>3.0 reads the threshold only from an enabled outlier detection, which needs a detector, so the
+companion turns on outlier ejection for these destinations. If a <code>MeshCircuitBreaker</code> already
+covers them, move the threshold into it instead
+(<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#healthypanicthreshold-removed-from-meshhealthcheck">UPGRADE</a>).</p>
+<h2 id="related">Related</h2>
+<ul>
+<li><a href="../policy-targeting/">Policy targeting</a></li>
+<li><a href="../access-control/">Access control</a> — <code>TrafficPermission</code>, <code>FaultInjection</code></li>
+<li><a href="../observability/">Observability</a> — <code>TrafficLog</code>, <code>TrafficTrace</code></li>
+<li><a href="../../guides/target-version/">Choosing a target version</a></li>
+</ul>
+
+    </article>
+    <nav class="pager" aria-label="Previous and next page">
+      <a class="prev" href="../dataplanes/"><span>Previous</span>Dataplanes</a>
+      
+    </nav>
+  </main>
+  <nav class="toc" aria-label="On this page">
+    <p class="toc-title">On this page</p>
+    <ul><li class="toc-l2"><a href="#selector-shapes">Selector shapes</a></li><li class="toc-l2"><a href="#conf-mapping">Conf mapping</a></li><li class="toc-l2"><a href="#what-kuma-migrator-does">What kuma-migrator does</a></li><li class="toc-l2"><a href="#what-it-cannot-do">What it cannot do</a></li><li class="toc-l3"><a href="#trafficroute">TrafficRoute</a></li><li class="toc-l3"><a href="#virtualoutbound">VirtualOutbound</a></li><li class="toc-l3"><a href="#other-gaps">Other gaps</a></li><li class="toc-l2"><a href="#manual-steps">Manual steps</a></li><li class="toc-l2"><a href="#example">Example</a></li><li class="toc-l2"><a href="#related">Related</a></li></ul>
+  </nav>
+</div>
+<footer class="site-footer">
+  <p>
+    <a href="../../../">kuma-migrator</a> ·
+    <a href="https://github.com/Kong/kuma-migrator">Source</a> ·
+    <a href="https://github.com/Kong/kuma-migrator/releases">Releases</a> ·
+    <a href="https://github.com/Kong/kuma-migrator/issues">Issues</a> ·
+    <a href="https://github.com/Kong/kuma-migrator/blob/main/site/content/topics/legacy-policies.md">View source of this page</a>
+  </p>
+  <p>Apache-2.0 licensed. Part of Kong's <a href="https://konghq.com/products/kong-mesh">Kong Mesh</a> tooling.</p>
+</footer>
+<script src="../../static/search-index.js"></script>
+<script src="../../static/search.js"></script>
+</body>
+</html>

@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Upgrade plans – kuma-migrator docs</title>
+<meta name="description" content="Plan a Kuma or Kong Mesh upgrade with kuma-migrator, from the next 2.x minor to 3.0, and read the report sections that drive it.">
+<link rel="canonical" href="https://kong.github.io/kuma-migrator/docs/guides/upgrade-plans/">
+<link rel="icon" href="../../static/favicon.svg" type="image/svg+xml">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="kuma-migrator">
+<meta property="og:title" content="Upgrade plans – kuma-migrator docs">
+<meta property="og:description" content="Plan a Kuma or Kong Mesh upgrade with kuma-migrator, from the next 2.x minor to 3.0, and read the report sections that drive it.">
+<meta property="og:url" content="https://kong.github.io/kuma-migrator/docs/guides/upgrade-plans/">
+<meta property="og:image" content="https://kong.github.io/kuma-migrator/assets/migration-overview.svg">
+<meta name="twitter:card" content="summary_large_image">
+
+<link rel="stylesheet" href="../../static/style.css">
+<link rel="stylesheet" href="../../static/chroma.css">
+</head>
+<body data-root="../../">
+<a class="skip" href="#content">Skip to content</a>
+<header class="site-header">
+  <div class="bar">
+    <a class="brand" href="../../../"><img src="../../static/favicon.svg" width="28" height="28" alt=""><span>kuma-migrator</span></a>
+    <a class="docs-home" href="../../">Docs</a>
+    <nav class="top-nav" aria-label="Sections">
+      <a href="../" class="active" aria-current="true">Guides</a>
+      <a href="../../topics/">Topics</a>
+      <a href="../../policies/">Policies</a>
+      <a href="https://github.com/Kong/kuma-migrator">GitHub</a>
+    </nav>
+    <div class="search">
+      <input id="search-input" type="search" placeholder="Search docs" aria-label="Search docs" autocomplete="off">
+      <ul id="search-results" hidden></ul>
+    </div>
+  </div>
+</header>
+
+<div class="layout">
+  <details class="nav-mobile">
+    <summary>Guides menu</summary>
+    <div class="nav-group"><ul><li><a href="../">Overview</a></li><li><a href="../installation/">Installation</a></li><li><a href="../usage/">Typical usage</a></li><li><a href="./" class="active" aria-current="page">Upgrade plans</a></li><li><a href="../cli/">CLI reference</a></li><li><a href="../extract/">Extract</a></li><li><a href="../migrate/">Migrate</a></li><li><a href="../target-version/">Target versions (--to-latest)</a></li><li><a href="../apply/">Apply</a></li><li><a href="../output-and-reports/">Output and reports</a></li><li><a href="../examples/">Examples</a></li><li><a href="../architecture/">Architecture</a></li><li><a href="../notes/">Notes and caveats</a></li></ul></div>
+
+  </details>
+  <aside class="sidebar" aria-label="Guides pages">
+    <p class="sidebar-section"><a href="../">Guides</a></p>
+    <div class="nav-group"><ul><li><a href="../">Overview</a></li><li><a href="../installation/">Installation</a></li><li><a href="../usage/">Typical usage</a></li><li><a href="./" class="active" aria-current="page">Upgrade plans</a></li><li><a href="../cli/">CLI reference</a></li><li><a href="../extract/">Extract</a></li><li><a href="../migrate/">Migrate</a></li><li><a href="../target-version/">Target versions (--to-latest)</a></li><li><a href="../apply/">Apply</a></li><li><a href="../output-and-reports/">Output and reports</a></li><li><a href="../examples/">Examples</a></li><li><a href="../architecture/">Architecture</a></li><li><a href="../notes/">Notes and caveats</a></li></ul></div>
+
+  </aside>
+  <main id="content">
+    <article class="doc">
+<p class="crumb"><a href="../">Guides</a></p>
+<h1>Upgrade plans</h1>
+<p class="lede">Plan a Kuma or Kong Mesh upgrade with kuma-migrator, from the next 2.x minor to 3.0, and read the report sections that drive it.</p>
+<p><code>kuma-migrator</code> does not upgrade control planes. It tells you which manifests must change
+before, during and after an upgrade, writes the changed manifests, and lists what to delete.
+This page puts those outputs in the order an upgrade needs them.</p>
+<h2 id="supported-upgrade-paths">Supported upgrade paths</h2>
+<p>Kuma and Kong Mesh support upgrades of at most two minor versions at a time. The same rule
+applies between <code>kuma-dp</code> and <code>kuma-cp</code>, between Zone and Global control planes, and to the
+data in the store (<a href="https://kuma.io/docs/latest/production/upgrades-tuning/upgrades/">Kuma upgrades</a>,
+<a href="https://developer.konghq.com/mesh/upgrade/">Kong Mesh upgrade</a>).</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>From</th>
+<th>Path</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>2.8</td>
+<td>2.8 → 2.10 → 2.12 → 2.14 → 3.0</td>
+</tr>
+<tr>
+<td>2.9</td>
+<td>2.9 → 2.11 → 2.13 → 2.14 → 3.0</td>
+</tr>
+<tr>
+<td>2.12</td>
+<td>2.12 → 2.14 → 3.0</td>
+</tr>
+<tr>
+<td>2.13 LTS</td>
+<td>2.13 → 2.14 → 3.0</td>
+</tr>
+</tbody>
+</table></div>
+<p>Latest releases as of 2026-10-30: Kuma 3.0.1 and Kong Mesh 3.0.1, with 2.14.7 and 2.13.12
+(LTS) patch releases.</p>
+<p>Reach the latest 2.14 patch before 3.0. Several preparation steps need it:
+<code>MeshOpenTelemetryBackend</code> exists from 2.14, <code>MeshExternalService</code> accepts the 3.0
+<code>SecureDataSource</code> shape from 2.14.6
+(<a href="https://github.com/kumahq/kuma/blob/v3.0.1/UPGRADE.md#upgrade-to-2146">Upgrade to 2.14.6</a>),
+and Kong Mesh's latest 2.14 patch accepts the renamed KDS authentication settings
+(<a href="https://developer.konghq.com/mesh/version-specific-upgrade-notes/">Kong Mesh upgrade notes</a>).</p>
+<p>3.0 also changes the supported topology. Check these before planning manifest work:</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Change</th>
+<th>Action</th>
+<th>Source</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A Kubernetes-native Global control plane is not supported</td>
+<td>Move the Global control plane to Universal with a PostgreSQL store before upgrading</td>
+<td><a href="https://github.com/kumahq/kuma/blob/v3.0.1/UPGRADE.md#global-control-plane-on-kubernetes-is-no-longer-supported">Kuma <code>UPGRADE.md</code></a></td>
+</tr>
+<tr>
+<td><code>standalone</code> mode is removed</td>
+<td>Rename it to <code>zone</code></td>
+<td><a href="https://github.com/kumahq/kuma/blob/v3.0.1/UPGRADE.md#standalone-mode-removed">Kuma <code>UPGRADE.md</code></a></td>
+</tr>
+<tr>
+<td>Meshes no longer get default policies</td>
+<td>Write the policies you relied on</td>
+<td><a href="https://github.com/kumahq/kuma/blob/v3.0.1/UPGRADE.md#meshes-no-longer-come-with-default-policies">Kuma <code>UPGRADE.md</code></a></td>
+</tr>
+</tbody>
+</table></div>
+<h2 id="which-target-for-which-step">Which target for which step</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Upgrade step</th>
+<th>Run</th>
+<th>Apply on</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>2.x → a later 2.x</td>
+<td><code>--to-latest v2</code></td>
+<td>the 2.x control plane, after or before the step as the report says</td>
+</tr>
+<tr>
+<td>2.14 → 3.0, preparation</td>
+<td><code>--to-latest v2</code></td>
+<td>2.14</td>
+</tr>
+<tr>
+<td>2.14 → 3.0, final manifests</td>
+<td><code>--to-latest v3</code></td>
+<td>3.0, after the control planes are upgraded</td>
+</tr>
+</tbody>
+</table></div>
+<p><code>v2</code> output stays valid on 2.x and reports 3.0 removals as advisories. <code>v3</code> output removes
+fields that 2.14 still requires, so it is never applied before the upgrade. See
+<a href="../target-version/">Target versions</a>.</p>
+<h2 id="recommended-sequence-for-30">Recommended sequence for 3.0</h2>
+<ol>
+<li>
+<p><strong>Upgrade to the latest 2.14 patch</strong>, two minors at a time. At each step, run
+<code>extract</code> and <code>migrate --to-latest v2 --dry-run</code> and fix what the plan reports.</p>
+</li>
+<li>
+<p><strong>Extract every control plane</strong> into one directory: the Global control plane first, then
+each zone. See <a href="../extract/">Extract</a>.</p>
+<pre class="chroma"><code><span class="line"><span class="cl">kuma-migrator extract --kumactl-context global-prod        --output-dir ./raw-policies
+</span></span><span class="line"><span class="cl">kuma-migrator extract --kube-context    zone-eu-west1-prod --output-dir ./raw-policies
+</span></span><span class="line"><span class="cl">kuma-migrator extract --kube-context    zone-us-east1-prod --output-dir ./raw-policies
+</span></span></code></pre></li>
+<li>
+<p><strong>Dry-run both targets</strong> into separate directories. The v3 plan is the list of work the
+3.0 upgrade needs.</p>
+<pre class="chroma"><code><span class="line"><span class="cl">kuma-migrator migrate -i ./raw-policies -o ./plan-v2 --dry-run
+</span></span><span class="line"><span class="cl">kuma-migrator migrate -i ./raw-policies -o ./plan-v3 --dry-run --to-latest v3
+</span></span></code></pre></li>
+<li>
+<p><strong>Migrate to v2 and apply on 2.14.</strong> This replaces the kinds 3.0 removes with their
+successors while the control plane still accepts both: legacy policies become <code>Mesh*</code>
+policies, <code>ExternalService</code> becomes <code>MeshExternalService</code>, <code>OPAPolicy</code> becomes <code>MeshOPA</code>,
+built-in gateways become Gateway API resources. Follow the Apply Checklist, skipping its
+control plane upgrade steps, and check traffic.</p>
+<pre class="chroma"><code><span class="line"><span class="cl">kuma-migrator migrate -i ./raw-policies -o ./migrated-v2
+</span></span></code></pre></li>
+<li>
+<p><strong>Move every mesh to <code>MeshIdentity</code>.</strong> On 3.0 <code>Mesh.mtls</code> issues nothing: a mesh whose
+only identity source is <code>mtls</code> serves plaintext and <code>MeshTrafficPermission</code>/<code>MeshTLS</code> stop
+applying
+(<a href="https://github.com/kumahq/kuma/blob/v3.0.1/UPGRADE.md#meshmtls-no-longer-produces-mtls">Kuma <code>UPGRADE.md</code></a>).
+This is a CA cutover the manifests cannot describe; the tool reports it and does not
+convert it. Rewrite <code>MeshTrafficPermission</code> <code>from[]</code> to <code>rules[]</code> at the same time. See
+<a href="../../topics/mtls-identity/">mTLS and identity</a> and
+<a href="../../topics/access-control/">Access control</a>.</p>
+</li>
+<li>
+<p><strong>Set <code>meshServices.mode: Exclusive</code> on every mesh</strong> before the Global control plane is
+upgraded. A 2.x zone reads a missing field as <code>Disabled</code> and stops serving <code>MeshService</code>
+outbounds and DNS
+(<a href="https://github.com/kumahq/kuma/blob/v3.0.1/UPGRADE.md#meshservices-removed-from-the-mesh-schema">Kuma <code>UPGRADE.md</code></a>).
+The <code>Mesh</code> files in <code>./migrated-v2</code> set it; apply them last, as the checklist says, once
+every workload and policy uses <code>MeshService</code> names. See
+<a href="../../topics/meshservice/">MeshService</a>.</p>
+</li>
+<li>
+<p><strong>Migrate to v3</strong> and review the report.</p>
+<pre class="chroma"><code><span class="line"><span class="cl">kuma-migrator migrate -i ./raw-policies -o ./migrated-v3 --to-latest v3
+</span></span></code></pre><p>Resolve every entry under <strong>Action Items → Errors</strong>. Each <code>_manual/</code> file needs a
+decision: rewrite it by hand, or drop it.</p>
+</li>
+<li>
+<p><strong>Delete the removed kinds on 2.14</strong>, using <strong>Delete Before Upgrading to 3.0</strong> in
+<code>./migrated-v3/migration-report.md</code>. Delete an object only after its replacement from
+step 4 is applied and checked.</p>
+</li>
+<li>
+<p><strong>Upgrade the Global control plane to 3.0</strong>, then <strong>each Zone control plane</strong>.</p>
+</li>
+<li>
+<p><strong>Apply the v3 output</strong> to the 3.0 control planes, following the Apply Checklist of
+<code>./migrated-v3/migration-report.md</code>. Nothing under <code>_manual/</code> is applied.</p>
+</li>
+<li>
+<p><strong>Restart the data planes</strong> so they pick up the 3.0 <code>kuma-dp</code>.</p>
+</li>
+<li>
+<p><strong>Clean up.</strong> Once every zone runs 3.0, drop <code>meshServices</code> from the <code>Mesh</code> manifests you
+keep. Remove the input files and any originals still listed under
+<strong>Original Resources to Delete</strong>.</p>
+</li>
+</ol>
+<p>For 2.x-to-2.x steps, steps 2 to 4 are the whole plan: extract, dry-run with <code>v2</code>, migrate,
+apply, then upgrade.</p>
+<h2 id="use---dry-run-to-plan">Use --dry-run to plan</h2>
+<p><code>migrate --dry-run</code> runs every transform and every check without writing YAML. The plan
+answers the planning questions directly:</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Question</th>
+<th>Where to look in <code>migration-plan.md</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>How much converts automatically</td>
+<td><strong>Summary</strong>: migrated vs errors</td>
+</tr>
+<tr>
+<td>What needs a person</td>
+<td><strong>Action Items → Errors</strong>, and each warning that says <em>BLOCKING</em> or <em>manual</em></td>
+</tr>
+<tr>
+<td>What 3.0 deletes</td>
+<td><strong>Delete Before Upgrading to 3.0</strong> (v3 only)</td>
+</tr>
+<tr>
+<td>What workloads must change</td>
+<td><strong>Workload Service Address Mappings</strong>, <strong>Deprecated Annotations</strong></td>
+</tr>
+<tr>
+<td>Which files change per context</td>
+<td><strong>Files That Would Be Migrated</strong>, grouped by context and subfolder</td>
+</tr>
+</tbody>
+</table></div>
+<p>Compare the two plans to see what 3.0 adds on top of the 2.x work:</p>
+<pre class="chroma"><code><span class="line"><span class="cl">diff &lt;<span class="o">(</span>grep -o <span class="s1">&#39;⚠ [^|]*&#39;</span> ./plan-v2/migration-plan.md <span class="p">|</span> sort -u<span class="o">)</span> <span class="se">\
+</span></span></span><span class="line"><span class="cl">     &lt;<span class="o">(</span>grep -o <span class="s1">&#39;⚠ [^|]*&#39;</span> ./plan-v3/migration-plan.md <span class="p">|</span> sort -u<span class="o">)</span>
+</span></span></code></pre><p>Re-run the dry run after each fix until the error count is zero. It reads local files only,
+so it is safe to run as often as needed.</p>
+<h2 id="read-the-apply-checklist">Read the Apply Checklist</h2>
+<p>The checklist in <code>migration-report.md</code> is generated from the run's output. Its steps and their
+order are described in <a href="../apply/">Apply</a>. Two points matter for an upgrade plan:</p>
+<ul>
+<li>The checklist always contains the &quot;Upgrade the Global Control Plane&quot; and &quot;Upgrade Zone
+Control Planes&quot; steps. In a <code>v2</code> run used to prepare on the current version, skip them.</li>
+<li>In a <code>v3</code> run, the checklist orders the steps as: fix errors, delete the removed kinds,
+upgrade, apply policies, apply <code>Mesh</code> last. The <code>Mesh</code> step there comes after the upgrade,
+but <code>meshServices.mode: Exclusive</code> must already be set before it (step 6 above).</li>
+</ul>
+<h2 id="read-delete-before-upgrading-to-30">Read Delete Before Upgrading to 3.0</h2>
+<p>This section is written by <code>--to-latest v3</code> runs only. One row per source object of a kind
+3.0 removes:</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Source file</td>
+<td>The extracted file, relative to <code>--input-dir</code></td>
+</tr>
+<tr>
+<td>Kind, Name, Namespace / mesh</td>
+<td>The object to delete</td>
+</tr>
+<tr>
+<td>Replacement</td>
+<td><code>converted (see the apply steps)</code>, or <code>none — manual migration</code> with the path of the <code>_manual/</code> copy</td>
+</tr>
+</tbody>
+</table></div>
+<p>The collapsed block under the table holds the delete commands, <code>kubectl delete</code> or
+<code>kumactl delete</code> depending on how the context was extracted. 3.0 rejects these kinds and does
+not migrate stored objects, so they must be deleted on 2.14. For a row marked <code>converted</code>,
+the replacement must come from the <code>v2</code> output applied in step 4: the <code>v3</code> replacement is
+not valid on 2.14.</p>
+<h2 id="rollback">Rollback</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Point</th>
+<th>How to go back</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>After applying <code>v2</code> output on 2.x</td>
+<td>Delete the new-kind resources and keep the originals. The originals stay in the control plane until you delete them, and the extracted tree holds a copy.</td>
+</tr>
+<tr>
+<td>After deleting removed kinds</td>
+<td>Re-apply them from the extracted tree on 2.14.</td>
+</tr>
+<tr>
+<td>After the <code>MeshIdentity</code> cutover</td>
+<td>Upstream gives no rolling path back once proxies on 3.0 stop trusting legacy mesh certificates (<a href="https://github.com/kumahq/kuma/blob/v3.0.1/UPGRADE.md#meshmtls-no-longer-produces-mtls">Kuma <code>UPGRADE.md</code></a>). Plan the cutover so it is complete and verified on 2.14.</td>
+</tr>
+<tr>
+<td>After upgrading to 3.0</td>
+<td>Store compatibility follows the two-minor rule. A 3.0 control plane drops <code>Mesh.mtls</code> the next time it writes a <code>Mesh</code>; re-apply the <code>Mesh</code> from the extracted tree after rolling back.</td>
+</tr>
+</tbody>
+</table></div>
+<p>Keep the extracted tree, both plans and both reports under version control. They record what
+was in the control plane before the upgrade and what changed.</p>
+
+    </article>
+    <nav class="pager" aria-label="Previous and next page">
+      <a class="prev" href="../usage/"><span>Previous</span>Typical usage</a>
+      <a class="next" href="../cli/"><span>Next</span>CLI reference</a>
+    </nav>
+  </main>
+  <nav class="toc" aria-label="On this page">
+    <p class="toc-title">On this page</p>
+    <ul><li class="toc-l2"><a href="#supported-upgrade-paths">Supported upgrade paths</a></li><li class="toc-l2"><a href="#which-target-for-which-step">Which target for which step</a></li><li class="toc-l2"><a href="#recommended-sequence-for-30">Recommended sequence for 3.0</a></li><li class="toc-l2"><a href="#use---dry-run-to-plan">Use --dry-run to plan</a></li><li class="toc-l2"><a href="#read-the-apply-checklist">Read the Apply Checklist</a></li><li class="toc-l2"><a href="#read-delete-before-upgrading-to-30">Read Delete Before Upgrading to 3.0</a></li><li class="toc-l2"><a href="#rollback">Rollback</a></li></ul>
+  </nav>
+</div>
+<footer class="site-footer">
+  <p>
+    <a href="../../../">kuma-migrator</a> ·
+    <a href="https://github.com/Kong/kuma-migrator">Source</a> ·
+    <a href="https://github.com/Kong/kuma-migrator/releases">Releases</a> ·
+    <a href="https://github.com/Kong/kuma-migrator/issues">Issues</a> ·
+    <a href="https://github.com/Kong/kuma-migrator/blob/main/site/content/guides/upgrade-plans.md">View source of this page</a>
+  </p>
+  <p>Apache-2.0 licensed. Part of Kong's <a href="https://konghq.com/products/kong-mesh">Kong Mesh</a> tooling.</p>
+</footer>
+<script src="../../static/search-index.js"></script>
+<script src="../../static/search.js"></script>
+</body>
+</html>

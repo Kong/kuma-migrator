@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Installation – kuma-migrator docs</title>
+<meta name="description" content="Install kuma-migrator with Homebrew, from a release archive, or from source, and verify a release archive.">
+<link rel="canonical" href="https://kong.github.io/kuma-migrator/docs/guides/installation/">
+<link rel="icon" href="../../static/favicon.svg" type="image/svg+xml">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="kuma-migrator">
+<meta property="og:title" content="Installation – kuma-migrator docs">
+<meta property="og:description" content="Install kuma-migrator with Homebrew, from a release archive, or from source, and verify a release archive.">
+<meta property="og:url" content="https://kong.github.io/kuma-migrator/docs/guides/installation/">
+<meta property="og:image" content="https://kong.github.io/kuma-migrator/assets/migration-overview.svg">
+<meta name="twitter:card" content="summary_large_image">
+
+<link rel="stylesheet" href="../../static/style.css">
+<link rel="stylesheet" href="../../static/chroma.css">
+</head>
+<body data-root="../../">
+<a class="skip" href="#content">Skip to content</a>
+<header class="site-header">
+  <div class="bar">
+    <a class="brand" href="../../../"><img src="../../static/favicon.svg" width="28" height="28" alt=""><span>kuma-migrator</span></a>
+    <a class="docs-home" href="../../">Docs</a>
+    <nav class="top-nav" aria-label="Sections">
+      <a href="../" class="active" aria-current="true">Guides</a>
+      <a href="../../topics/">Topics</a>
+      <a href="../../policies/">Policies</a>
+      <a href="https://github.com/Kong/kuma-migrator">GitHub</a>
+    </nav>
+    <div class="search">
+      <input id="search-input" type="search" placeholder="Search docs" aria-label="Search docs" autocomplete="off">
+      <ul id="search-results" hidden></ul>
+    </div>
+  </div>
+</header>
+
+<div class="layout">
+  <details class="nav-mobile">
+    <summary>Guides menu</summary>
+    <div class="nav-group"><ul><li><a href="../">Overview</a></li><li><a href="./" class="active" aria-current="page">Installation</a></li><li><a href="../usage/">Typical usage</a></li><li><a href="../upgrade-plans/">Upgrade plans</a></li><li><a href="../cli/">CLI reference</a></li><li><a href="../extract/">Extract</a></li><li><a href="../migrate/">Migrate</a></li><li><a href="../target-version/">Target versions (--to-latest)</a></li><li><a href="../apply/">Apply</a></li><li><a href="../output-and-reports/">Output and reports</a></li><li><a href="../examples/">Examples</a></li><li><a href="../architecture/">Architecture</a></li><li><a href="../notes/">Notes and caveats</a></li></ul></div>
+
+  </details>
+  <aside class="sidebar" aria-label="Guides pages">
+    <p class="sidebar-section"><a href="../">Guides</a></p>
+    <div class="nav-group"><ul><li><a href="../">Overview</a></li><li><a href="./" class="active" aria-current="page">Installation</a></li><li><a href="../usage/">Typical usage</a></li><li><a href="../upgrade-plans/">Upgrade plans</a></li><li><a href="../cli/">CLI reference</a></li><li><a href="../extract/">Extract</a></li><li><a href="../migrate/">Migrate</a></li><li><a href="../target-version/">Target versions (--to-latest)</a></li><li><a href="../apply/">Apply</a></li><li><a href="../output-and-reports/">Output and reports</a></li><li><a href="../examples/">Examples</a></li><li><a href="../architecture/">Architecture</a></li><li><a href="../notes/">Notes and caveats</a></li></ul></div>
+
+  </aside>
+  <main id="content">
+    <article class="doc">
+<p class="crumb"><a href="../">Guides</a></p>
+<h1>Installation</h1>
+<p class="lede">Install kuma-migrator with Homebrew, from a release archive, or from source, and verify a release archive.</p>
+<h2 id="homebrew">Homebrew</h2>
+<p>Supported platforms: macOS Apple Silicon (<code>arm64</code>), macOS Intel (<code>amd64</code>), Linux <code>amd64</code>,
+Linux <code>arm64</code>.</p>
+<pre class="chroma"><code><span class="line"><span class="cl">brew tap bcollard/kuma-migrator
+</span></span><span class="line"><span class="cl">brew install --cask kuma-migrator
+</span></span></code></pre><p>Or in one command:</p>
+<pre class="chroma"><code><span class="line"><span class="cl">brew install --cask bcollard/kuma-migrator/kuma-migrator
+</span></span></code></pre><p>Upgrade:</p>
+<pre class="chroma"><code><span class="line"><span class="cl">brew upgrade --cask kuma-migrator
+</span></span></code></pre><h2 id="release-archives">Release archives</h2>
+<p>Download the archive for your platform from
+<a href="https://github.com/Kong/kuma-migrator/releases">GitHub Releases</a>.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Platform</th>
+<th>Architecture</th>
+<th>Archive</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Linux</td>
+<td><code>amd64</code>, <code>arm64</code></td>
+<td><code>kuma-migrator_&lt;version&gt;_linux_&lt;arch&gt;.tar.gz</code></td>
+</tr>
+<tr>
+<td>macOS</td>
+<td><code>amd64</code> (Intel), <code>arm64</code> (Apple Silicon)</td>
+<td><code>kuma-migrator_&lt;version&gt;_darwin_&lt;arch&gt;.tar.gz</code></td>
+</tr>
+<tr>
+<td>Windows</td>
+<td><code>amd64</code></td>
+<td><code>kuma-migrator_&lt;version&gt;_windows_amd64.zip</code></td>
+</tr>
+</tbody>
+</table></div>
+<p>Linux <code>amd64</code>:</p>
+<pre class="chroma"><code><span class="line"><span class="cl"><span class="nv">VERSION</span><span class="o">=</span><span class="k">$(</span>gh release view --repo Kong/kuma-migrator --json tagName --jq <span class="s1">&#39;.tagName&#39;</span> <span class="p">|</span> tr -d <span class="s1">&#39;v&#39;</span><span class="k">)</span>
+</span></span><span class="line"><span class="cl">curl -L <span class="s2">&#34;https://github.com/Kong/kuma-migrator/releases/latest/download/kuma-migrator_</span><span class="si">${</span><span class="nv">VERSION</span><span class="si">}</span><span class="s2">_linux_amd64.tar.gz&#34;</span> <span class="p">|</span> tar xz
+</span></span><span class="line"><span class="cl">sudo mv kuma-migrator /usr/local/bin/
+</span></span></code></pre><p>Linux <code>arm64</code>:</p>
+<pre class="chroma"><code><span class="line"><span class="cl"><span class="nv">VERSION</span><span class="o">=</span><span class="k">$(</span>gh release view --repo Kong/kuma-migrator --json tagName --jq <span class="s1">&#39;.tagName&#39;</span> <span class="p">|</span> tr -d <span class="s1">&#39;v&#39;</span><span class="k">)</span>
+</span></span><span class="line"><span class="cl">curl -L <span class="s2">&#34;https://github.com/Kong/kuma-migrator/releases/latest/download/kuma-migrator_</span><span class="si">${</span><span class="nv">VERSION</span><span class="si">}</span><span class="s2">_linux_arm64.tar.gz&#34;</span> <span class="p">|</span> tar xz
+</span></span><span class="line"><span class="cl">sudo mv kuma-migrator /usr/local/bin/
+</span></span></code></pre><h2 id="from-source">From source</h2>
+<p>Requires Go 1.24 or later.</p>
+<pre class="chroma"><code><span class="line"><span class="cl">git clone https://github.com/Kong/kuma-migrator.git
+</span></span><span class="line"><span class="cl"><span class="nb">cd</span> kuma-migrator
+</span></span><span class="line"><span class="cl">make build
+</span></span><span class="line"><span class="cl"><span class="c1"># binary at ./dist/kuma-migrator</span>
+</span></span></code></pre><h2 id="verify-a-release-archive">Verify a release archive</h2>
+<p>Every release archive carries a
+<a href="https://github.com/Kong/kuma-migrator/attestations">build provenance attestation</a>. It binds
+the archive to the commit and the GitHub Actions run that built it. Check it with the
+<a href="https://cli.github.com/">GitHub CLI</a> (<code>gh attestation verify</code> is built in):</p>
+<pre class="chroma"><code><span class="line"><span class="cl"><span class="nv">VERSION</span><span class="o">=</span><span class="k">$(</span>gh release view --repo Kong/kuma-migrator --json tagName --jq <span class="s1">&#39;.tagName&#39;</span> <span class="p">|</span> tr -d <span class="s1">&#39;v&#39;</span><span class="k">)</span>
+</span></span><span class="line"><span class="cl">curl -LO <span class="s2">&#34;https://github.com/Kong/kuma-migrator/releases/latest/download/kuma-migrator_</span><span class="si">${</span><span class="nv">VERSION</span><span class="si">}</span><span class="s2">_linux_amd64.tar.gz&#34;</span>
+</span></span><span class="line"><span class="cl">gh attestation verify <span class="s2">&#34;kuma-migrator_</span><span class="si">${</span><span class="nv">VERSION</span><span class="si">}</span><span class="s2">_linux_amd64.tar.gz&#34;</span> --repo Kong/kuma-migrator
+</span></span></code></pre><p>The Homebrew cask is built from the same archives, and its <code>sha256</code> fields match the attested
+<code>checksums.txt</code>.</p>
+<h2 id="runtime-requirements">Runtime requirements</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Tool</th>
+<th>Needed for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>kubectl</code> on <code>PATH</code></td>
+<td><code>extract --kube-context</code>, and applying Kubernetes-format output</td>
+</tr>
+<tr>
+<td><code>kumactl</code> on <code>PATH</code></td>
+<td><code>extract --kumactl-context</code> against a self-hosted control plane, and applying with <code>kumactl</code></td>
+</tr>
+</tbody>
+</table></div>
+<p><code>migrate</code> needs neither: it reads and writes local files only.</p>
+<p>For a Kong Mesh control plane, use the Kong Mesh build of <code>kumactl</code>. The Kuma OSS binary
+refuses to talk to a Kong Mesh control plane. Extraction from Konnect uses direct HTTPS calls
+and only reads the context from the <code>kumactl</code> config file.</p>
+<p>Check the installed version:</p>
+<pre class="chroma"><code><span class="line"><span class="cl">kuma-migrator version
+</span></span></code></pre><p>Next: <a href="../usage/">Typical usage</a>.</p>
+
+    </article>
+    <nav class="pager" aria-label="Previous and next page">
+      <span></span>
+      <a class="next" href="../usage/"><span>Next</span>Typical usage</a>
+    </nav>
+  </main>
+  <nav class="toc" aria-label="On this page">
+    <p class="toc-title">On this page</p>
+    <ul><li class="toc-l2"><a href="#homebrew">Homebrew</a></li><li class="toc-l2"><a href="#release-archives">Release archives</a></li><li class="toc-l2"><a href="#from-source">From source</a></li><li class="toc-l2"><a href="#verify-a-release-archive">Verify a release archive</a></li><li class="toc-l2"><a href="#runtime-requirements">Runtime requirements</a></li></ul>
+  </nav>
+</div>
+<footer class="site-footer">
+  <p>
+    <a href="../../../">kuma-migrator</a> ·
+    <a href="https://github.com/Kong/kuma-migrator">Source</a> ·
+    <a href="https://github.com/Kong/kuma-migrator/releases">Releases</a> ·
+    <a href="https://github.com/Kong/kuma-migrator/issues">Issues</a> ·
+    <a href="https://github.com/Kong/kuma-migrator/blob/main/site/content/guides/installation.md">View source of this page</a>
+  </p>
+  <p>Apache-2.0 licensed. Part of Kong's <a href="https://konghq.com/products/kong-mesh">Kong Mesh</a> tooling.</p>
+</footer>
+<script src="../../static/search-index.js"></script>
+<script src="../../static/search.js"></script>
+</body>
+</html>

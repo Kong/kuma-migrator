@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Migrate – kuma-migrator docs</title>
+<meta name="description" content="Preview the migration with --dry-run, write the migrated manifests, and the output layout they land in.">
+<link rel="canonical" href="https://kong.github.io/kuma-migrator/docs/guides/migrate/">
+<link rel="icon" href="../../static/favicon.svg" type="image/svg+xml">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="kuma-migrator">
+<meta property="og:title" content="Migrate – kuma-migrator docs">
+<meta property="og:description" content="Preview the migration with --dry-run, write the migrated manifests, and the output layout they land in.">
+<meta property="og:url" content="https://kong.github.io/kuma-migrator/docs/guides/migrate/">
+<meta property="og:image" content="https://kong.github.io/kuma-migrator/assets/migration-overview.svg">
+<meta name="twitter:card" content="summary_large_image">
+
+<link rel="stylesheet" href="../../static/style.css">
+<link rel="stylesheet" href="../../static/chroma.css">
+</head>
+<body data-root="../../">
+<a class="skip" href="#content">Skip to content</a>
+<header class="site-header">
+  <div class="bar">
+    <a class="brand" href="../../../"><img src="../../static/favicon.svg" width="28" height="28" alt=""><span>kuma-migrator</span></a>
+    <a class="docs-home" href="../../">Docs</a>
+    <nav class="top-nav" aria-label="Sections">
+      <a href="../" class="active" aria-current="true">Guides</a>
+      <a href="../../topics/">Topics</a>
+      <a href="../../policies/">Policies</a>
+      <a href="https://github.com/Kong/kuma-migrator">GitHub</a>
+    </nav>
+    <div class="search">
+      <input id="search-input" type="search" placeholder="Search docs" aria-label="Search docs" autocomplete="off">
+      <ul id="search-results" hidden></ul>
+    </div>
+  </div>
+</header>
+
+<div class="layout">
+  <details class="nav-mobile">
+    <summary>Guides menu</summary>
+    <div class="nav-group"><ul><li><a href="../">Overview</a></li><li><a href="../installation/">Installation</a></li><li><a href="../usage/">Typical usage</a></li><li><a href="../upgrade-plans/">Upgrade plans</a></li><li><a href="../cli/">CLI reference</a></li><li><a href="../extract/">Extract</a></li><li><a href="./" class="active" aria-current="page">Migrate</a></li><li><a href="../target-version/">Target versions (--to-latest)</a></li><li><a href="../apply/">Apply</a></li><li><a href="../output-and-reports/">Output and reports</a></li><li><a href="../examples/">Examples</a></li><li><a href="../architecture/">Architecture</a></li><li><a href="../notes/">Notes and caveats</a></li></ul></div>
+
+  </details>
+  <aside class="sidebar" aria-label="Guides pages">
+    <p class="sidebar-section"><a href="../">Guides</a></p>
+    <div class="nav-group"><ul><li><a href="../">Overview</a></li><li><a href="../installation/">Installation</a></li><li><a href="../usage/">Typical usage</a></li><li><a href="../upgrade-plans/">Upgrade plans</a></li><li><a href="../cli/">CLI reference</a></li><li><a href="../extract/">Extract</a></li><li><a href="./" class="active" aria-current="page">Migrate</a></li><li><a href="../target-version/">Target versions (--to-latest)</a></li><li><a href="../apply/">Apply</a></li><li><a href="../output-and-reports/">Output and reports</a></li><li><a href="../examples/">Examples</a></li><li><a href="../architecture/">Architecture</a></li><li><a href="../notes/">Notes and caveats</a></li></ul></div>
+
+  </aside>
+  <main id="content">
+    <article class="doc">
+<p class="crumb"><a href="../">Guides</a></p>
+<h1>Migrate</h1>
+<p class="lede">Preview the migration with --dry-run, write the migrated manifests, and the output layout they land in.</p>
+<p><code>migrate</code> reads a directory of Kuma manifests, usually the output of <a href="../extract/"><code>extract</code></a>,
+transforms every document and writes the result plus a Markdown report. It never contacts a
+control plane.</p>
+<p><code>--dry-run</code> runs the same transforms and the same deprecation scan. It changes two things:
+no YAML is written, and the report is <code>migration-plan.md</code> instead of <code>migration-report.md</code>.</p>
+<h2 id="dry-run">Dry run</h2>
+<p>Point <code>--input-dir</code> at the whole extracted tree. Filter to one mesh with <code>--mesh</code> if needed.</p>
+<pre class="chroma"><code><span class="line"><span class="cl"><span class="c1"># All meshes</span>
+</span></span><span class="line"><span class="cl">kuma-migrator migrate --input-dir ./raw-policies --output-dir ./migrated --dry-run
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="c1"># One mesh</span>
+</span></span><span class="line"><span class="cl">kuma-migrator migrate --input-dir ./raw-policies --output-dir ./migrated --mesh default --dry-run
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="c1"># Target 3.0 instead of the latest 2.x</span>
+</span></span><span class="line"><span class="cl">kuma-migrator migrate --input-dir ./raw-policies --output-dir ./migrated --to-latest v3 --dry-run
+</span></span></code></pre><p>The console lists every file with its scenario, where it came from and where it would be
+written, followed by warnings and errors. <code>migration-plan.md</code> in the output directory holds the
+same information. See <a href="../output-and-reports/">Output and reports</a>.</p>
+<h2 id="write-the-output">Write the output</h2>
+<p>Run the same command without <code>--dry-run</code>:</p>
+<pre class="chroma"><code><span class="line"><span class="cl">kuma-migrator migrate --input-dir ./raw-policies --output-dir ./migrated
+</span></span><span class="line"><span class="cl">kuma-migrator migrate --input-dir ./raw-policies --output-dir ./migrated --mesh default
+</span></span><span class="line"><span class="cl">kuma-migrator migrate --input-dir ./raw-policies --output-dir ./migrated --to-latest v3
+</span></span></code></pre><p>This writes the migrated YAML and <code>migration-report.md</code>. The input directory is never
+modified. Use a separate output directory per target, for example <code>./migrated-v2</code> and
+<code>./migrated-v3</code>: the two targets produce different files, and a run does not delete files left
+by a previous run in the same directory.</p>
+<p>See <a href="../target-version/">Target versions</a> for what <code>--to-latest</code> changes, and
+<a href="../apply/">Apply</a> for the order to apply the output in.</p>
+<h2 id="mesh-filter">Mesh filter</h2>
+<p><code>--mesh &lt;name&gt;</code> keeps files under <code>mesh-&lt;name&gt;/</code> and drops files under other <code>mesh-*/</code>
+directories. Files that are not under a mesh directory (<code>global-scoped-resources/</code>, a flat
+input tree) are always processed.</p>
+<h2 id="input-layout">Input layout</h2>
+<p><code>migrate</code> recognises the context and mesh from the path of each file:</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Path below <code>--input-dir</code></th>
+<th>Context directory</th>
+<th>Mesh</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>&lt;sub&gt;/file.yaml</code></td>
+<td>none</td>
+<td>none</td>
+</tr>
+<tr>
+<td><code>&lt;dir&gt;/&lt;sub&gt;/file.yaml</code></td>
+<td><code>&lt;dir&gt;</code></td>
+<td>none</td>
+</tr>
+<tr>
+<td><code>&lt;ctx&gt;/global-scoped-resources/&lt;sub&gt;/file.yaml</code></td>
+<td><code>&lt;ctx&gt;</code></td>
+<td>none</td>
+</tr>
+<tr>
+<td><code>&lt;ctx&gt;/mesh-&lt;mesh&gt;/&lt;sub&gt;/file.yaml</code></td>
+<td><code>&lt;ctx&gt;</code></td>
+<td><code>&lt;mesh&gt;</code></td>
+</tr>
+</tbody>
+</table></div>
+<p><code>&lt;sub&gt;</code> is one of the kind subfolders (<code>resiliency</code>, <code>routing</code>, <code>zero-trust</code>, <code>observability</code>,
+<code>mesh</code>, <code>other</code>). A hand-built input tree works as long as it follows one of these shapes.
+Every file ending in <code>.yaml</code> or <code>.yml</code> is read; a file can hold several documents separated by
+<code>---</code>.</p>
+<h2 id="output-layout">Output layout</h2>
+<p>The output mirrors the input layout. Each document is written to the kind subfolder of its
+<strong>output</strong> kind, named <code>&lt;Kind&gt;-&lt;name&gt;.yaml</code>, or <code>&lt;Kind&gt;-&lt;namespace&gt;-&lt;name&gt;.yaml</code> when it has a
+namespace.</p>
+<pre><code>migrated/
+  konnect-global-prod-global-ctx/
+    mesh-default/
+      resiliency/
+        MeshTimeout-my-timeout.yaml
+      routing/
+      zero-trust/
+      observability/
+      mesh/
+        Mesh-default.yaml
+      other/
+    global-scoped-resources/
+      routing/
+        Gateway-gateways-edge.yaml
+        HTTPRoute-gateways-edge.yaml
+      other/
+        ReferenceGrant-apps-gateways-edge.yaml
+    _manual/                         ← --to-latest v3 only
+      mesh-default/routing/TrafficRoute-route-all.yaml
+  zone-eu-west1-prod-zone-ctx/
+    mesh-default/
+      resiliency/
+  migration-report.md
+</code></pre>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Output</th>
+<th>Location</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Kuma resources from a mesh directory</td>
+<td><code>&lt;ctx&gt;/mesh-&lt;mesh&gt;/&lt;sub&gt;/</code></td>
+</tr>
+<tr>
+<td>Kuma resources with no mesh directory</td>
+<td><code>&lt;ctx&gt;/global-scoped-resources/&lt;sub&gt;/</code></td>
+</tr>
+<tr>
+<td>Gateway API output (<code>Gateway</code>, <code>HTTPRoute</code>, <code>TCPRoute</code>, <code>GatewayClass</code>, <code>ReferenceGrant</code>)</td>
+<td><code>&lt;ctx&gt;/global-scoped-resources/&lt;sub&gt;/</code>, even when the source came from a mesh directory. <code>ReferenceGrant</code> has no kind subfolder of its own and lands in <code>other/</code></td>
+</tr>
+<tr>
+<td>Documents a 3.0 control plane cannot accept (<code>--to-latest v3</code>)</td>
+<td><code>&lt;ctx&gt;/_manual/&lt;same relative path&gt;</code></td>
+</tr>
+<tr>
+<td>Flat input (no context directory)</td>
+<td><code>&lt;sub&gt;/</code></td>
+</tr>
+</tbody>
+</table></div>
+<p>Gateway API resources are Kubernetes-native objects applied to the clusters that run the
+gateway, not Kuma resources stored by the Global control plane. They are grouped under
+<code>global-scoped-resources/</code> so that the per-mesh directories only hold Kuma resources. A
+converted gateway from a Zone control plane lands in <code>&lt;zone-ctx&gt;/global-scoped-resources/routing/</code>.
+See <a href="../../topics/gateways/">Gateways</a>.</p>
+<p><code>MeshHTTPRoute</code> and <code>MeshTCPRoute</code> are not converted. They pass through to
+<code>&lt;ctx&gt;/mesh-&lt;mesh&gt;/routing/</code> unchanged. See <a href="../../policies/meshhttproute/">MeshHTTPRoute</a>.</p>
+<p>One input document can produce several output documents:</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Input</th>
+<th>Extra output</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Legacy policy with several specific sources</td>
+<td>one policy per source, named <code>&lt;name&gt;-0</code>, <code>&lt;name&gt;-1</code>, …</td>
+</tr>
+<tr>
+<td><code>Mesh*</code> policy with both <code>from[]</code> and <code>to[]</code></td>
+<td>the <code>to[]</code> half as <code>&lt;name&gt;-outbound</code></td>
+</tr>
+<tr>
+<td><code>Mesh</code> with embedded observability or passthrough</td>
+<td><code>MeshMetric</code>, <code>MeshTrace</code>, <code>MeshAccessLog</code>, <code>MeshPassthrough</code></td>
+</tr>
+<tr>
+<td><code>Mesh</code> under <code>--to-latest v3</code></td>
+<td><code>MeshTLS</code> (permissive backend), <code>MeshPassthrough</code></td>
+</tr>
+<tr>
+<td>Inline OpenTelemetry endpoint under <code>--to-latest v3</code></td>
+<td><code>MeshOpenTelemetryBackend</code> in <code>other/</code></td>
+</tr>
+<tr>
+<td><code>MeshGatewayRoute</code> with a cross-namespace backend</td>
+<td><code>ReferenceGrant</code></td>
+</tr>
+<tr>
+<td><code>MeshGatewayInstance</code> under <code>--to-latest v2</code></td>
+<td><code>GatewayClass</code> + <code>MeshGatewayConfig</code></td>
+</tr>
+</tbody>
+</table></div>
+<p>Errored documents are copied unchanged. Under <code>--to-latest v2</code> the copy stays in the apply
+tree, since applying it back to the 2.x control plane it came from changes nothing. Under
+<code>--to-latest v3</code> it goes to <code>_manual/</code>, which no apply step uses.</p>
+<h2 id="scenarios">Scenarios</h2>
+<p>Each document is classified into one scenario, which decides the transform:</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Scenario</th>
+<th>Trigger</th>
+<th>Output</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Legacy</td>
+<td><code>sources</code>/<code>destinations</code>/<code>selectors</code>, or one of the legacy kinds</td>
+<td><code>Mesh*</code> policy with <code>targetRef</code>/<code>to</code>/<code>from</code>/<code>rules</code>/<code>default</code></td>
+</tr>
+<tr>
+<td>Subset</td>
+<td><code>MeshSubset</code> with service tags, or <code>MeshService</code> with a Kuma-generated <code>_svc_</code> name</td>
+<td><code>Dataplane</code>/<code>MeshService</code> references</td>
+</tr>
+<tr>
+<td>Rules</td>
+<td><code>MeshTimeout</code>, <code>MeshCircuitBreaker</code>, <code>MeshRateLimit</code>, <code>MeshAccessLog</code>, <code>MeshTLS</code> with <code>from[]</code></td>
+<td><code>rules[]</code></td>
+</tr>
+<tr>
+<td>Mesh</td>
+<td><code>Mesh</code> with embedded observability or passthrough</td>
+<td>standalone policies</td>
+</tr>
+<tr>
+<td>ExternalService</td>
+<td><code>ExternalService</code></td>
+<td><code>MeshExternalService</code></td>
+</tr>
+<tr>
+<td>Gateway</td>
+<td><code>MeshGateway</code>, <code>MeshGatewayInstance</code>, <code>MeshGatewayRoute</code></td>
+<td>Gateway API</td>
+</tr>
+<tr>
+<td>OPAPolicy</td>
+<td>Kong Mesh <code>OPAPolicy</code></td>
+<td><code>MeshOPA</code></td>
+</tr>
+<tr>
+<td>Passthrough</td>
+<td>anything already current</td>
+<td>unchanged, still scanned</td>
+</tr>
+</tbody>
+</table></div>
+<p>The per-kind behaviour on each target is on the <a href="../../policies/">policy pages</a>. How the
+pipeline is put together is in <a href="../architecture/">Architecture</a>.</p>
+
+    </article>
+    <nav class="pager" aria-label="Previous and next page">
+      <a class="prev" href="../extract/"><span>Previous</span>Extract</a>
+      <a class="next" href="../target-version/"><span>Next</span>Target versions (--to-latest)</a>
+    </nav>
+  </main>
+  <nav class="toc" aria-label="On this page">
+    <p class="toc-title">On this page</p>
+    <ul><li class="toc-l2"><a href="#dry-run">Dry run</a></li><li class="toc-l2"><a href="#write-the-output">Write the output</a></li><li class="toc-l2"><a href="#mesh-filter">Mesh filter</a></li><li class="toc-l2"><a href="#input-layout">Input layout</a></li><li class="toc-l2"><a href="#output-layout">Output layout</a></li><li class="toc-l2"><a href="#scenarios">Scenarios</a></li></ul>
+  </nav>
+</div>
+<footer class="site-footer">
+  <p>
+    <a href="../../../">kuma-migrator</a> ·
+    <a href="https://github.com/Kong/kuma-migrator">Source</a> ·
+    <a href="https://github.com/Kong/kuma-migrator/releases">Releases</a> ·
+    <a href="https://github.com/Kong/kuma-migrator/issues">Issues</a> ·
+    <a href="https://github.com/Kong/kuma-migrator/blob/main/site/content/guides/migrate.md">View source of this page</a>
+  </p>
+  <p>Apache-2.0 licensed. Part of Kong's <a href="https://konghq.com/products/kong-mesh">Kong Mesh</a> tooling.</p>
+</footer>
+<script src="../../static/search-index.js"></script>
+<script src="../../static/search.js"></script>
+</body>
+</html>

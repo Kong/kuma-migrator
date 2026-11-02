@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gateways, Gateway API and GAMMA – kuma-migrator docs</title>
+<meta name="description" content="The built-in gateway removal in Kuma 3.0, MeshGateway* to Gateway API, delegated gateways, and why MeshHTTPRoute and MeshTCPRoute stay.">
+<link rel="canonical" href="https://kong.github.io/kuma-migrator/docs/topics/gateways/">
+<link rel="icon" href="../../static/favicon.svg" type="image/svg+xml">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="kuma-migrator">
+<meta property="og:title" content="Gateways, Gateway API and GAMMA – kuma-migrator docs">
+<meta property="og:description" content="The built-in gateway removal in Kuma 3.0, MeshGateway* to Gateway API, delegated gateways, and why MeshHTTPRoute and MeshTCPRoute stay.">
+<meta property="og:url" content="https://kong.github.io/kuma-migrator/docs/topics/gateways/">
+<meta property="og:image" content="https://kong.github.io/kuma-migrator/assets/migration-overview.svg">
+<meta name="twitter:card" content="summary_large_image">
+
+<link rel="stylesheet" href="../../static/style.css">
+<link rel="stylesheet" href="../../static/chroma.css">
+</head>
+<body data-root="../../">
+<a class="skip" href="#content">Skip to content</a>
+<header class="site-header">
+  <div class="bar">
+    <a class="brand" href="../../../"><img src="../../static/favicon.svg" width="28" height="28" alt=""><span>kuma-migrator</span></a>
+    <a class="docs-home" href="../../">Docs</a>
+    <nav class="top-nav" aria-label="Sections">
+      <a href="../../guides/">Guides</a>
+      <a href="../" class="active" aria-current="true">Topics</a>
+      <a href="../../policies/">Policies</a>
+      <a href="https://github.com/Kong/kuma-migrator">GitHub</a>
+    </nav>
+    <div class="search">
+      <input id="search-input" type="search" placeholder="Search docs" aria-label="Search docs" autocomplete="off">
+      <ul id="search-results" hidden></ul>
+    </div>
+  </div>
+</header>
+
+<div class="layout">
+  <details class="nav-mobile">
+    <summary>Topics menu</summary>
+    <div class="nav-group"><ul><li><a href="../">Overview</a></li><li><a href="../meshes/">Meshes</a></li><li><a href="../mtls-identity/">mTLS &amp; identity</a></li><li><a href="../external-pki/">External PKI</a></li><li><a href="../meshservice/">MeshService</a></li><li><a href="../multizone/">Multizone</a></li><li><a href="./" class="active" aria-current="page">Gateways &amp; GAMMA</a></li><li><a href="../external-services/">External services</a></li><li><a href="../access-control/">Access control</a></li><li><a href="../observability/">Observability</a></li><li><a href="../policy-targeting/">Policy targeting</a></li><li><a href="../dataplanes/">Dataplanes</a></li><li><a href="../legacy-policies/">Legacy policies</a></li></ul></div>
+
+  </details>
+  <aside class="sidebar" aria-label="Topics pages">
+    <p class="sidebar-section"><a href="../">Topics</a></p>
+    <div class="nav-group"><ul><li><a href="../">Overview</a></li><li><a href="../meshes/">Meshes</a></li><li><a href="../mtls-identity/">mTLS &amp; identity</a></li><li><a href="../external-pki/">External PKI</a></li><li><a href="../meshservice/">MeshService</a></li><li><a href="../multizone/">Multizone</a></li><li><a href="./" class="active" aria-current="page">Gateways &amp; GAMMA</a></li><li><a href="../external-services/">External services</a></li><li><a href="../access-control/">Access control</a></li><li><a href="../observability/">Observability</a></li><li><a href="../policy-targeting/">Policy targeting</a></li><li><a href="../dataplanes/">Dataplanes</a></li><li><a href="../legacy-policies/">Legacy policies</a></li></ul></div>
+
+  </aside>
+  <main id="content">
+    <article class="doc">
+<p class="crumb"><a href="../">Topics</a></p>
+<h1>Gateways, Gateway API and GAMMA</h1>
+<p class="lede">The built-in gateway removal in Kuma 3.0, MeshGateway* to Gateway API, delegated gateways, and why MeshHTTPRoute and MeshTCPRoute stay.</p>
+<p>Kuma 2.x has three gateway paths: the <strong>built-in gateway</strong> (<a href="../../policies/meshgateway/">MeshGateway</a>,
+<a href="../../policies/meshgatewayroute/">MeshGatewayRoute</a>, <a href="../../policies/meshgatewayinstance/">MeshGatewayInstance</a>,
+<code>MeshGatewayConfig</code>), <strong>north-south Gateway API</strong> (<code>Gateway</code>/<code>HTTPRoute</code> reconciled into the
+built-in gateway), and <strong>delegated gateways</strong> (a gateway you run, joined to the mesh). Mesh
+routing itself uses <a href="../../policies/meshhttproute/">MeshHTTPRoute</a> and <a href="../../policies/meshtcproute/">MeshTCPRoute</a>,
+or Gateway API <code>HTTPRoute</code>/<code>GRPCRoute</code> attached to a <code>Service</code> (the GAMMA, east-west case).</p>
+<p>Kuma 3.0 removes the first two. The delegated gateway is the only gateway shape left, and the
+GAMMA path stays.</p>
+<h2 id="what-changed-upstream">What changed upstream</h2>
+<h3 id="built-in-gateway-removed">Built-in gateway removed</h3>
+<p>Kuma 3.0 retires the built-in gateway in several separate <code>UPGRADE.md</code> entries. Read them
+together: the middle one says the CRDs are &quot;not removed by this change&quot;, and a later entry in the
+same release removes them.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Entry</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#north-south-gateway-api-built-in-gateway-support-removed">North-south Gateway API support removed</a></td>
+<td><code>Gateway</code>, <code>GatewayClass</code> and <code>ReferenceGrant</code> are no longer reconciled. An <code>HTTPRoute</code> whose <code>parentRefs</code> target a <code>Gateway</code> is ignored. The Helm chart no longer installs the <code>kuma</code> <code>GatewayClass</code></td>
+</tr>
+<tr>
+<td><a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#built-in-gateway-kubernetes-controllers-removed">Built-in gateway Kubernetes controllers removed</a></td>
+<td><code>MeshGatewayInstance</code> no longer reconciled; its <code>Service</code>, <code>Deployment</code> and <code>BUILTIN</code> <code>Dataplane</code> are left as they are</td>
+</tr>
+<tr>
+<td><a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#built-in-gateway-no-longer-falls-back-to-meshgatewayroute-or-legacy-connection-policies">Built-in gateway no longer falls back to MeshGatewayRoute</a></td>
+<td>A gateway host with no <code>MeshHTTPRoute</code>/<code>MeshTCPRoute</code> serves <code>404</code></td>
+</tr>
+<tr>
+<td><a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#built-in-gateway-api-and-crds-removed">Built-in gateway API and CRDs removed</a></td>
+<td><code>MeshGateway</code>, <code>MeshGatewayRoute</code>, <code>MeshGatewayInstance</code>, <code>MeshGatewayConfig</code>: types, CRDs and KDS sync deleted. <code>MeshGateway</code> is no longer a valid <code>targetRef.kind</code> for any policy</td>
+</tr>
+<tr>
+<td><a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#kumaiogateway-is-removed"><code>kuma.io/gateway</code> is removed</a></td>
+<td>The Pod annotation, the <code>Dataplane</code> label and <code>Dataplane.networking.gateway</code> no longer exist. A Pod still carrying the annotation is admitted and treated as a normal workload</td>
+</tr>
+<tr>
+<td><a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#the-builtin-gateway-type-and-its-statistics-are-removed-from-the-api">The <code>BUILTIN</code> gateway type is removed from the API</a></td>
+<td>A <code>Dataplane</code> with <code>type: BUILTIN</code> loads as an ordinary <code>Dataplane</code> with no inbounds</td>
+</tr>
+</tbody>
+</table></div>
+<p>Because the 3.0 Helm chart deletes the four CRDs, any <code>MeshGateway*</code> object still stored is
+deleted with them. Delete them yourself, after the replacement serves traffic and <strong>before</strong>
+upgrading.</p>
+<h3 id="delegated-gateways-without-kumaiogateway">Delegated gateways without <code>kuma.io/gateway</code></h3>
+<p>What the <code>kuma.io/gateway</code> marking did that mattered — Kuma not proxying the traffic the gateway
+terminates — now comes from keeping the listen ports out of inbound redirection:</p>
+<pre class="chroma"><code><span class="line"><span class="cl"><span class="c"># Pod template of the gateway</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">metadata</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">annotations</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">traffic.kuma.io/exclude-inbound-ports</span><span class="p">:</span><span class="w"> </span><span class="s2">&#34;8000,8443&#34;</span><span class="w">   </span><span class="c"># replaces kuma.io/gateway</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nn">---</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="c"># Service in front of the gateway</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">metadata</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">annotations</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kuma.io/ignore</span><span class="p">:</span><span class="w"> </span><span class="s2">&#34;true&#34;</span><span class="w">
+</span></span></span></code></pre><p>List every port the gateway accepts traffic on: the annotation is comma-separated and has no
+all-ports value. A port left off is redirected into Envoy, so outside clients become mesh inbound
+traffic subject to <code>MeshTrafficPermission</code> and mTLS and are rejected. Without <code>kuma.io/ignore</code> the
+<code>Service</code> generates a <code>MeshService</code>, and in-mesh clients that address the gateway through it get
+a destination with no endpoints. On Universal, drop <code>kuma.io/gateway</code> from the <code>Dataplane</code> labels
+(a leftover <code>kuma.io/</code> label fails registration on 3.0) and run <code>kuma-dp</code> with
+<code>--exclude-inbound-ports</code>.</p>
+<h3 id="meshhttproute-and-meshtcproute-stay">MeshHTTPRoute and MeshTCPRoute stay</h3>
+<p><code>MeshHTTPRoute</code> and <code>MeshTCPRoute</code> are current policies on 2.x and 3.0. Kuma's Gateway API
+integration compiles <strong>into</strong> them: on 3.0 the control plane registers an <code>HTTPRoute</code> reconciler
+and a <code>GRPCRoute</code> reconciler (kuma#18280), and both produce a generated <code>MeshHTTPRoute</code> for an
+<code>HTTPRoute</code>/<code>GRPCRoute</code> whose parent is a <code>Service</code> or <code>MeshService</code>:</p>
+<pre><code>Gateway API HTTPRoute / GRPCRoute   (GAMMA: parentRef → Service or MeshService)
+            ↓  control plane reconciler
+      MeshHTTPRoute                 (generated; hand-written ones are still supported)
+            ↓
+         Envoy
+</code></pre>
+<p><code>UPGRADE.md</code> states that &quot;Gateways you run yourself and the Gateway API <code>HTTPRoute</code> GAMMA path
+are unaffected.&quot; Kuma has no Gateway API <code>TCPRoute</code> reconciler at 2.14 or on 3.0.</p>
+<h3 id="routing-behaviour-changes-on-30">Routing behaviour changes on 3.0</h3>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Change</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#a-request-matching-no-meshhttproute-rule-now-gets-a-404">A request matching no <code>MeshHTTPRoute</code> rule gets a <code>404</code></a></td>
+<td>Before, it fell through to the destination. With <code>to[].targetRef</code> naming a <code>MeshService</code> without <code>sectionName</code>, this covers <strong>every</strong> HTTP port of the destination. On gRPC the client sees <code>UNIMPLEMENTED</code>. The common trap is a route that exists only so a <code>MeshTimeout</code>/<code>MeshRetry</code>/<code>MeshAccessLog</code> can target it</td>
+</tr>
+<tr>
+<td><a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#a-meshhttproute-match-without-a-path-ranks-as-pathprefix-">A match without a path ranks as <code>PathPrefix /</code></a></td>
+<td>Header-only rules next to a catch-all now receive their traffic; pathless matches rank above <code>RegularExpression</code> matches</td>
+</tr>
+<tr>
+<td><a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#a-meshhttproute-rule-whose-backendrefs-all-fail-to-resolve-answers-500">Rule with no resolvable backendRef answers <code>500</code></a></td>
+<td>No fallback to the destination service; also when the referenced port does not exist (<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#a-meshhttproute-backendref-naming-a-port-the-destination-lacks-now-fails-closed">UPGRADE</a>)</td>
+</tr>
+<tr>
+<td><a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#route-backendref-no-longer-accepts-meshservicesubset">Route <code>backendRef</code> no longer accepts <code>MeshServiceSubset</code></a></td>
+<td>Only <code>MeshService</code>, <code>MeshExternalService</code>, <code>MeshMultiZoneService</code>; <code>tags</code> removed from the schema</td>
+</tr>
+<tr>
+<td><a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#real-resource-policy-selection-now-uses-labels-only">Real-resource selection by <code>labels</code> only</a></td>
+<td><code>targetRef</code>, <code>to[].targetRef</code> and route <code>backendRefs</code> lose <code>name</code>/<code>namespace</code></td>
+</tr>
+<tr>
+<td><a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#generated-gateway-api-producer-routes-now-win-the-same-ties-as-hand-written-ones">Generated producer routes tie with hand-written ones</a></td>
+<td>A route generated from an <code>HTTPRoute</code> lands in the <code>HTTPRoute</code>'s namespace with <code>kuma.io/policy-role=producer</code>, so it ties with an equivalent hand-written route that used to always win</td>
+</tr>
+<tr>
+<td><a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#gateway-api-httproute-conflicts-on-the-same-parent-now-resolve-by-creationtimestamp">HTTPRoute conflicts resolve by <code>creationTimestamp</code></a></td>
+<td>Oldest wins, not name</td>
+</tr>
+<tr>
+<td><a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#gateway-api-cross-namespace-backendrefs-now-require-a-referencegrant">Cross-namespace <code>backendRefs</code> need a <code>ReferenceGrant</code></a></td>
+<td>For the GAMMA translation, for <code>Service</code> and <code>MeshService</code> backends</td>
+</tr>
+<tr>
+<td><a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#kumaiomesh-annotation-no-longer-honored-on-kubernetes"><code>kuma.io/mesh</code> annotation no longer honoured</a></td>
+<td>On Pods, Services, HTTPRoutes and Namespaces; only the label counts</td>
+</tr>
+<tr>
+<td><a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#rbac-control-plane-now-reads-gateway-api-grpcroutes">RBAC: control plane reads <code>GRPCRoute</code></a></td>
+<td>Add it if you manage RBAC yourself</td>
+</tr>
+</tbody>
+</table></div>
+<p>The top-level <code>targetRef</code> of every route is <code>Mesh</code> or <code>Dataplane</code> only on 3.0, and route <code>to[]</code>
+entries accept only the three service kinds (no <code>Mesh</code>). The full per-policy matrix is on
+<a href="../policy-targeting/#kinds-accepted-per-policy">Policy targeting</a>.</p>
+<h2 id="what-kuma-migrator-does">What kuma-migrator does</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Input</th>
+<th><code>--to-latest v2</code></th>
+<th><code>--to-latest v3</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>MeshGateway</code></td>
+<td><code>Gateway</code> (<code>gateway.networking.k8s.io/v1</code>). Listeners keep port, protocol, hostname, TLS <code>certificateRefs</code>; a bare <code>*</code> hostname is omitted. <code>gatewayClassName</code> resolved to the <code>GatewayClass</code> generated from the <code>MeshGatewayInstance</code> sharing its <code>kuma.io/service</code> tag</td>
+<td>Same listeners. <code>gatewayClassName: REPLACE-WITH-YOUR-GATEWAYCLASS</code> with a warning. Advisory: delete the source <code>MeshGateway</code> before upgrading</td>
+</tr>
+<tr>
+<td><code>MeshGatewayInstance</code></td>
+<td><code>GatewayClass</code> (named after the instance, <code>controllerName: gateways.kuma.io/controller</code>) + <code>MeshGatewayConfig</code> carrying <code>replicas</code>, <code>serviceType</code>, <code>tags</code></td>
+<td><strong>Error</strong>. Original written to <code>_manual/</code>. The message lists the settings to carry over to your own <code>Deployment</code>/<code>Service</code> and the delegated-gateway annotations</td>
+</tr>
+<tr>
+<td><code>MeshGatewayRoute</code> (HTTP)</td>
+<td><code>HTTPRoute</code> with <code>parentRefs</code> to the <code>Gateway</code>, <code>kuma.io/mesh</code> as a <strong>label</strong>, integer <code>port</code>. A backend in another namespace gets a <code>ReferenceGrant</code>; a route with no namespace gets a warning instead</td>
+<td>Same, plus the delete-before-upgrade advisory and a note that Kuma 3.0 ignores Gateway-parented routes (your gateway implementation reconciles them)</td>
+</tr>
+<tr>
+<td><code>MeshGatewayRoute</code> (TCP)</td>
+<td><code>TCPRoute</code></td>
+<td>Same</td>
+</tr>
+<tr>
+<td><code>MeshHTTPRoute</code>, <code>MeshTCPRoute</code></td>
+<td>Copied unchanged (Passthrough) and scanned</td>
+<td><code>targetRef</code>/<code>to[]</code>/<code>backendRefs</code> <code>name</code>/<code>namespace</code> → labels; a <code>MeshServiceSubset</code> backendRef whose only tag is <code>kuma.io/service</code> → <code>MeshService</code>; other tags warned. Advisory when a <code>MeshHTTPRoute</code> has no catch-all rule (<code>404</code> change)</td>
+</tr>
+<tr>
+<td>Policy with top-level <code>targetRef.kind: MeshGateway</code></td>
+<td>Copied (valid on 2.14 for system-role policies)</td>
+<td>Warning: rejected on 3.0, re-target the gateway's own proxies with <code>kind: Dataplane</code> + labels</td>
+</tr>
+<tr>
+<td><code>Dataplane</code> <code>networking.gateway</code> (any type)</td>
+<td>Copied</td>
+<td>Block removed; non-<code>kuma.io/</code> gateway tags moved to <code>Dataplane</code> labels</td>
+</tr>
+</tbody>
+</table></div>
+<p>Code: <a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/gateway.go"><code>gateway.go</code></a>,
+<a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/gatewayroute.go"><code>gatewayroute.go</code></a>,
+<a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/v3_gateway.go"><code>v3_gateway.go</code></a>.</p>
+<h3 id="why-meshhttproute-is-not-converted-to-httproute">Why MeshHTTPRoute is not converted to HTTPRoute</h3>
+<p>Rewriting a hand-written <code>MeshHTTPRoute</code> as a Gateway API <code>HTTPRoute</code> is not part of any upgrade,
+and it changes behaviour:</p>
+<ul>
+<li>the generated <code>MeshHTTPRoute</code> is owned by the <code>HTTPRoute</code>;</li>
+<li>it ranks as a generated producer route, which now ties with hand-written routes, and
+conflicting <code>HTTPRoute</code>s tie-break by <code>creationTimestamp</code>;</li>
+<li>a <code>MeshTCPRoute</code> would become a <code>TCPRoute</code>, which Kuma has never reconciled.</li>
+</ul>
+<p>Moving mesh routing to Gateway API is an architecture decision about where the routes live, so
+the tool leaves it to you.</p>
+<h3 id="meshgatewayroute-two-possible-successors">MeshGatewayRoute: two possible successors</h3>
+<p>The tool converts <code>MeshGatewayRoute</code> to Gateway API, which fits replacing the built-in gateway
+with a gateway you run. <code>UPGRADE.md</code> also names <code>MeshHTTPRoute</code>/<code>MeshTCPRoute</code> as the
+replacement, which fits when Kuma keeps doing the routing. The manifest does not say which path
+you are on, so the conversion warning states both.</p>
+<h2 id="what-it-cannot-do">What it cannot do</h2>
+<ul>
+<li><strong>Build the gateway.</strong> A delegated gateway needs a container image and a pod spec (Kong Gateway,
+Envoy Gateway, Contour, …). <code>MeshGatewayInstance</code> carries neither.</li>
+<li><strong>Pick the <code>GatewayClass</code> on v3.</strong> No Kuma <code>GatewayClass</code> exists on 3.0; it depends on the
+implementation you adopt.</li>
+<li><strong>Port gateway-scoped policies.</strong> A <code>MeshTimeout</code> or <code>MeshRateLimit</code> that targeted a
+<code>MeshGateway</code> must be rewritten for the new gateway: as a <code>Dataplane</code> policy on the gateway's
+proxies, or as configuration of the gateway implementation.</li>
+<li><strong>Decide the catch-all.</strong> Whether unmatched traffic should still reach a destination after 3.0
+is a routing decision. The tool reports routes without a catch-all; you add the rule.</li>
+</ul>
+<h2 id="manual-steps">Manual steps</h2>
+<ol>
+<li>Choose the gateway implementation and install it on 2.14 next to the built-in gateway.</li>
+<li>Apply the converted <code>Gateway</code> and <code>HTTPRoute</code>/<code>TCPRoute</code> objects with the new
+<code>gatewayClassName</code>, plus the generated <code>ReferenceGrant</code>s. Set <code>metadata.namespace</code> on routes
+that have none.</li>
+<li>Deploy the gateway workload as a delegated gateway: <code>traffic.kuma.io/exclude-inbound-ports</code> on
+the pod, <code>kuma.io/ignore: &quot;true&quot;</code> on its <code>Service</code>, settings from the <code>MeshGatewayInstance</code>
+(replicas, service type).</li>
+<li>Move traffic (DNS or load balancer) to the new gateway and verify it.</li>
+<li>Re-target policies that used <code>kind: MeshGateway</code>.</li>
+<li>Add a catch-all rule to every <code>MeshHTTPRoute</code> the <code>v3</code> report flags, on the route itself or on a
+second route.</li>
+<li>Delete <code>MeshGatewayRoute</code>, <code>MeshGateway</code>, <code>MeshGatewayInstance</code> and <code>MeshGatewayConfig</code>
+objects, the <code>Gateway</code>/<code>ReferenceGrant</code> objects you created for the built-in gateway, and
+<code>gapi-</code> prefixed Secrets. Then upgrade.</li>
+</ol>
+<p>A catch-all rule, from <code>UPGRADE.md</code>:</p>
+<pre class="chroma"><code><span class="line"><span class="cl"><span class="nt">rules</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span>- <span class="nt">matches</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span>- <span class="nt">path</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">          </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l">PathPrefix</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">          </span><span class="nt">value</span><span class="p">:</span><span class="w"> </span><span class="l">/</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">default</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">backendRefs</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span>- <span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshService</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">          </span><span class="nt">labels</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">            </span><span class="nt">kuma.io/display-name</span><span class="p">:</span><span class="w"> </span><span class="l">backend</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">          </span><span class="nt">port</span><span class="p">:</span><span class="w"> </span><span class="m">80</span><span class="w">
+</span></span></span></code></pre><h2 id="example">Example</h2>
+<p>Input — four files: a built-in gateway, its instance, a route, and a <code>MeshHTTPRoute</code> that only
+matches <code>/api</code>:</p>
+<pre class="chroma"><code><span class="line"><span class="cl"><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l">kuma.io/v1alpha1</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshGateway</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">metadata</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">edge-gateway</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">labels</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kuma.io/mesh</span><span class="p">:</span><span class="w"> </span><span class="l">default</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">spec</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">selectors</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span>- <span class="nt">match</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">kuma.io/service</span><span class="p">:</span><span class="w"> </span><span class="l">edge-gateway_kong-mesh-system_svc</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">conf</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">listeners</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span>- <span class="nt">port</span><span class="p">:</span><span class="w"> </span><span class="m">8080</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">protocol</span><span class="p">:</span><span class="w"> </span><span class="l">HTTP</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">hostname</span><span class="p">:</span><span class="w"> </span><span class="l">shop.example.com</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">tags</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">          </span><span class="nt">port</span><span class="p">:</span><span class="w"> </span><span class="l">http-8080</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nn">---</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l">kuma.io/v1alpha1</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshGatewayInstance</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">metadata</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">edge-gateway</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l">kong-mesh-system</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">labels</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kuma.io/mesh</span><span class="p">:</span><span class="w"> </span><span class="l">default</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">spec</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">replicas</span><span class="p">:</span><span class="w"> </span><span class="m">2</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">serviceType</span><span class="p">:</span><span class="w"> </span><span class="l">LoadBalancer</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">tags</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kuma.io/service</span><span class="p">:</span><span class="w"> </span><span class="l">edge-gateway_kong-mesh-system_svc</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nn">---</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l">kuma.io/v1alpha1</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshGatewayRoute</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">metadata</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">edge-route</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l">kong-mesh-system</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">labels</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kuma.io/mesh</span><span class="p">:</span><span class="w"> </span><span class="l">default</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">spec</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">selectors</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span>- <span class="nt">match</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">kuma.io/service</span><span class="p">:</span><span class="w"> </span><span class="l">edge-gateway_kong-mesh-system_svc</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">conf</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">http</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">rules</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span>- <span class="nt">matches</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">            </span>- <span class="nt">path</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">                </span><span class="nt">match</span><span class="p">:</span><span class="w"> </span><span class="l">PREFIX</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">                </span><span class="nt">value</span><span class="p">:</span><span class="w"> </span><span class="l">/api</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">          </span><span class="nt">backends</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">            </span>- <span class="nt">destination</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">                </span><span class="nt">kuma.io/service</span><span class="p">:</span><span class="w"> </span><span class="l">backend_demo_svc_3001</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nn">---</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l">kuma.io/v1alpha1</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshHTTPRoute</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">metadata</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">backend-api</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l">demo</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">labels</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kuma.io/mesh</span><span class="p">:</span><span class="w"> </span><span class="l">default</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">spec</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">targetRef</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">Mesh</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">to</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span>- <span class="nt">targetRef</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshService</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">backend</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">rules</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span>- <span class="nt">matches</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">            </span>- <span class="nt">path</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">                </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l">PathPrefix</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">                </span><span class="nt">value</span><span class="p">:</span><span class="w"> </span><span class="l">/api</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">          </span><span class="nt">default</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">            </span><span class="nt">backendRefs</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">              </span>- <span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshService</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">                </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">backend</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">                </span><span class="nt">port</span><span class="p">:</span><span class="w"> </span><span class="m">3001</span><span class="w">
+</span></span></span></code></pre><p>Output with <code>--to-latest v2</code> (the <code>MeshHTTPRoute</code> is copied unchanged):</p>
+<pre class="chroma"><code><span class="line"><span class="cl"><span class="c"># routing/Gateway-edge-gateway.yaml</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l">gateway.networking.k8s.io/v1</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">Gateway</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">metadata</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">edge-gateway</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="s2">&#34;&#34;</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">spec</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">gatewayClassName</span><span class="p">:</span><span class="w"> </span><span class="l">edge-gateway</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">listeners</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span>- <span class="nt">hostname</span><span class="p">:</span><span class="w"> </span><span class="l">shop.example.com</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">http-8080</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">port</span><span class="p">:</span><span class="w"> </span><span class="m">8080</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">protocol</span><span class="p">:</span><span class="w"> </span><span class="l">HTTP</span><span class="w">
+</span></span></span></code></pre><pre class="chroma"><code><span class="line"><span class="cl"><span class="c"># routing/GatewayClass-edge-gateway.yaml</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l">gateway.networking.k8s.io/v1</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">GatewayClass</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">metadata</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">edge-gateway</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">spec</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">controllerName</span><span class="p">:</span><span class="w"> </span><span class="l">gateways.kuma.io/controller</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">parametersRef</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">group</span><span class="p">:</span><span class="w"> </span><span class="l">kuma.io</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshGatewayConfig</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">edge-gateway</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l">kong-mesh-system</span><span class="w">
+</span></span></span></code></pre><pre class="chroma"><code><span class="line"><span class="cl"><span class="c"># routing/MeshGatewayConfig-kong-mesh-system-edge-gateway.yaml</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l">kuma.io/v1alpha1</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshGatewayConfig</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">metadata</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">labels</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kuma.io/mesh</span><span class="p">:</span><span class="w"> </span><span class="l">default</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">edge-gateway</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l">kong-mesh-system</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">spec</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">replicas</span><span class="p">:</span><span class="w"> </span><span class="m">2</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">serviceType</span><span class="p">:</span><span class="w"> </span><span class="l">LoadBalancer</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">tags</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kuma.io/service</span><span class="p">:</span><span class="w"> </span><span class="l">edge-gateway_kong-mesh-system_svc</span><span class="w">
+</span></span></span></code></pre><pre class="chroma"><code><span class="line"><span class="cl"><span class="c"># routing/HTTPRoute-kong-mesh-system-edge-route.yaml</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l">gateway.networking.k8s.io/v1</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">HTTPRoute</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">metadata</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">labels</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kuma.io/mesh</span><span class="p">:</span><span class="w"> </span><span class="l">default</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">edge-route</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l">kong-mesh-system</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">spec</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">parentRefs</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span>- <span class="nt">group</span><span class="p">:</span><span class="w"> </span><span class="l">gateway.networking.k8s.io</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">Gateway</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">edge-gateway</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">rules</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span>- <span class="nt">backendRefs</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span>- <span class="nt">group</span><span class="p">:</span><span class="w"> </span><span class="s2">&#34;&#34;</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">Service</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">backend</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l">demo</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">port</span><span class="p">:</span><span class="w"> </span><span class="m">3001</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">matches</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span>- <span class="nt">path</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l">PathPrefix</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">value</span><span class="p">:</span><span class="w"> </span><span class="l">/api</span><span class="w">
+</span></span></span></code></pre><pre class="chroma"><code><span class="line"><span class="cl"><span class="c"># other/ReferenceGrant-demo-kong-mesh-system-edge-route.yaml</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l">gateway.networking.k8s.io/v1beta1</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">ReferenceGrant</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">metadata</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">kong-mesh-system-edge-route</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l">demo</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">spec</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">from</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span>- <span class="nt">group</span><span class="p">:</span><span class="w"> </span><span class="l">gateway.networking.k8s.io</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">HTTPRoute</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l">kong-mesh-system</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">to</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span>- <span class="nt">group</span><span class="p">:</span><span class="w"> </span><span class="s2">&#34;&#34;</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">Service</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">backend</span><span class="w">
+</span></span></span></code></pre><blockquote class="callout callout-note"><p><strong>Note:</strong> <code>MeshGateway</code> is cluster-scoped, so the generated <code>Gateway</code> has an empty namespace.
+Set <code>metadata.namespace</code> to the namespace the <code>HTTPRoute</code> <code>parentRefs</code> expect before applying.</p>
+</blockquote>
+<p>With <code>--to-latest v3</code>:</p>
+<ul>
+<li>the <code>Gateway</code> is the same except <code>gatewayClassName: REPLACE-WITH-YOUR-GATEWAYCLASS</code>;</li>
+<li>no <code>GatewayClass</code> or <code>MeshGatewayConfig</code> is written, and the <code>MeshGatewayInstance</code> goes to
+<code>_manual/routing/MeshGatewayInstance-kong-mesh-system-edge-gateway.yaml</code>;</li>
+<li>the <code>HTTPRoute</code> and <code>ReferenceGrant</code> are the same;</li>
+<li>the <code>MeshHTTPRoute</code> selects by labels:</li>
+</ul>
+<pre class="chroma"><code><span class="line"><span class="cl"><span class="c"># routing/MeshHTTPRoute-demo-backend-api.yaml (v3)</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l">kuma.io/v1alpha1</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshHTTPRoute</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">metadata</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">labels</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kuma.io/mesh</span><span class="p">:</span><span class="w"> </span><span class="l">default</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">backend-api</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l">demo</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">spec</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">targetRef</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">Mesh</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">to</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span>- <span class="nt">rules</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span>- <span class="nt">default</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">backendRefs</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span>- <span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshService</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">          </span><span class="nt">labels</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">            </span><span class="nt">k8s.kuma.io/namespace</span><span class="p">:</span><span class="w"> </span><span class="l">demo</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">            </span><span class="nt">kuma.io/display-name</span><span class="p">:</span><span class="w"> </span><span class="l">backend</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">          </span><span class="nt">port</span><span class="p">:</span><span class="w"> </span><span class="m">3001</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">matches</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span>- <span class="nt">path</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">          </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l">PathPrefix</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">          </span><span class="nt">value</span><span class="p">:</span><span class="w"> </span><span class="l">/api</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">targetRef</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshService</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">labels</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">k8s.kuma.io/namespace</span><span class="p">:</span><span class="w"> </span><span class="l">demo</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">kuma.io/display-name</span><span class="p">:</span><span class="w"> </span><span class="l">backend</span><span class="w">
+</span></span></span></code></pre><p><code>v3</code> messages (shortened):</p>
+<pre><code>✗  MeshGatewayInstance &quot;edge-gateway&quot; (kong-mesh-system) has no successor on Kuma 3.0 … Replace it
+   with a delegated gateway: a Deployment and Service you manage … annotation
+   traffic.kuma.io/exclude-inbound-ports: &quot;&lt;ports&gt;&quot; … kuma.io/ignore: &quot;true&quot; … Settings to carry
+   over to the Deployment/Service: replicas=2, serviceType=LoadBalancer,
+   tags{kuma.io/service=edge-gateway_kong-mesh-system_svc}. …
+⚠  MeshHTTPRoute &quot;backend-api&quot;: none of its rules is a catch-all … on Kuma 3.0 a request matching
+   no rule is answered with a 404 instead of falling through to the destination …
+</code></pre>
+<h2 id="related">Related</h2>
+<ul>
+<li><a href="../policy-targeting/">Policy targeting</a> — the <code>targetRef</code> matrix</li>
+<li><a href="../dataplanes/">Dataplanes</a> — <code>networking.gateway</code> and Pod annotations</li>
+<li><a href="../access-control/">Access control</a> — <code>MeshTrafficPermission</code> for gateway traffic</li>
+</ul>
+
+    </article>
+    <nav class="pager" aria-label="Previous and next page">
+      <a class="prev" href="../multizone/"><span>Previous</span>Multizone</a>
+      <a class="next" href="../external-services/"><span>Next</span>External services</a>
+    </nav>
+  </main>
+  <nav class="toc" aria-label="On this page">
+    <p class="toc-title">On this page</p>
+    <ul><li class="toc-l2"><a href="#what-changed-upstream">What changed upstream</a></li><li class="toc-l3"><a href="#built-in-gateway-removed">Built-in gateway removed</a></li><li class="toc-l3"><a href="#delegated-gateways-without-kumaiogateway">Delegated gateways without kuma.io/gateway</a></li><li class="toc-l3"><a href="#meshhttproute-and-meshtcproute-stay">MeshHTTPRoute and MeshTCPRoute stay</a></li><li class="toc-l3"><a href="#routing-behaviour-changes-on-30">Routing behaviour changes on 3.0</a></li><li class="toc-l2"><a href="#what-kuma-migrator-does">What kuma-migrator does</a></li><li class="toc-l3"><a href="#why-meshhttproute-is-not-converted-to-httproute">Why MeshHTTPRoute is not converted to HTTPRoute</a></li><li class="toc-l3"><a href="#meshgatewayroute-two-possible-successors">MeshGatewayRoute: two possible successors</a></li><li class="toc-l2"><a href="#what-it-cannot-do">What it cannot do</a></li><li class="toc-l2"><a href="#manual-steps">Manual steps</a></li><li class="toc-l2"><a href="#example">Example</a></li><li class="toc-l2"><a href="#related">Related</a></li></ul>
+  </nav>
+</div>
+<footer class="site-footer">
+  <p>
+    <a href="../../../">kuma-migrator</a> ·
+    <a href="https://github.com/Kong/kuma-migrator">Source</a> ·
+    <a href="https://github.com/Kong/kuma-migrator/releases">Releases</a> ·
+    <a href="https://github.com/Kong/kuma-migrator/issues">Issues</a> ·
+    <a href="https://github.com/Kong/kuma-migrator/blob/main/site/content/topics/gateways.md">View source of this page</a>
+  </p>
+  <p>Apache-2.0 licensed. Part of Kong's <a href="https://konghq.com/products/kong-mesh">Kong Mesh</a> tooling.</p>
+</footer>
+<script src="../../static/search-index.js"></script>
+<script src="../../static/search.js"></script>
+</body>
+</html>

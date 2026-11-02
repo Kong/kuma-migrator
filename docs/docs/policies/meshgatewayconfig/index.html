@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MeshGatewayConfig – kuma-migrator docs</title>
+<meta name="description" content="Built-in gateway deployment parameters referenced from a GatewayClass.">
+<link rel="canonical" href="https://kong.github.io/kuma-migrator/docs/policies/meshgatewayconfig/">
+<link rel="icon" href="../../static/favicon.svg" type="image/svg+xml">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="kuma-migrator">
+<meta property="og:title" content="MeshGatewayConfig – kuma-migrator docs">
+<meta property="og:description" content="Built-in gateway deployment parameters referenced from a GatewayClass.">
+<meta property="og:url" content="https://kong.github.io/kuma-migrator/docs/policies/meshgatewayconfig/">
+<meta property="og:image" content="https://kong.github.io/kuma-migrator/assets/migration-overview.svg">
+<meta name="twitter:card" content="summary_large_image">
+
+<link rel="stylesheet" href="../../static/style.css">
+<link rel="stylesheet" href="../../static/chroma.css">
+</head>
+<body data-root="../../">
+<a class="skip" href="#content">Skip to content</a>
+<header class="site-header">
+  <div class="bar">
+    <a class="brand" href="../../../"><img src="../../static/favicon.svg" width="28" height="28" alt=""><span>kuma-migrator</span></a>
+    <a class="docs-home" href="../../">Docs</a>
+    <nav class="top-nav" aria-label="Sections">
+      <a href="../../guides/">Guides</a>
+      <a href="../../topics/">Topics</a>
+      <a href="../" class="active" aria-current="true">Policies</a>
+      <a href="https://github.com/Kong/kuma-migrator">GitHub</a>
+    </nav>
+    <div class="search">
+      <input id="search-input" type="search" placeholder="Search docs" aria-label="Search docs" autocomplete="off">
+      <ul id="search-results" hidden></ul>
+    </div>
+  </div>
+</header>
+
+<div class="layout">
+  <details class="nav-mobile">
+    <summary>Policies menu</summary>
+    <div class="nav-group"><ul><li><a href="../">Policies</a></li></ul></div>
+<div class="nav-group"><p class="nav-title">Legacy policies</p><ul><li><a href="../circuitbreaker/">CircuitBreaker</a></li><li><a href="../externalservice/">ExternalService</a></li><li><a href="../faultinjection/">FaultInjection</a></li><li><a href="../healthcheck/">HealthCheck</a></li><li><a href="../proxytemplate/">ProxyTemplate</a></li><li><a href="../ratelimit/">RateLimit</a></li><li><a href="../retry/">Retry</a></li><li><a href="../timeout/">Timeout</a></li><li><a href="../trafficlog/">TrafficLog</a></li><li><a href="../trafficpermission/">TrafficPermission</a></li><li><a href="../trafficroute/">TrafficRoute</a></li><li><a href="../traffictrace/">TrafficTrace</a></li><li><a href="../virtualoutbound/">VirtualOutbound</a></li></ul></div>
+<div class="nav-group"><p class="nav-title">Mesh* policies</p><ul><li><a href="../meshaccesslog/">MeshAccessLog</a></li><li><a href="../meshcircuitbreaker/">MeshCircuitBreaker</a></li><li><a href="../meshfaultinjection/">MeshFaultInjection</a></li><li><a href="../meshhttproute/">MeshHTTPRoute</a></li><li><a href="../meshhealthcheck/">MeshHealthCheck</a></li><li><a href="../meshidentity/">MeshIdentity</a></li><li><a href="../meshloadbalancingstrategy/">MeshLoadBalancingStrategy</a></li><li><a href="../meshmetric/">MeshMetric</a></li><li><a href="../meshpassthrough/">MeshPassthrough</a></li><li><a href="../meshproxypatch/">MeshProxyPatch</a></li><li><a href="../meshratelimit/">MeshRateLimit</a></li><li><a href="../meshretry/">MeshRetry</a></li><li><a href="../meshtcproute/">MeshTCPRoute</a></li><li><a href="../meshtls/">MeshTLS</a></li><li><a href="../meshtimeout/">MeshTimeout</a></li><li><a href="../meshtrace/">MeshTrace</a></li><li><a href="../meshtrafficpermission/">MeshTrafficPermission</a></li><li><a href="../meshtrust/">MeshTrust</a></li></ul></div>
+<div class="nav-group"><p class="nav-title">Kong Mesh</p><ul><li><a href="../accessaudit/">AccessAudit</a></li><li><a href="../accessrole/">AccessRole</a></li><li><a href="../accessrolebinding/">AccessRoleBinding</a></li><li><a href="../meshglobalratelimit/">MeshGlobalRateLimit</a></li><li><a href="../meshopa/">MeshOPA</a></li><li><a href="../opapolicy/">OPAPolicy</a></li></ul></div>
+<div class="nav-group"><p class="nav-title">Gateway</p><ul><li><a href="../meshgateway/">MeshGateway</a></li><li><a href="./" class="active" aria-current="page">MeshGatewayConfig</a></li><li><a href="../meshgatewayinstance/">MeshGatewayInstance</a></li><li><a href="../meshgatewayroute/">MeshGatewayRoute</a></li></ul></div>
+<div class="nav-group"><p class="nav-title">Other resources</p><ul><li><a href="../containerpatch/">ContainerPatch</a></li><li><a href="../dataplane/">Dataplane</a></li><li><a href="../hostnamegenerator/">HostnameGenerator</a></li><li><a href="../mesh/">Mesh</a></li><li><a href="../meshexternalservice/">MeshExternalService</a></li><li><a href="../meshmultizoneservice/">MeshMultiZoneService</a></li><li><a href="../meshopentelemetrybackend/">MeshOpenTelemetryBackend</a></li><li><a href="../meshservice/">MeshService</a></li><li><a href="../secret/">Secret</a></li><li><a href="../workload/">Workload</a></li><li><a href="../zone/">Zone</a></li><li><a href="../zoneegress/">ZoneEgress</a></li><li><a href="../zoneingress/">ZoneIngress</a></li></ul></div>
+
+  </details>
+  <aside class="sidebar" aria-label="Policies pages">
+    <p class="sidebar-section"><a href="../">Policies</a></p>
+    <div class="nav-group"><ul><li><a href="../">Policies</a></li></ul></div>
+<div class="nav-group"><p class="nav-title">Legacy policies</p><ul><li><a href="../circuitbreaker/">CircuitBreaker</a></li><li><a href="../externalservice/">ExternalService</a></li><li><a href="../faultinjection/">FaultInjection</a></li><li><a href="../healthcheck/">HealthCheck</a></li><li><a href="../proxytemplate/">ProxyTemplate</a></li><li><a href="../ratelimit/">RateLimit</a></li><li><a href="../retry/">Retry</a></li><li><a href="../timeout/">Timeout</a></li><li><a href="../trafficlog/">TrafficLog</a></li><li><a href="../trafficpermission/">TrafficPermission</a></li><li><a href="../trafficroute/">TrafficRoute</a></li><li><a href="../traffictrace/">TrafficTrace</a></li><li><a href="../virtualoutbound/">VirtualOutbound</a></li></ul></div>
+<div class="nav-group"><p class="nav-title">Mesh* policies</p><ul><li><a href="../meshaccesslog/">MeshAccessLog</a></li><li><a href="../meshcircuitbreaker/">MeshCircuitBreaker</a></li><li><a href="../meshfaultinjection/">MeshFaultInjection</a></li><li><a href="../meshhttproute/">MeshHTTPRoute</a></li><li><a href="../meshhealthcheck/">MeshHealthCheck</a></li><li><a href="../meshidentity/">MeshIdentity</a></li><li><a href="../meshloadbalancingstrategy/">MeshLoadBalancingStrategy</a></li><li><a href="../meshmetric/">MeshMetric</a></li><li><a href="../meshpassthrough/">MeshPassthrough</a></li><li><a href="../meshproxypatch/">MeshProxyPatch</a></li><li><a href="../meshratelimit/">MeshRateLimit</a></li><li><a href="../meshretry/">MeshRetry</a></li><li><a href="../meshtcproute/">MeshTCPRoute</a></li><li><a href="../meshtls/">MeshTLS</a></li><li><a href="../meshtimeout/">MeshTimeout</a></li><li><a href="../meshtrace/">MeshTrace</a></li><li><a href="../meshtrafficpermission/">MeshTrafficPermission</a></li><li><a href="../meshtrust/">MeshTrust</a></li></ul></div>
+<div class="nav-group"><p class="nav-title">Kong Mesh</p><ul><li><a href="../accessaudit/">AccessAudit</a></li><li><a href="../accessrole/">AccessRole</a></li><li><a href="../accessrolebinding/">AccessRoleBinding</a></li><li><a href="../meshglobalratelimit/">MeshGlobalRateLimit</a></li><li><a href="../meshopa/">MeshOPA</a></li><li><a href="../opapolicy/">OPAPolicy</a></li></ul></div>
+<div class="nav-group"><p class="nav-title">Gateway</p><ul><li><a href="../meshgateway/">MeshGateway</a></li><li><a href="./" class="active" aria-current="page">MeshGatewayConfig</a></li><li><a href="../meshgatewayinstance/">MeshGatewayInstance</a></li><li><a href="../meshgatewayroute/">MeshGatewayRoute</a></li></ul></div>
+<div class="nav-group"><p class="nav-title">Other resources</p><ul><li><a href="../containerpatch/">ContainerPatch</a></li><li><a href="../dataplane/">Dataplane</a></li><li><a href="../hostnamegenerator/">HostnameGenerator</a></li><li><a href="../mesh/">Mesh</a></li><li><a href="../meshexternalservice/">MeshExternalService</a></li><li><a href="../meshmultizoneservice/">MeshMultiZoneService</a></li><li><a href="../meshopentelemetrybackend/">MeshOpenTelemetryBackend</a></li><li><a href="../meshservice/">MeshService</a></li><li><a href="../secret/">Secret</a></li><li><a href="../workload/">Workload</a></li><li><a href="../zone/">Zone</a></li><li><a href="../zoneegress/">ZoneEgress</a></li><li><a href="../zoneingress/">ZoneIngress</a></li></ul></div>
+
+  </aside>
+  <main id="content">
+    <article class="doc">
+<p class="crumb"><a href="../">Policies</a> · Gateway</p>
+<h1><code class="kind-title">MeshGatewayConfig</code></h1>
+<p class="lede">Built-in gateway deployment parameters referenced from a GatewayClass.</p>
+<p class="meta-row"><span class="product">Kuma</span></p>
+
+<h2 id="targets">Behaviour per target</h2>
+<div class="targets">
+  <section class="target-card">
+    <header><span class="target-label">--to-latest v2 (2.x)</span> <span class="status status-passthrough">passthrough</span></header>
+    <p class="outputs">Output: <a href="./"><code>MeshGatewayConfig</code></a></p>
+    <div class="notes"><p>Copied unchanged when found in the input. Also emitted from a
+<a href="../meshgatewayinstance/">MeshGatewayInstance</a> conversion.</p>
+</div>
+  </section>
+  <section class="target-card">
+    <header><span class="target-label">--to-latest v3 (3.0)</span> <span class="status status-passthrough">passthrough</span></header>
+    <p class="outputs">Output: <a href="./"><code>MeshGatewayConfig</code></a></p>
+    <div class="notes"><p>Copied unchanged into the apply tree. 3.0 removes <code>MeshGatewayConfig</code> with the rest of
+the built-in gateway API; the migrator does not report it yet. Delete it before
+upgrading.</p>
+</div>
+  </section>
+</div>
+
+<h2 id="timeline">Timeline</h2>
+<div class="table-wrap"><table>
+  <thead><tr><th>Version</th><th>Change</th></tr></thead>
+  <tbody><tr><td class="version">3.0</td><td>Removed with the built-in gateway API (<code>meshgatewayconfigs.kuma.io</code> CRD deleted).</td></tr></tbody>
+</table></div>
+
+<h2 id="related-topics">Related topics</h2>
+<ul class="link-list"><li><a href="../../topics/gateways/">Gateways, Gateway API and GAMMA</a> — The built-in gateway removal in Kuma 3.0, MeshGateway* to Gateway API, delegated gateways, and why MeshHTTPRoute and MeshTCPRoute stay.</li></ul>
+
+<h2 id="source-files">Source files</h2>
+<ul class="link-list"><li><a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/gateway.go"><code>pkg/migrator/gateway.go</code></a></li><li><a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/v3_kongmesh.go"><code>pkg/migrator/v3_kongmesh.go</code></a></li></ul>
+
+    </article>
+    <nav class="pager" aria-label="Previous and next page">
+      <a class="prev" href="../meshgateway/"><span>Previous</span>MeshGateway</a>
+      <a class="next" href="../meshgatewayinstance/"><span>Next</span>MeshGatewayInstance</a>
+    </nav>
+  </main>
+  <nav class="toc" aria-label="On this page">
+    <p class="toc-title">On this page</p>
+    <ul><li class="toc-l2"><a href="#targets">Behaviour per target</a></li><li class="toc-l2"><a href="#timeline">Timeline</a></li><li class="toc-l2"><a href="#related-topics">Related topics</a></li><li class="toc-l2"><a href="#source-files">Source files</a></li></ul>
+  </nav>
+</div>
+<footer class="site-footer">
+  <p>
+    <a href="../../../">kuma-migrator</a> ·
+    <a href="https://github.com/Kong/kuma-migrator">Source</a> ·
+    <a href="https://github.com/Kong/kuma-migrator/releases">Releases</a> ·
+    <a href="https://github.com/Kong/kuma-migrator/issues">Issues</a> ·
+    <a href="https://github.com/Kong/kuma-migrator/blob/main/site/data/policies.yaml">View source of this page</a>
+  </p>
+  <p>Apache-2.0 licensed. Part of Kong's <a href="https://konghq.com/products/kong-mesh">Kong Mesh</a> tooling.</p>
+</footer>
+<script src="../../static/search-index.js"></script>
+<script src="../../static/search.js"></script>
+</body>
+</html>

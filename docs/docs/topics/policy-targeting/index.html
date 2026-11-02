@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Policy targeting – kuma-migrator docs</title>
+<meta name="description" content="Which targetRef kinds each policy accepts at each position on 2.14 and 3.0, labels-only selection, policy roles, and control-plane-owned labels.">
+<link rel="canonical" href="https://kong.github.io/kuma-migrator/docs/topics/policy-targeting/">
+<link rel="icon" href="../../static/favicon.svg" type="image/svg+xml">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="kuma-migrator">
+<meta property="og:title" content="Policy targeting – kuma-migrator docs">
+<meta property="og:description" content="Which targetRef kinds each policy accepts at each position on 2.14 and 3.0, labels-only selection, policy roles, and control-plane-owned labels.">
+<meta property="og:url" content="https://kong.github.io/kuma-migrator/docs/topics/policy-targeting/">
+<meta property="og:image" content="https://kong.github.io/kuma-migrator/assets/migration-overview.svg">
+<meta name="twitter:card" content="summary_large_image">
+
+<link rel="stylesheet" href="../../static/style.css">
+<link rel="stylesheet" href="../../static/chroma.css">
+</head>
+<body data-root="../../">
+<a class="skip" href="#content">Skip to content</a>
+<header class="site-header">
+  <div class="bar">
+    <a class="brand" href="../../../"><img src="../../static/favicon.svg" width="28" height="28" alt=""><span>kuma-migrator</span></a>
+    <a class="docs-home" href="../../">Docs</a>
+    <nav class="top-nav" aria-label="Sections">
+      <a href="../../guides/">Guides</a>
+      <a href="../" class="active" aria-current="true">Topics</a>
+      <a href="../../policies/">Policies</a>
+      <a href="https://github.com/Kong/kuma-migrator">GitHub</a>
+    </nav>
+    <div class="search">
+      <input id="search-input" type="search" placeholder="Search docs" aria-label="Search docs" autocomplete="off">
+      <ul id="search-results" hidden></ul>
+    </div>
+  </div>
+</header>
+
+<div class="layout">
+  <details class="nav-mobile">
+    <summary>Topics menu</summary>
+    <div class="nav-group"><ul><li><a href="../">Overview</a></li><li><a href="../meshes/">Meshes</a></li><li><a href="../mtls-identity/">mTLS &amp; identity</a></li><li><a href="../external-pki/">External PKI</a></li><li><a href="../meshservice/">MeshService</a></li><li><a href="../multizone/">Multizone</a></li><li><a href="../gateways/">Gateways &amp; GAMMA</a></li><li><a href="../external-services/">External services</a></li><li><a href="../access-control/">Access control</a></li><li><a href="../observability/">Observability</a></li><li><a href="./" class="active" aria-current="page">Policy targeting</a></li><li><a href="../dataplanes/">Dataplanes</a></li><li><a href="../legacy-policies/">Legacy policies</a></li></ul></div>
+
+  </details>
+  <aside class="sidebar" aria-label="Topics pages">
+    <p class="sidebar-section"><a href="../">Topics</a></p>
+    <div class="nav-group"><ul><li><a href="../">Overview</a></li><li><a href="../meshes/">Meshes</a></li><li><a href="../mtls-identity/">mTLS &amp; identity</a></li><li><a href="../external-pki/">External PKI</a></li><li><a href="../meshservice/">MeshService</a></li><li><a href="../multizone/">Multizone</a></li><li><a href="../gateways/">Gateways &amp; GAMMA</a></li><li><a href="../external-services/">External services</a></li><li><a href="../access-control/">Access control</a></li><li><a href="../observability/">Observability</a></li><li><a href="./" class="active" aria-current="page">Policy targeting</a></li><li><a href="../dataplanes/">Dataplanes</a></li><li><a href="../legacy-policies/">Legacy policies</a></li></ul></div>
+
+  </aside>
+  <main id="content">
+    <article class="doc">
+<p class="crumb"><a href="../">Topics</a></p>
+<h1>Policy targeting</h1>
+<p class="lede">Which targetRef kinds each policy accepts at each position on 2.14 and 3.0, labels-only selection, policy roles, and control-plane-owned labels.</p>
+<p>A targetRef policy selects proxies in <code>spec.targetRef</code> (top level), destinations in
+<code>spec.to[].targetRef</code>, and clients in <code>spec.from[].targetRef</code> or <code>spec.rules[]</code>. Each position
+accepts a different set of kinds, and 3.0 narrows all three. It also changes how a real resource
+is selected (labels only) and which labels you may set on the policy itself.</p>
+<h2 id="what-changed-upstream">What changed upstream</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Version</th>
+<th>Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>2.7</td>
+<td><code>from[].targetRef.kind: MeshService</code> deprecated on <code>MeshTrafficPermission</code>/<code>MeshFaultInjection</code> (<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md">UPGRADE</a>)</td>
+</tr>
+<tr>
+<td>2.10 / 2.11</td>
+<td>Top-level <code>MeshSubset</code>, <code>MeshService</code>, <code>MeshServiceSubset</code> and <code>MeshHTTPRoute</code> deprecated (<code>validators.TopLevelTargetRefDeprecations</code>)</td>
+</tr>
+<tr>
+<td>2.10</td>
+<td><code>rules[]</code> API for inbound policies (<code>MeshTimeout</code>, <code>MeshCircuitBreaker</code>, <code>MeshRateLimit</code>, <code>MeshAccessLog</code>, <code>MeshTLS</code>)</td>
+</tr>
+<tr>
+<td>3.0</td>
+<td>Top-level <code>MeshSubset</code>, <code>MeshService</code>, <code>MeshServiceSubset</code> rejected. Use <code>Mesh</code> or <code>Dataplane</code> + <code>labels</code>. Applies to KDS sync too: a policy with a legacy kind can fail to sync into an upgraded zone (<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#legacy-top-level-policy-targetref-selector-kinds-removed">UPGRADE</a>)</td>
+</tr>
+<tr>
+<td>3.0</td>
+<td><code>MeshGateway</code> is no longer a valid <code>targetRef.kind</code> (<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#built-in-gateway-api-and-crds-removed">UPGRADE</a>)</td>
+</tr>
+<tr>
+<td>3.0</td>
+<td><code>from[]</code> removed from <code>MeshTimeout</code>, <code>MeshCircuitBreaker</code>, <code>MeshAccessLog</code>, <code>MeshRateLimit</code>, <code>MeshTLS</code>, <code>MeshTrafficPermission</code> (<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#from-removed-from-meshtimeout">UPGRADE</a>)</td>
+</tr>
+<tr>
+<td>3.0</td>
+<td><code>Dataplane</code>, <code>MeshService</code>, <code>MeshExternalService</code>, <code>MeshMultiZoneService</code> and <code>MeshHTTPRoute</code> are selected by <code>labels</code> only in <code>spec.targetRef</code> and <code>spec.to[].targetRef</code>; <code>sectionName</code> stays (<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#real-resource-policy-selection-now-uses-labels-only">UPGRADE</a>)</td>
+</tr>
+<tr>
+<td>3.0</td>
+<td>Fields not in a policy's schema are rejected with <code>400</code> (<code>spec.from: unknown field</code>) by the API server and <code>kumactl apply</code>; <code>kubectl apply</code> prunes them with a warning (<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#resources-with-fields-that-are-not-in-the-schema-are-rejected">UPGRADE</a>)</td>
+</tr>
+<tr>
+<td>3.0</td>
+<td>Control-plane-owned labels rejected when they differ from the computed value (<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#control-plane-owned-labels-are-rejected-when-they-differ-from-the-computed-value">UPGRADE</a>)</td>
+</tr>
+<tr>
+<td>3.0</td>
+<td><code>kuma.io/</code> and <code>k8s.kuma.io/</code> are reserved label prefixes; unknown labels under them are rejected (<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#reserved-label-prefixes">UPGRADE</a>)</td>
+</tr>
+</tbody>
+</table></div>
+<h2 id="kinds-accepted-per-policy">Kinds accepted per policy</h2>
+<p>Extracted from every <code>pkg/plugins/policies/*/api/v1alpha1/valid*.go</code> validator on Kuma <code>master</code>
+(3.0) and, for the last column, at <code>v2.14.4</code>. Kong Mesh adds <code>MeshOPA</code>.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Policy</th>
+<th>top-level <code>targetRef</code> (3.0)</th>
+<th><code>to[]</code> (3.0)</th>
+<th>additional top-level kinds in 2.14.4</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="../../policies/meshaccesslog/">MeshAccessLog</a></td>
+<td>Mesh, Dataplane</td>
+<td>Mesh, MeshService, MeshExternalService, MeshMultiZoneService, MeshHTTPRoute</td>
+<td>MeshSubset, MeshGateway, MeshService, MeshServiceSubset</td>
+</tr>
+<tr>
+<td><a href="../../policies/meshcircuitbreaker/">MeshCircuitBreaker</a></td>
+<td>Mesh, Dataplane</td>
+<td>Mesh, MeshService, MeshExternalService, MeshMultiZoneService</td>
+<td>MeshSubset, MeshService, MeshGateway, MeshServiceSubset</td>
+</tr>
+<tr>
+<td><a href="../../policies/meshfaultinjection/">MeshFaultInjection</a></td>
+<td>Mesh, Dataplane</td>
+<td><strong>Mesh only</strong></td>
+<td>MeshSubset, MeshGateway, MeshService, MeshServiceSubset</td>
+</tr>
+<tr>
+<td><a href="../../policies/meshhealthcheck/">MeshHealthCheck</a></td>
+<td>Mesh, Dataplane</td>
+<td>Mesh, MeshService, MeshExternalService, MeshMultiZoneService</td>
+<td>MeshSubset, MeshGateway, MeshService, MeshServiceSubset</td>
+</tr>
+<tr>
+<td><a href="../../policies/meshhttproute/">MeshHTTPRoute</a></td>
+<td>Mesh, Dataplane</td>
+<td>MeshService, MeshExternalService, MeshMultiZoneService (no Mesh)</td>
+<td>MeshGateway, MeshSubset, MeshService, MeshServiceSubset</td>
+</tr>
+<tr>
+<td><a href="../../policies/meshloadbalancingstrategy/">MeshLoadBalancingStrategy</a></td>
+<td>Mesh, Dataplane</td>
+<td>Mesh, MeshService, MeshExternalService, MeshMultiZoneService, MeshHTTPRoute</td>
+<td>MeshSubset, MeshGateway, MeshService, MeshServiceSubset</td>
+</tr>
+<tr>
+<td><a href="../../policies/meshmetric/">MeshMetric</a></td>
+<td>Mesh, Dataplane</td>
+<td>—</td>
+<td>MeshSubset, MeshService, MeshServiceSubset, MeshGateway</td>
+</tr>
+<tr>
+<td><a href="../../policies/meshpassthrough/">MeshPassthrough</a></td>
+<td>Mesh, Dataplane</td>
+<td>—</td>
+<td>MeshSubset</td>
+</tr>
+<tr>
+<td><a href="../../policies/meshproxypatch/">MeshProxyPatch</a></td>
+<td>Mesh, Dataplane</td>
+<td>—</td>
+<td>MeshSubset, MeshService, MeshServiceSubset, MeshGateway</td>
+</tr>
+<tr>
+<td><a href="../../policies/meshratelimit/">MeshRateLimit</a></td>
+<td>Mesh, Dataplane</td>
+<td><strong>Mesh only</strong></td>
+<td>MeshSubset, MeshGateway, MeshService, MeshServiceSubset, MeshHTTPRoute</td>
+</tr>
+<tr>
+<td><a href="../../policies/meshretry/">MeshRetry</a></td>
+<td>Mesh, Dataplane</td>
+<td>Mesh, MeshService, MeshExternalService, MeshMultiZoneService, MeshHTTPRoute</td>
+<td>MeshSubset, MeshGateway, MeshService, MeshServiceSubset, MeshHTTPRoute</td>
+</tr>
+<tr>
+<td><a href="../../policies/meshtcproute/">MeshTCPRoute</a></td>
+<td>Mesh, Dataplane</td>
+<td>MeshService, MeshExternalService, MeshMultiZoneService (no Mesh)</td>
+<td>MeshSubset, MeshGateway, MeshService, MeshServiceSubset</td>
+</tr>
+<tr>
+<td><a href="../../policies/meshtimeout/">MeshTimeout</a></td>
+<td>Mesh, Dataplane</td>
+<td>Mesh, MeshService, MeshExternalService, MeshMultiZoneService, MeshHTTPRoute</td>
+<td>MeshSubset, MeshGateway, MeshService, MeshServiceSubset, MeshHTTPRoute</td>
+</tr>
+<tr>
+<td><a href="../../policies/meshtls/">MeshTLS</a></td>
+<td>Mesh, Dataplane</td>
+<td>—</td>
+<td>MeshSubset</td>
+</tr>
+<tr>
+<td><a href="../../policies/meshtrace/">MeshTrace</a></td>
+<td>Mesh, Dataplane</td>
+<td>—</td>
+<td>MeshSubset, MeshGateway, MeshService, MeshServiceSubset</td>
+</tr>
+<tr>
+<td><a href="../../policies/meshtrafficpermission/">MeshTrafficPermission</a></td>
+<td>Mesh, Dataplane</td>
+<td>— (<code>rules[]</code>)</td>
+<td>MeshSubset, MeshService, MeshServiceSubset</td>
+</tr>
+<tr>
+<td><a href="../../policies/meshopa/">MeshOPA</a> (Kong Mesh)</td>
+<td>Mesh, Dataplane</td>
+<td>—</td>
+<td>MeshService</td>
+</tr>
+</tbody>
+</table></div>
+<p>The top-level rule on 3.0 is uniform: every policy accepts <code>Mesh</code> and <code>Dataplane</code>, with no
+per-policy and no system-role exception. <code>to[]</code> has four shapes:</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Shape</th>
+<th>Kinds</th>
+<th>Policies</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Outbound and route anchor</td>
+<td>Mesh, the three service kinds, MeshHTTPRoute</td>
+<td>MeshAccessLog, MeshLoadBalancingStrategy, MeshRetry, MeshTimeout</td>
+</tr>
+<tr>
+<td>Outbound</td>
+<td>Mesh, the three service kinds</td>
+<td>MeshCircuitBreaker, MeshHealthCheck</td>
+</tr>
+<tr>
+<td>Mesh only</td>
+<td>Mesh</td>
+<td>MeshFaultInjection, MeshRateLimit (inbound policies)</td>
+</tr>
+<tr>
+<td>Route backends</td>
+<td>The three service kinds, no Mesh</td>
+<td>MeshHTTPRoute, MeshTCPRoute</td>
+</tr>
+</tbody>
+</table></div>
+<p>No policy accepts <code>MeshSubset</code>, <code>MeshServiceSubset</code> or <code>MeshGateway</code> in <code>to[]</code> on 3.0. Route
+<code>backendRefs</code> accept <code>MeshService</code>, <code>MeshExternalService</code> and <code>MeshMultiZoneService</code>
+(<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#route-backendref-no-longer-accepts-meshservicesubset">UPGRADE</a>).
+<code>MeshTimeout</code> and <code>MeshRetry</code> still contain a validator branch for a top-level <code>MeshHTTPRoute</code>
+that no input can reach on 3.0.</p>
+<h3 id="labels-only">Labels only</h3>
+<p>On 3.0 a reference to a real resource carries <code>kind</code>, <code>labels</code> and optionally <code>sectionName</code>:</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>2.x</th>
+<th>3.0</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>name: backend</code></td>
+<td><code>labels: {kuma.io/display-name: backend}</code></td>
+</tr>
+<tr>
+<td><code>namespace: demo</code></td>
+<td><code>labels: {k8s.kuma.io/namespace: demo}</code></td>
+</tr>
+<tr>
+<td><code>mesh: default</code></td>
+<td><code>labels: {kuma.io/mesh: default}</code></td>
+</tr>
+<tr>
+<td><code>sectionName: http</code></td>
+<td><code>sectionName: http</code> (unchanged)</td>
+</tr>
+</tbody>
+</table></div>
+<p>A label selector matches every resource that carries the labels. On 2.14 a selector with only
+<code>kuma.io/display-name</code> and <code>k8s.kuma.io/namespace</code> also matches same-named services synced from
+other zones; add <code>kuma.io/zone</code> to pin one.</p>
+<h2 id="policy-roles">Policy roles</h2>
+<p>The control plane sets <code>kuma.io/policy-role</code> on every policy. Precedence, low to high:
+<code>system</code> → <code>producer</code> → <code>consumer</code> → <code>workload-owner</code>
+(<a href="https://kuma.io/docs/latest/policies/introduction/">docs</a>).</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Role</th>
+<th>When (2.x docs)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>system</code></td>
+<td>Policy in the system namespace (<code>kuma-system</code>, <code>kong-mesh-system</code>)</td>
+</tr>
+<tr>
+<td><code>workload-owner</code></td>
+<td>No <code>spec.to</code> (only <code>spec.from</code> or <code>rules[]</code>, or neither)</td>
+</tr>
+<tr>
+<td><code>producer</code></td>
+<td><code>spec.to[].targetRef</code> names services in the policy's own namespace</td>
+</tr>
+<tr>
+<td><code>consumer</code></td>
+<td><code>spec.to[]</code> selects services by labels or in another namespace</td>
+</tr>
+</tbody>
+</table></div>
+<p>A producer policy applies to every client of the service and is synced to other zones; a
+consumer policy applies to clients in its own namespace and wins over a producer.</p>
+<blockquote class="callout callout-v3"><p><strong>v3:</strong> On 3.0 the role is computed from labels. A <code>to[]</code> item counts as producer only when it
+selects a <code>MeshService</code> or <code>MeshHTTPRoute</code> with <strong>exactly three</strong> labels:
+<code>kuma.io/display-name</code>, <code>k8s.kuma.io/namespace</code> equal to the policy's namespace, and
+<code>kuma.io/zone</code> equal to the local zone. A policy mixing producer and consumer items is
+rejected (<a href="https://github.com/kumahq/kuma/blob/master/pkg/core/resources/labels/compute.go"><code>compute.go</code></a>).
+The <code>v3</code> conversion of <code>{name, namespace}</code> writes <code>kuma.io/zone</code> only when the input policy
+carries a <code>kuma.io/zone</code> label (policies extracted from a Zone CP do). For a hand-written
+producer policy, add <code>kuma.io/zone</code> to every <code>to[]</code> selector or it becomes a consumer policy
+that only applies to clients in its own namespace.</p>
+</blockquote>
+<h2 id="control-plane-owned-labels">Control-plane-owned labels</h2>
+<p>The control plane computes these labels on every write: <code>kuma.io/origin</code>, <code>kuma.io/zone</code>,
+<code>kuma.io/env</code>, <code>kuma.io/mesh</code>, <code>kuma.io/display-name</code>, <code>kuma.io/policy-role</code>,
+<code>k8s.kuma.io/namespace</code>, <code>k8s.kuma.io/service-account</code>, <code>kuma.io/listener-zoneingress</code>,
+<code>kuma.io/listener-zoneegress</code>. On 3.0 a supplied value that differs from the computed one is
+rejected. Extracted manifests carry the stored values, which become wrong as soon as the migration
+renames, splits or moves a policy (a split policy changes role, for example).</p>
+<h2 id="what-kuma-migrator-does">What kuma-migrator does</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Input</th>
+<th><code>--to-latest v2</code></th>
+<th><code>--to-latest v3</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Top-level <code>MeshSubset</code> with a service tag</td>
+<td><code>Dataplane</code> with labels (see <a href="../meshservice/">MeshService</a>)</td>
+<td>Same</td>
+</tr>
+<tr>
+<td>Top-level <code>MeshSubset</code> without a service tag</td>
+<td>Warning</td>
+<td>Warning: rejected by 3.0</td>
+</tr>
+<tr>
+<td>Top-level <code>MeshService</code> / <code>MeshServiceSubset</code></td>
+<td>Warning</td>
+<td>Warning: rejected by 3.0. <code>name</code> → labels, kind unchanged</td>
+</tr>
+<tr>
+<td>Top-level <code>MeshHTTPRoute</code></td>
+<td>Warning: move to <code>to[].targetRef</code></td>
+<td>Warning</td>
+</tr>
+<tr>
+<td>Top-level <code>MeshGateway</code></td>
+<td>Nothing (valid on 2.14 for system-role policies)</td>
+<td>Warning: rejected by 3.0</td>
+</tr>
+<tr>
+<td>Any other top-level kind</td>
+<td>—</td>
+<td>Generic warning</td>
+</tr>
+<tr>
+<td><code>to[]</code> kind not accepted by that policy on 3.0 (matrix above)</td>
+<td>—</td>
+<td>Warning naming the accepted kinds</td>
+</tr>
+<tr>
+<td><code>targetRef</code>, <code>to[].targetRef</code>, route <code>backendRefs</code> with <code>name</code>/<code>namespace</code>/<code>mesh</code></td>
+<td>Kept</td>
+<td>Rewritten to labels; <code>Dataplane{name}</code> warned (a Dataplane name is not a label)</td>
+</tr>
+<tr>
+<td><code>from[]</code> on <code>MeshTimeout</code>/<code>MeshCircuitBreaker</code>/<code>MeshRateLimit</code>/<code>MeshAccessLog</code>/<code>MeshTLS</code></td>
+<td><code>rules[]</code> (Rules scenario). A source that is not <code>kind: Mesh</code> is collapsed, with a warning</td>
+<td>Same</td>
+</tr>
+<tr>
+<td><code>rules[]</code> and <code>to[]</code> in one policy</td>
+<td>Split into <code>&lt;name&gt;</code> and <code>&lt;name&gt;-outbound</code></td>
+<td>Same</td>
+</tr>
+<tr>
+<td>Control-plane-owned labels on the resource's own <code>metadata.labels</code></td>
+<td>Kept</td>
+<td>Removed (<code>kuma.io/mesh</code> stays). Selectors are not touched</td>
+</tr>
+</tbody>
+</table></div>
+<p>Code: <a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/v3_policy.go"><code>v3_policy.go</code></a>
+(<code>stripControlPlaneLabels</code>, <code>fixRealResourceTargetRefsForV3</code>, <code>warnV3ToTargetRefKinds</code>),
+<a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/deprecation.go"><code>deprecation.go</code></a>
+(<code>warnDeprecatedTopLevelTargetRef</code>),
+<a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/rulesapi.go"><code>rulesapi.go</code></a>.</p>
+<h2 id="what-it-cannot-do">What it cannot do</h2>
+<ul>
+<li><strong>Expand a <code>MeshService</code> selector into <code>Dataplane</code> labels.</strong> A top-level <code>MeshService</code> names a
+service; the equivalent <code>Dataplane</code> selector is the set of pod labels behind it, which is not in
+the policy. Only Kuma-internal <code>_svc_</code> names are expanded (to <code>app: &lt;name&gt;</code>, warned).</li>
+<li><strong>Re-target <code>MeshGateway</code> policies.</strong> The delegated gateway's labels depend on how you deploy
+it. See <a href="../gateways/">Gateways</a>.</li>
+<li><strong>Prove that a label selector selects one resource.</strong> Labels match every resource that
+carries them. Each rewrite is warned.</li>
+</ul>
+<h2 id="manual-steps">Manual steps</h2>
+<ol>
+<li>Run <code>migrate --dry-run --to-latest v3</code> and list every top-level <code>targetRef</code> warning.</li>
+<li>On 2.14, rewrite top-level <code>MeshService</code>/<code>MeshServiceSubset</code>/<code>MeshSubset</code> to <code>Mesh</code> or
+<code>Dataplane</code> + <code>labels</code>, and top-level <code>MeshHTTPRoute</code> to <code>to[].targetRef</code>. Verify coverage in
+every zone before upgrading zone control planes.</li>
+<li>Fix <code>to[]</code> entries the matrix rejects.</li>
+<li>For producer policies, add <code>kuma.io/zone</code> to the generated label selectors.</li>
+<li>Apply the <code>v3</code> output, which strips control-plane-owned labels.</li>
+</ol>
+<h2 id="example">Example</h2>
+<p>Input — two files:</p>
+<pre class="chroma"><code><span class="line"><span class="cl"><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l">kuma.io/v1alpha1</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshTimeout</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">metadata</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">backend-timeouts</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l">demo</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">labels</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kuma.io/mesh</span><span class="p">:</span><span class="w"> </span><span class="l">default</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kuma.io/origin</span><span class="p">:</span><span class="w"> </span><span class="l">zone</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kuma.io/zone</span><span class="p">:</span><span class="w"> </span><span class="l">zone-1</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kuma.io/policy-role</span><span class="p">:</span><span class="w"> </span><span class="l">producer</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">k8s.kuma.io/namespace</span><span class="p">:</span><span class="w"> </span><span class="l">demo</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">spec</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">targetRef</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshService</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">backend</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">to</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span>- <span class="nt">targetRef</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshService</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">backend</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">sectionName</span><span class="p">:</span><span class="w"> </span><span class="l">http</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">default</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">http</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">          </span><span class="nt">requestTimeout</span><span class="p">:</span><span class="w"> </span><span class="l">10s</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nn">---</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l">kuma.io/v1alpha1</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshCircuitBreaker</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">metadata</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">cb</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l">kong-mesh-system</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">labels</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kuma.io/mesh</span><span class="p">:</span><span class="w"> </span><span class="l">default</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">spec</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">targetRef</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshGateway</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">edge-gateway</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">to</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span>- <span class="nt">targetRef</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshHTTPRoute</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">some-route</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">default</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">connectionLimits</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">          </span><span class="nt">maxConnections</span><span class="p">:</span><span class="w"> </span><span class="m">100</span><span class="w">
+</span></span></span></code></pre><p><code>--to-latest v2</code> copies both unchanged; the <code>MeshTimeout</code> gets one warning:</p>
+<pre><code>⚠  MeshTimeout &quot;backend-timeouts&quot;: spec.targetRef.kind MeshService is deprecated as a top-level
+   target in Kuma 2.10+ — use kind: Dataplane with labels instead.
+</code></pre>
+<p><code>--to-latest v3</code>:</p>
+<pre class="chroma"><code><span class="line"><span class="cl"><span class="c"># resiliency/MeshTimeout-demo-backend-timeouts.yaml</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l">kuma.io/v1alpha1</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshTimeout</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">metadata</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">labels</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kuma.io/mesh</span><span class="p">:</span><span class="w"> </span><span class="l">default</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">backend-timeouts</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l">demo</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">spec</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">targetRef</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshService</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">labels</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">k8s.kuma.io/namespace</span><span class="p">:</span><span class="w"> </span><span class="l">demo</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">kuma.io/display-name</span><span class="p">:</span><span class="w"> </span><span class="l">backend</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">kuma.io/zone</span><span class="p">:</span><span class="w"> </span><span class="l">zone-1</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">to</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span>- <span class="nt">default</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">http</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">requestTimeout</span><span class="p">:</span><span class="w"> </span><span class="l">10s</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">targetRef</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshService</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">labels</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">k8s.kuma.io/namespace</span><span class="p">:</span><span class="w"> </span><span class="l">demo</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">kuma.io/display-name</span><span class="p">:</span><span class="w"> </span><span class="l">backend</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">kuma.io/zone</span><span class="p">:</span><span class="w"> </span><span class="l">zone-1</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">sectionName</span><span class="p">:</span><span class="w"> </span><span class="l">http</span><span class="w">
+</span></span></span></code></pre><pre class="chroma"><code><span class="line"><span class="cl"><span class="c"># resiliency/MeshCircuitBreaker-kong-mesh-system-cb.yaml</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l">kuma.io/v1alpha1</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshCircuitBreaker</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">metadata</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">labels</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kuma.io/mesh</span><span class="p">:</span><span class="w"> </span><span class="l">default</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">cb</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l">kong-mesh-system</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">spec</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">targetRef</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshGateway</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">edge-gateway</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">to</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span>- <span class="nt">default</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">connectionLimits</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">maxConnections</span><span class="p">:</span><span class="w"> </span><span class="m">100</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">targetRef</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshHTTPRoute</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">labels</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">k8s.kuma.io/namespace</span><span class="p">:</span><span class="w"> </span><span class="l">kong-mesh-system</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">kuma.io/display-name</span><span class="p">:</span><span class="w"> </span><span class="l">some-route</span><span class="w">
+</span></span></span></code></pre><p>The control-plane-owned labels are gone and selectors use labels. Both policies are still invalid
+on 3.0, and the warnings say why (shortened):</p>
+<pre><code>⚠  MeshTimeout &quot;backend-timeouts&quot;: spec.targetRef.kind MeshService is deprecated as a top-level
+   target … Kuma 3.0 rejects it outright: Mesh and Dataplane are the only top-level targetRef kinds
+   any policy accepts.
+⚠  MeshTimeout &quot;backend-timeouts&quot;: removed control-plane-owned labels kuma.io/origin, kuma.io/zone,
+   kuma.io/policy-role, k8s.kuma.io/namespace. …
+⚠  MeshCircuitBreaker &quot;cb&quot;: spec.targetRef.kind MeshGateway is removed in Kuma 3.0 … Re-target the
+   policy at the delegated gateway's own proxies (kind: Dataplane with labels).
+⚠  MeshCircuitBreaker &quot;cb&quot;: spec.targetRef (kind MeshGateway) sets name/namespace/mesh, which Kuma
+   3.0 removes from targetRef. Remove them.
+⚠  MeshCircuitBreaker &quot;cb&quot;: spec.to[0].targetRef.kind MeshHTTPRoute is rejected by Kuma 3.0.
+   MeshCircuitBreaker accepts Mesh, MeshExternalService, MeshMultiZoneService, MeshService in to[] …
+</code></pre>
+<h2 id="related">Related</h2>
+<ul>
+<li><a href="../meshservice/">MeshService</a> — <code>kuma.io/service</code> selectors</li>
+<li><a href="../gateways/">Gateways, Gateway API and GAMMA</a></li>
+<li><a href="../legacy-policies/">Legacy policies</a> — <code>sources</code>/<code>destinations</code> → <code>targetRef</code></li>
+<li><a href="../access-control/">Access control</a> — <code>from[]</code> vs <code>rules[]</code> on <code>MeshTrafficPermission</code></li>
+</ul>
+
+    </article>
+    <nav class="pager" aria-label="Previous and next page">
+      <a class="prev" href="../observability/"><span>Previous</span>Observability</a>
+      <a class="next" href="../dataplanes/"><span>Next</span>Dataplanes</a>
+    </nav>
+  </main>
+  <nav class="toc" aria-label="On this page">
+    <p class="toc-title">On this page</p>
+    <ul><li class="toc-l2"><a href="#what-changed-upstream">What changed upstream</a></li><li class="toc-l2"><a href="#kinds-accepted-per-policy">Kinds accepted per policy</a></li><li class="toc-l3"><a href="#labels-only">Labels only</a></li><li class="toc-l2"><a href="#policy-roles">Policy roles</a></li><li class="toc-l2"><a href="#control-plane-owned-labels">Control-plane-owned labels</a></li><li class="toc-l2"><a href="#what-kuma-migrator-does">What kuma-migrator does</a></li><li class="toc-l2"><a href="#what-it-cannot-do">What it cannot do</a></li><li class="toc-l2"><a href="#manual-steps">Manual steps</a></li><li class="toc-l2"><a href="#example">Example</a></li><li class="toc-l2"><a href="#related">Related</a></li></ul>
+  </nav>
+</div>
+<footer class="site-footer">
+  <p>
+    <a href="../../../">kuma-migrator</a> ·
+    <a href="https://github.com/Kong/kuma-migrator">Source</a> ·
+    <a href="https://github.com/Kong/kuma-migrator/releases">Releases</a> ·
+    <a href="https://github.com/Kong/kuma-migrator/issues">Issues</a> ·
+    <a href="https://github.com/Kong/kuma-migrator/blob/main/site/content/topics/policy-targeting.md">View source of this page</a>
+  </p>
+  <p>Apache-2.0 licensed. Part of Kong's <a href="https://konghq.com/products/kong-mesh">Kong Mesh</a> tooling.</p>
+</footer>
+<script src="../../static/search-index.js"></script>
+<script src="../../static/search.js"></script>
+</body>
+</html>

@@ -709,6 +709,20 @@ building, not after), so the attested digests are guaranteed to match what's alr
 real release (v0.6.1) before adding this. Verify any release artifact with `gh attestation verify
 <archive> --repo Kong/kuma-migrator`; documented for users in `docs/installation.md`.
 
+## Documentation site
+
+https://kong.github.io/kuma-migrator/ is GitHub Pages serving `docs/` as-is (`.nojekyll`). The
+landing page is hand-written (`docs/index.html`); everything under `/docs/` is **generated** from
+`site/` by `site/gen` (a separate Go module, not part of the CLI module) into `docs/docs/`, and the
+output is committed. Contract and page format: `site/README.md`.
+
+- `site/content/{guides,topics}/*.md` — pages; `site/data/policies.yaml` — one entry per kind,
+  rendered as `/docs/policies/` and `/docs/policies/<kind>/` with v2/v3 behaviour.
+- `make site` regenerates; `make site-check` (CI: `.github/workflows/site.yml`) fails when the
+  committed output is stale, or on any dangling `.md`/`policy:`/anchor link.
+- **When behaviour changes, update the matching `policies.yaml` entry and topic page** in the
+  same change, then `make site`. The old `docs/*.md` files are stubs pointing at the new URLs.
+
 ## Coding Standards
 
 * Write clean, modular Go code separating CLI commands (`cmd/`) from business logic (`pkg/`).

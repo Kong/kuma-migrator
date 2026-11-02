@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Target versions – kuma-migrator docs</title>
+<meta name="description" content="Why the 2.x and 3.0 lines need different output, and what --to-latest v3 rewrites, warns about or refuses.">
+<link rel="canonical" href="https://kong.github.io/kuma-migrator/docs/guides/target-version/">
+<link rel="icon" href="../../static/favicon.svg" type="image/svg+xml">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="kuma-migrator">
+<meta property="og:title" content="Target versions – kuma-migrator docs">
+<meta property="og:description" content="Why the 2.x and 3.0 lines need different output, and what --to-latest v3 rewrites, warns about or refuses.">
+<meta property="og:url" content="https://kong.github.io/kuma-migrator/docs/guides/target-version/">
+<meta property="og:image" content="https://kong.github.io/kuma-migrator/assets/migration-overview.svg">
+<meta name="twitter:card" content="summary_large_image">
+
+<link rel="stylesheet" href="../../static/style.css">
+<link rel="stylesheet" href="../../static/chroma.css">
+</head>
+<body data-root="../../">
+<a class="skip" href="#content">Skip to content</a>
+<header class="site-header">
+  <div class="bar">
+    <a class="brand" href="../../../"><img src="../../static/favicon.svg" width="28" height="28" alt=""><span>kuma-migrator</span></a>
+    <a class="docs-home" href="../../">Docs</a>
+    <nav class="top-nav" aria-label="Sections">
+      <a href="../" class="active" aria-current="true">Guides</a>
+      <a href="../../topics/">Topics</a>
+      <a href="../../policies/">Policies</a>
+      <a href="https://github.com/Kong/kuma-migrator">GitHub</a>
+    </nav>
+    <div class="search">
+      <input id="search-input" type="search" placeholder="Search docs" aria-label="Search docs" autocomplete="off">
+      <ul id="search-results" hidden></ul>
+    </div>
+  </div>
+</header>
+
+<div class="layout">
+  <details class="nav-mobile">
+    <summary>Guides menu</summary>
+    <div class="nav-group"><ul><li><a href="../">Overview</a></li><li><a href="../installation/">Installation</a></li><li><a href="../usage/">Typical usage</a></li><li><a href="../upgrade-plans/">Upgrade plans</a></li><li><a href="../cli/">CLI reference</a></li><li><a href="../extract/">Extract</a></li><li><a href="../migrate/">Migrate</a></li><li><a href="./" class="active" aria-current="page">Target versions (--to-latest)</a></li><li><a href="../apply/">Apply</a></li><li><a href="../output-and-reports/">Output and reports</a></li><li><a href="../examples/">Examples</a></li><li><a href="../architecture/">Architecture</a></li><li><a href="../notes/">Notes and caveats</a></li></ul></div>
+
+  </details>
+  <aside class="sidebar" aria-label="Guides pages">
+    <p class="sidebar-section"><a href="../">Guides</a></p>
+    <div class="nav-group"><ul><li><a href="../">Overview</a></li><li><a href="../installation/">Installation</a></li><li><a href="../usage/">Typical usage</a></li><li><a href="../upgrade-plans/">Upgrade plans</a></li><li><a href="../cli/">CLI reference</a></li><li><a href="../extract/">Extract</a></li><li><a href="../migrate/">Migrate</a></li><li><a href="./" class="active" aria-current="page">Target versions (--to-latest)</a></li><li><a href="../apply/">Apply</a></li><li><a href="../output-and-reports/">Output and reports</a></li><li><a href="../examples/">Examples</a></li><li><a href="../architecture/">Architecture</a></li><li><a href="../notes/">Notes and caveats</a></li></ul></div>
+
+  </aside>
+  <main id="content">
+    <article class="doc">
+<p class="crumb"><a href="../">Guides</a></p>
+<h1>Target versions</h1>
+<p class="lede">Why the 2.x and 3.0 lines need different output, and what --to-latest v3 rewrites, warns about or refuses.</p>
+<p><code>migrate</code> (including its <code>--dry-run</code> mode) takes <code>--to-latest v2|v3</code>, defaulting to <code>v2</code>.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Value</th>
+<th>Target</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>v2</code> (default)</td>
+<td>latest 2.x (2.14.x)</td>
+<td>Keeps the output applicable to a 2.x control plane. Fields removed in 3.0 but still accepted in 2.14 are reported as forward-looking advisories, never rewritten.</td>
+</tr>
+<tr>
+<td><code>v3</code></td>
+<td>3.0 (Kuma 3.0.0/3.0.1, Kong Mesh 3.0.0/3.0.1)</td>
+<td>Rewrites what the manifest carries enough information for, and reports the rest as blocking work. Checked entry by entry against the released 3.0.0 upgrade notes of Kuma and Kong Mesh.</td>
+</tr>
+</tbody>
+</table></div>
+<p>The two lines need different output, so this is an explicit choice rather than a default:
+3.0 removes fields that 2.14 still requires, and some 3.0 replacements
+(<code>MeshOpenTelemetryBackend</code>, <code>SecureDataSource</code>) do not exist before 2.14. A v3 report carries a
+banner saying the output must not be applied to a 2.x control plane.</p>
+<p>3.0 also rejects fields that are not in its schema (<code>spec.from: unknown field</code>) and
+control-plane-owned labels whose value differs from the computed one. That is why <code>v3</code> deletes
+fields rather than leaving them in place.</p>
+<h2 id="which-target-to-use">Which target to use</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Situation</th>
+<th>Target</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Cleaning up a 2.x mesh, or moving between 2.x minors</td>
+<td><code>v2</code></td>
+</tr>
+<tr>
+<td>Preparing the last 2.x state before a 3.0 upgrade (<code>MeshOpenTelemetryBackend</code>, <code>meshServices.mode: Exclusive</code>, converted legacy policies)</td>
+<td><code>v2</code>, applied on 2.14</td>
+</tr>
+<tr>
+<td>Producing the manifests to keep under source control for 3.0, and the list of objects to delete before the upgrade</td>
+<td><code>v3</code></td>
+</tr>
+<tr>
+<td>Finding out how much manual work a 3.0 upgrade needs</td>
+<td><code>v3 --dry-run</code></td>
+</tr>
+</tbody>
+</table></div>
+<p>Run both against the same extracted tree when you plan a 3.0 upgrade. The sequence is in
+<a href="../upgrade-plans/">Upgrade plans</a>.</p>
+<h2 id="what-v3-rewrites-automatically">What v3 rewrites automatically</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Resource</th>
+<th>3.0 change</th>
+<th>v3 output</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Mesh</code></td>
+<td><code>spec.mtls</code> removed</td>
+<td>Field dropped, with a <strong>blocking</strong> warning: create a <code>MeshIdentity</code> (+ <code>MeshTrust</code>) that selects every proxy before upgrading. On 3.0 a mesh whose only identity source is <code>mtls</code> serves plaintext, and <code>MeshTrafficPermission</code>/<code>MeshTLS</code> stop applying.</td>
+</tr>
+<tr>
+<td><code>Mesh</code></td>
+<td><code>mtls</code> backend <code>mode: PERMISSIVE</code> no longer makes inbounds permissive</td>
+<td>Companion <code>MeshTLS</code> with <code>rules[].default.mode: Permissive</code></td>
+</tr>
+<tr>
+<td><code>Mesh</code></td>
+<td><code>routing.zoneEgress</code>, <code>routing.localityAwareLoadBalancing</code>, <code>routing.defaultForbidMeshExternalServiceAccess</code>, <code>skipCreatingInitialPolicies</code> removed</td>
+<td>Fields dropped, each with a note on what replaces it</td>
+</tr>
+<tr>
+<td><code>Mesh</code></td>
+<td>a transparent-proxy data plane that no <code>MeshPassthrough</code> selects now drops external traffic</td>
+<td><code>networking.outbound.passthrough: true</code> → companion <code>MeshPassthrough</code> with <code>passthroughMode: All</code> (unset: warning only)</td>
+</tr>
+<tr>
+<td><code>Mesh</code></td>
+<td><code>meshServices</code> has no effect on 3.0 zones</td>
+<td><code>meshServices.mode: Exclusive</code> is kept: 2.x zones read a missing field as <code>Disabled</code>, so it must be set before the Global CP upgrade. Drop it once every zone runs 3.0.</td>
+</tr>
+<tr>
+<td><code>MeshMetric</code>/<code>MeshTrace</code>/<code>MeshAccessLog</code></td>
+<td>inline <code>openTelemetry.endpoint</code> removed</td>
+<td>Generated <code>MeshOpenTelemetryBackend</code> plus <code>backendRef.labels</code> pointing at it</td>
+</tr>
+<tr>
+<td>Any policy</td>
+<td><code>targetRef</code>/<code>to[].targetRef</code> select real resources by <code>labels</code> only</td>
+<td><code>name</code> → <code>kuma.io/display-name</code>, <code>namespace</code> → <code>k8s.kuma.io/namespace</code>, <code>mesh</code> → <code>kuma.io/mesh</code>. <code>Dataplane{name}</code> is warned (a Dataplane name is not a label).</td>
+</tr>
+<tr>
+<td>Any Kuma resource</td>
+<td>control-plane-owned labels rejected when they differ from the computed value</td>
+<td><code>kuma.io/origin</code>, <code>kuma.io/zone</code>, <code>kuma.io/display-name</code>, <code>kuma.io/policy-role</code>, <code>k8s.kuma.io/namespace</code>, … removed from the resource's own labels (selectors are untouched; <code>kuma.io/mesh</code> stays)</td>
+</tr>
+<tr>
+<td><code>MeshHTTPRoute</code>/<code>MeshTCPRoute</code></td>
+<td><code>backendRefs</code> labels only; <code>MeshServiceSubset</code> removed</td>
+<td><code>name</code>/<code>namespace</code> → labels; a subset that only names <code>kuma.io/service</code> → <code>MeshService</code></td>
+</tr>
+<tr>
+<td>Legacy <code>HealthCheck</code></td>
+<td><code>healthyPanicThreshold</code> removed from <code>MeshHealthCheck</code></td>
+<td>Companion <code>MeshCircuitBreaker</code> carrying <code>outlierDetection.healthyPanicThreshold</code>. 3.0 ignores the threshold without outlier detection, so the companion sets <code>detectors.totalFailures.consecutive: 5</code>, which <strong>turns on outlier ejection</strong> for those destinations. Review it.</td>
+</tr>
+<tr>
+<td><code>MeshFaultInjection</code></td>
+<td><code>from[]</code> removed</td>
+<td><code>rules[]</code> when every source is <code>kind: Mesh</code> (legacy <code>FaultInjection</code>: every source <code>kuma.io/service: '*'</code>)</td>
+</tr>
+<tr>
+<td><code>MeshExternalService</code></td>
+<td>TLS <code>DataSource</code> → <code>SecureDataSource</code></td>
+<td><code>inlineString</code> → <code>insecureInline.value</code>, <code>secret</code> → <code>secretRef</code>. <code>inline</code> (base64) stays warn-only: rewriting it means decoding credential material. 2.14.6+ accepts both shapes.</td>
+</tr>
+<tr>
+<td><code>Dataplane</code></td>
+<td><code>networking.gateway</code> (any type) ignored</td>
+<td>Block removed; non-<code>kuma.io/</code> gateway tags moved to Dataplane labels</td>
+</tr>
+<tr>
+<td><code>Dataplane</code></td>
+<td>inbound <code>tags</code> removed; <code>kuma.io/protocol</code> tag no longer sets the protocol</td>
+<td>Tag copied to <code>inbound[].protocol</code>; other tags moved to labels</td>
+</tr>
+<tr>
+<td><code>Dataplane</code></td>
+<td>outbounds must use <code>backendRef</code>; <code>reachableServices</code> removed; <code>reachableBackends</code> labels only</td>
+<td>Converted where the <code>kuma.io/service</code> value decodes to name, namespace and port</td>
+</tr>
+<tr>
+<td><code>MeshService</code></td>
+<td><code>selector.dataplaneTags</code> removed; <code>identities[]</code> SPIFFE only</td>
+<td><code>dataplaneTags</code> → <code>dataplaneLabels.matchLabels</code>; <code>type: ServiceTag</code> entries dropped</td>
+</tr>
+<tr>
+<td><code>MeshOPA</code> (Kong Mesh)</td>
+<td><code>targetRef.kind</code> <code>Mesh</code>/<code>Dataplane</code> only; <code>name</code>/<code>namespace</code>/<code>mesh</code> removed; <code>SecureDataSource</code></td>
+<td><code>MeshService</code> → <code>Dataplane</code>, <code>MeshSubset{tags}</code> → <code>Dataplane{labels}</code>, <code>name</code> → label, data sources rewritten</td>
+</tr>
+<tr>
+<td><code>AccessRole</code>/<code>AccessAudit</code> (Kong Mesh)</td>
+<td>legacy types and qualifiers removed</td>
+<td><code>rules[].types</code> renamed to the <code>Mesh*</code> successors; types with no successor removed; legacy <code>when[]</code> qualifiers removed without widening the grant</td>
+</tr>
+<tr>
+<td>Gateway API output</td>
+<td><code>kuma.io/mesh</code> annotation no longer honoured</td>
+<td>Written as a label (on both targets)</td>
+</tr>
+</tbody>
+</table></div>
+<h2 id="what-v3-refuses">What v3 refuses</h2>
+<p>These produce an error. The original is written to the <code>_manual/</code> subtree, outside the apply tree
+(see <a href="../apply/#manual-subtree">Manual subtree</a>).</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Input</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Legacy <code>TrafficPermission</code></td>
+<td>3.0 <code>MeshTrafficPermission</code> needs <code>rules[]</code> with SPIFFE IDs, which need a <code>MeshIdentity</code> and trust domain the manifest does not carry. Re-run with <code>--to-latest v2</code> for the <code>from[]</code> output. See <a href="../../topics/access-control/">Access control</a>.</td>
+</tr>
+<tr>
+<td>Legacy <code>FaultInjection</code> with specific sources</td>
+<td><code>rules[].matches[]</code> matches SPIFFE IDs or SNI, not tags</td>
+</tr>
+<tr>
+<td>Legacy selector with no service tag in a destination</td>
+<td>3.0 accepts no tag selector in <code>to[]</code></td>
+</tr>
+<tr>
+<td><code>TrafficRoute</code>, <code>VirtualOutbound</code></td>
+<td>No single successor (both targets)</td>
+</tr>
+<tr>
+<td><code>MeshGatewayInstance</code></td>
+<td>The built-in gateway is removed; run your own gateway</td>
+</tr>
+</tbody>
+</table></div>
+<p>Documents that pass through as a kind 3.0 removes (<code>MeshGlobalRateLimit</code>, Universal
+<code>ZoneIngress</code>/<code>ZoneEgress</code>) also go to <code>_manual/</code>.</p>
+<h2 id="what-v3-only-warns-about">What v3 only warns about</h2>
+<p>The manifest does not carry what the fix needs:</p>
+<ul>
+<li><code>MeshExternalService</code> with no <code>MeshIdentity</code> in the input for its mesh: clients get 503 <code>cluster_not_found</code>.</li>
+<li><code>MeshExternalService</code> with a <code>kuma.io/zone</code> label: per-zone routing is removed.</li>
+<li><code>MeshPassthrough</code> <code>Domain</code> match without a <code>port</code>, and matches that collide on one Envoy filter chain.</li>
+<li><code>MeshMetric</code> <code>ActiveMTLSBackend</code>: remote scrapers need a mesh-trusted client certificate.</li>
+<li><code>MeshTrafficPermission</code> <code>from[]</code> (3.0 rejects it: &quot;policy must define rules&quot;) and empty <code>allow</code>/<code>deny</code> entries.</li>
+<li><code>from[]</code> entries on <code>MeshTimeout</code>/<code>MeshCircuitBreaker</code>/<code>MeshAccessLog</code> whose source is not <code>kind: Mesh</code>: converting to <code>rules[]</code> widens the scope.</li>
+<li><code>to[].targetRef.kind</code> not accepted by the policy on 3.0 (matrix in <a href="../../topics/policy-targeting/">Policy targeting</a>).</li>
+<li><code>MeshProxyPatch</code> patching cluster <code>circuitBreakers</code>: on 3.0 it overrides <code>MeshCircuitBreaker</code>.</li>
+<li><code>Dataplane</code> <code>advertisedAddress</code>, redirect ports, <code>ipFamilyMode</code>, <code>probes</code>, and transparent-proxy Dataplanes with no <code>reachableBackends</code> (no outbounds on 3.0).</li>
+<li><code>ZoneIngress</code>/<code>ZoneEgress</code>: replace with a zone-proxy <code>Dataplane</code> per mesh; cross-zone <code>MeshService</code> traffic needs a <code>MeshZoneAddress</code> (snippet included).</li>
+<li><code>ContainerPatch</code> probes on admin port <code>9901</code>: use <code>9902</code>.</li>
+<li>Pod and pod-template annotations removed in 3.0: <code>kuma.io/ingress</code>, <code>kuma.io/egress</code>, <code>kuma.io/mesh</code> (use the label), <code>kuma.io/transparent-proxying-reachable-services</code>, <code>kuma.io/transparent-proxying-ebpf*</code>, virtual probes.</li>
+<li><code>Mesh</code>/<code>Zone</code>/<code>MeshService</code>/<code>MeshExternalService</code>/<code>MeshMultiZoneService</code> names that are not lowercase RFC 1035 labels.</li>
+<li><code>AccessRole</code> <code>when[].targetRef.kind</code> other than <code>Mesh</code>/<code>Dataplane</code>, and <code>tags</code>/<code>mesh</code> on qualifier targetRefs.</li>
+<li><code>MeshLoadBalancingStrategy</code> <code>crossZone</code> on a <code>to[]</code> entry that is not a <code>MeshMultiZoneService</code>.</li>
+<li><code>MeshHTTPRoute</code> with no catch-all rule: on 3.0 unmatched requests get a <code>404</code>.</li>
+</ul>
+<h2 id="checks-that-differ-between-the-targets">Checks that differ between the targets</h2>
+<ul>
+<li><strong><code>Dataplane</code> inbound tags</strong> are only flagged under <code>v3</code>. They are mandatory in 2.x, so a v2
+advisory would fire on every Dataplane. 3.0 drops them <em>silently</em>, so anything selecting on
+them stops matching with nothing logged.</li>
+<li><strong>Inline <code>openTelemetry.endpoint</code></strong> is only warned about under <code>v2</code>, with an explicit warning
+<em>not</em> to migrate it until every control plane and data plane is on 2.14:
+<code>MeshOpenTelemetryBackend</code> does not exist before then, and the control plane silently skips
+the OTel route against an older data plane.</li>
+<li><strong><code>reachableBackends</code> name refs</strong> and <strong><code>MeshService</code> <code>dataplaneTags</code></strong> are rewritten under
+<code>v3</code> only. On 2.14 a labels selector also matches same-named services synced from other zones,
+so the rewrite would widen selection.</li>
+<li><strong><code>Mesh.mtls</code></strong> is kept under <code>v2</code> with an advisory that the <code>MeshIdentity</code> migration is
+required before 3.0.</li>
+<li><strong>Kong Mesh enterprise CA backends</strong> (<code>vault</code>, <code>acmpca</code>, <code>cert-manager</code>) are removed in 3.0.
+Both targets name the <code>MeshIdentity</code> <code>Extension</code> provider that replaces each one.</li>
+<li><strong><code>MeshGlobalRateLimit</code></strong> warns under both targets. Under <code>v3</code> it is moved to <code>_manual/</code> and
+listed for deletion, never for apply.</li>
+</ul>
+<h2 id="upstream-upgrade-notes">Upstream upgrade notes</h2>
+<p>Every v3 rule comes from one of these:</p>
+<ul>
+<li>Kuma: <a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md"><code>UPGRADE.md</code></a>, section
+&quot;Upgrade to <code>3.0.0</code>&quot;, and the
+<a href="https://kuma.io/docs/latest/production/upgrades-tuning/upgrade-notes/">Kuma upgrade notes</a>.</li>
+<li>Kong Mesh: <a href="https://developer.konghq.com/mesh/version-specific-upgrade-notes/">version-specific upgrade notes</a>.</li>
+</ul>
+<p>The per-kind behaviour on each target is on the <a href="../../policies/">policy pages</a>.</p>
+
+    </article>
+    <nav class="pager" aria-label="Previous and next page">
+      <a class="prev" href="../migrate/"><span>Previous</span>Migrate</a>
+      <a class="next" href="../apply/"><span>Next</span>Apply</a>
+    </nav>
+  </main>
+  <nav class="toc" aria-label="On this page">
+    <p class="toc-title">On this page</p>
+    <ul><li class="toc-l2"><a href="#which-target-to-use">Which target to use</a></li><li class="toc-l2"><a href="#what-v3-rewrites-automatically">What v3 rewrites automatically</a></li><li class="toc-l2"><a href="#what-v3-refuses">What v3 refuses</a></li><li class="toc-l2"><a href="#what-v3-only-warns-about">What v3 only warns about</a></li><li class="toc-l2"><a href="#checks-that-differ-between-the-targets">Checks that differ between the targets</a></li><li class="toc-l2"><a href="#upstream-upgrade-notes">Upstream upgrade notes</a></li></ul>
+  </nav>
+</div>
+<footer class="site-footer">
+  <p>
+    <a href="../../../">kuma-migrator</a> ·
+    <a href="https://github.com/Kong/kuma-migrator">Source</a> ·
+    <a href="https://github.com/Kong/kuma-migrator/releases">Releases</a> ·
+    <a href="https://github.com/Kong/kuma-migrator/issues">Issues</a> ·
+    <a href="https://github.com/Kong/kuma-migrator/blob/main/site/content/guides/target-version.md">View source of this page</a>
+  </p>
+  <p>Apache-2.0 licensed. Part of Kong's <a href="https://konghq.com/products/kong-mesh">Kong Mesh</a> tooling.</p>
+</footer>
+<script src="../../static/search-index.js"></script>
+<script src="../../static/search.js"></script>
+</body>
+</html>

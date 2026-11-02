@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Extract – kuma-migrator docs</title>
+<meta name="description" content="Pull resources out of a running Kuma or Kong Mesh control plane, and the control plane mode rules that decide what is kept.">
+<link rel="canonical" href="https://kong.github.io/kuma-migrator/docs/guides/extract/">
+<link rel="icon" href="../../static/favicon.svg" type="image/svg+xml">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="kuma-migrator">
+<meta property="og:title" content="Extract – kuma-migrator docs">
+<meta property="og:description" content="Pull resources out of a running Kuma or Kong Mesh control plane, and the control plane mode rules that decide what is kept.">
+<meta property="og:url" content="https://kong.github.io/kuma-migrator/docs/guides/extract/">
+<meta property="og:image" content="https://kong.github.io/kuma-migrator/assets/migration-overview.svg">
+<meta name="twitter:card" content="summary_large_image">
+
+<link rel="stylesheet" href="../../static/style.css">
+<link rel="stylesheet" href="../../static/chroma.css">
+</head>
+<body data-root="../../">
+<a class="skip" href="#content">Skip to content</a>
+<header class="site-header">
+  <div class="bar">
+    <a class="brand" href="../../../"><img src="../../static/favicon.svg" width="28" height="28" alt=""><span>kuma-migrator</span></a>
+    <a class="docs-home" href="../../">Docs</a>
+    <nav class="top-nav" aria-label="Sections">
+      <a href="../" class="active" aria-current="true">Guides</a>
+      <a href="../../topics/">Topics</a>
+      <a href="../../policies/">Policies</a>
+      <a href="https://github.com/Kong/kuma-migrator">GitHub</a>
+    </nav>
+    <div class="search">
+      <input id="search-input" type="search" placeholder="Search docs" aria-label="Search docs" autocomplete="off">
+      <ul id="search-results" hidden></ul>
+    </div>
+  </div>
+</header>
+
+<div class="layout">
+  <details class="nav-mobile">
+    <summary>Guides menu</summary>
+    <div class="nav-group"><ul><li><a href="../">Overview</a></li><li><a href="../installation/">Installation</a></li><li><a href="../usage/">Typical usage</a></li><li><a href="../upgrade-plans/">Upgrade plans</a></li><li><a href="../cli/">CLI reference</a></li><li><a href="./" class="active" aria-current="page">Extract</a></li><li><a href="../migrate/">Migrate</a></li><li><a href="../target-version/">Target versions (--to-latest)</a></li><li><a href="../apply/">Apply</a></li><li><a href="../output-and-reports/">Output and reports</a></li><li><a href="../examples/">Examples</a></li><li><a href="../architecture/">Architecture</a></li><li><a href="../notes/">Notes and caveats</a></li></ul></div>
+
+  </details>
+  <aside class="sidebar" aria-label="Guides pages">
+    <p class="sidebar-section"><a href="../">Guides</a></p>
+    <div class="nav-group"><ul><li><a href="../">Overview</a></li><li><a href="../installation/">Installation</a></li><li><a href="../usage/">Typical usage</a></li><li><a href="../upgrade-plans/">Upgrade plans</a></li><li><a href="../cli/">CLI reference</a></li><li><a href="./" class="active" aria-current="page">Extract</a></li><li><a href="../migrate/">Migrate</a></li><li><a href="../target-version/">Target versions (--to-latest)</a></li><li><a href="../apply/">Apply</a></li><li><a href="../output-and-reports/">Output and reports</a></li><li><a href="../examples/">Examples</a></li><li><a href="../architecture/">Architecture</a></li><li><a href="../notes/">Notes and caveats</a></li></ul></div>
+
+  </aside>
+  <main id="content">
+    <article class="doc">
+<p class="crumb"><a href="../">Guides</a></p>
+<h1>Extract</h1>
+<p class="lede">Pull resources out of a running Kuma or Kong Mesh control plane, and the control plane mode rules that decide what is kept.</p>
+<p><code>extract</code> reads every writable Kuma resource from a control plane and writes one YAML file per
+resource. The output directory is the input of <a href="../migrate/"><code>migrate</code></a>. <code>extract</code> only reads:
+it never writes to the control plane.</p>
+<h2 id="connection-modes">Connection modes</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th></th>
+<th><code>--kube-context</code></th>
+<th><code>--kumactl-context</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Tool</td>
+<td><code>kubectl</code></td>
+<td><code>kumactl</code> CLI, or direct HTTPS for Konnect</td>
+</tr>
+<tr>
+<td>Type discovery</td>
+<td>Every <code>kuma.io/v1alpha1</code> CRD in the cluster</td>
+<td><code>GET &lt;cp&gt;/_resources</code></td>
+</tr>
+<tr>
+<td>Listing</td>
+<td><code>kubectl get &lt;kind&gt; -o yaml</code> per CRD</td>
+<td><code>kumactl get &lt;type&gt; [--mesh &lt;mesh&gt;] -o yaml</code> per type and mesh</td>
+</tr>
+<tr>
+<td>Mode detection</td>
+<td><code>KUMA_MODE</code> on the control plane Deployment in <code>kuma-system</code> or <code>kong-mesh-system</code></td>
+<td><code>GET &lt;cp&gt;/config</code></td>
+</tr>
+<tr>
+<td>Environment</td>
+<td>Always <code>kubernetes</code></td>
+<td><code>environment</code> field of <code>GET &lt;cp&gt;/config</code></td>
+</tr>
+<tr>
+<td>Output format</td>
+<td>Kubernetes, as returned by the API server</td>
+<td>Universal by default; <code>--output-format kubernetes</code> converts it</td>
+</tr>
+<tr>
+<td>Apply command in the report</td>
+<td><code>kubectl apply -f &lt;dir&gt;/</code></td>
+<td>one <code>kumactl apply -f &lt;file&gt;</code> per file</td>
+</tr>
+</tbody>
+</table></div>
+<p>Both paths exclude kinds whose name contains <code>Insight</code>, and kinds in the skip list (see
+<a href="../cli/#configuration-file">Configuration file</a>).</p>
+<p>The <code>--kumactl-context</code> path resolves the context from <code>~/.kumactl/config</code> (or
+<code>$KUMACTL_CONFIG</code>). It ignores the <code>readOnly</code> flag that <code>/_resources</code> returns: a control plane
+with <code>ApiServer.ReadOnly=true</code> reports every type as read-only, which would extract nothing.
+<code>extract</code> never writes through that API, so the flag does not apply to it.</p>
+<p>Code: <a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/extractor/kube.go"><code>pkg/extractor/kube.go</code></a>,
+<a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/extractor/kumactl.go"><code>pkg/extractor/kumactl.go</code></a>.</p>
+<h2 id="output-layout">Output layout</h2>
+<pre><code>&lt;output-dir&gt;/
+  &lt;context&gt;-global-ctx/            ← context name + control plane mode
+    .kuma-migrator.json            ← how this context was extracted
+    mesh-default/                  ← one directory per mesh, prefixed &quot;mesh-&quot;
+      resiliency/
+      routing/
+      zero-trust/
+      observability/
+      mesh/
+      other/
+    mesh-prod/
+      resiliency/
+    global-scoped-resources/       ← resources with no mesh (Zone, HostnameGenerator, …)
+      other/
+  &lt;context&gt;-zone-ctx/              ← a Zone control plane
+    mesh-default/
+      resiliency/
+  &lt;context&gt;-standalone-ctx/
+  &lt;context&gt;-unknown-ctx/           ← mode could not be detected
+</code></pre>
+<p>The kind subfolders come from
+<a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/resource/subfolder.go"><code>pkg/resource/subfolder.go</code></a>:</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Subfolder</th>
+<th>Kinds</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>resiliency</code></td>
+<td><code>MeshCircuitBreaker</code>, <code>MeshRetry</code>, <code>MeshTimeout</code>, <code>MeshHealthCheck</code>, <code>MeshRateLimit</code>, <code>MeshFaultInjection</code> and their legacy equivalents</td>
+</tr>
+<tr>
+<td><code>routing</code></td>
+<td><code>MeshHTTPRoute</code>, <code>MeshTCPRoute</code>, <code>MeshLoadBalancingStrategy</code>, <code>MeshPassthrough</code>, <code>MeshService</code>, <code>MeshExternalService</code>, <code>MeshMultiZoneService</code>, the gateway kinds, <code>ExternalService</code>, <code>TrafficRoute</code>, <code>VirtualOutbound</code></td>
+</tr>
+<tr>
+<td><code>zero-trust</code></td>
+<td><code>MeshTrafficPermission</code>, <code>MeshTLS</code>, <code>MeshIdentity</code>, <code>MeshTrust</code>, <code>MeshOPA</code>, <code>TrafficPermission</code>, <code>OPAPolicy</code>, <code>Secret</code>, <code>GlobalSecret</code></td>
+</tr>
+<tr>
+<td><code>observability</code></td>
+<td><code>MeshMetric</code>, <code>MeshTrace</code>, <code>MeshAccessLog</code>, <code>TrafficLog</code>, <code>TrafficTrace</code></td>
+</tr>
+<tr>
+<td><code>mesh</code></td>
+<td><code>Mesh</code>, <code>MeshProxyPatch</code>, <code>ProxyTemplate</code></td>
+</tr>
+<tr>
+<td><code>other</code></td>
+<td>everything else</td>
+</tr>
+</tbody>
+</table></div>
+<p><code>.kuma-migrator.json</code> records the extraction:</p>
+<pre class="chroma"><code><span class="line"><span class="cl"><span class="p">{</span><span class="nt">&#34;tool&#34;</span><span class="p">:</span><span class="s2">&#34;kumactl&#34;</span><span class="p">,</span><span class="nt">&#34;context&#34;</span><span class="p">:</span><span class="s2">&#34;konnect-global-prod&#34;</span><span class="p">,</span><span class="nt">&#34;cpMode&#34;</span><span class="p">:</span><span class="s2">&#34;global&#34;</span><span class="p">,</span><span class="nt">&#34;isKonnect&#34;</span><span class="p">:</span><span class="kc">true</span><span class="p">}</span>
+</span></span><span class="line"><span class="cl"><span class="p">{</span><span class="nt">&#34;tool&#34;</span><span class="p">:</span><span class="s2">&#34;kubectl&#34;</span><span class="p">,</span><span class="nt">&#34;context&#34;</span><span class="p">:</span><span class="s2">&#34;zone-eu-west1-prod&#34;</span><span class="p">,</span><span class="nt">&#34;cpMode&#34;</span><span class="p">:</span><span class="s2">&#34;zone&#34;</span><span class="p">,</span><span class="nt">&#34;environment&#34;</span><span class="p">:</span><span class="s2">&#34;kubernetes&#34;</span><span class="p">}</span>
+</span></span></code></pre><p><code>migrate</code> reads it to pick the skip list (<code>environment</code>) and to write the right apply command
+(<code>tool</code>, <code>context</code>, <code>isKonnect</code>) into the report. Without it, the report assumes <code>kubectl</code>.</p>
+<p>Extract one mesh only:</p>
+<pre class="chroma"><code><span class="line"><span class="cl">kuma-migrator extract --kumactl-context global-cp --output-dir ./raw-policies --mesh default
+</span></span></code></pre><p>Running <code>extract</code> against several control planes with the same <code>--output-dir</code> is supported:
+each control plane gets its own <code>&lt;context&gt;-&lt;mode&gt;-ctx/</code> directory.</p>
+<h2 id="control-plane-modes">Control plane modes</h2>
+<p><code>extract</code> detects the mode of the control plane and filters on the <code>kuma.io/origin</code> label.
+The mode decides both the directory suffix and the filter.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Mode</th>
+<th>Directory</th>
+<th>Kept</th>
+<th>Skipped</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>global</code></td>
+<td><code>&lt;context&gt;-global-ctx</code></td>
+<td><code>kuma.io/origin: global</code> and resources with no origin label</td>
+<td><code>kuma.io/origin: zone</code> (read-only copies synced up from zones), listed after extraction with the zone to target; <code>MeshGatewayInstance</code> and <code>MeshGatewayConfig</code></td>
+</tr>
+<tr>
+<td><code>zone</code></td>
+<td><code>&lt;context&gt;-zone-ctx</code></td>
+<td><code>kuma.io/origin: zone</code>, plus gateway kinds with no origin label (<code>MeshGateway</code>, <code>MeshGatewayInstance</code>, <code>MeshGatewayConfig</code>, <code>MeshGatewayRoute</code>, <code>MeshHTTPRoute</code>, <code>MeshTCPRoute</code>)</td>
+<td><code>kuma.io/origin: global</code> (already captured from the Global control plane) and other resources with no origin label</td>
+</tr>
+<tr>
+<td><code>standalone</code></td>
+<td><code>&lt;context&gt;-standalone-ctx</code></td>
+<td>everything</td>
+<td>nothing</td>
+</tr>
+<tr>
+<td>unknown</td>
+<td><code>&lt;context&gt;-unknown-ctx</code></td>
+<td>everything</td>
+<td>nothing</td>
+</tr>
+</tbody>
+</table></div>
+<p>The filter is implemented in
+<a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/extractor/extractor.go"><code>pkg/extractor/extractor.go</code></a>.
+Kuma's multizone resource sync is described in the
+<a href="https://kuma.io/docs/latest/production/deployment/multi-zone/">Kuma multizone docs</a>.</p>
+<h3 id="global-control-plane">Global control plane</h3>
+<p>Extract the Global control plane first:</p>
+<pre class="chroma"><code><span class="line"><span class="cl"><span class="c1"># kumactl path</span>
+</span></span><span class="line"><span class="cl">kuma-migrator extract --kumactl-context global-cp --output-dir ./raw-policies
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="c1"># or the kubectl path, same control plane</span>
+</span></span><span class="line"><span class="cl">kuma-migrator extract --kube-context global-cp --output-dir ./raw-policies
+</span></span></code></pre><p>Console output on a Global control plane:</p>
+<pre><code>CP mode:        global
+Attached zones: zone-eu-west, zone-us-east
+[INFO] MeshGatewayInstance and MeshGatewayConfig are zone-local and skipped here.
+       Run extract against each Zone CP to capture gateway instances.
+Found 24 writable resource type(s)
+Extracted 83 resource(s) to ./raw-policies
+
+  ⚠  Zone-origin resources skipped on Global CP — extract from their zone instead:
+     MeshTimeout/my-timeout        →  zone: zone-eu-west
+     MeshRateLimit/rate-limit-svc  →  zone: zone-us-east
+</code></pre>
+<h3 id="zone-control-planes">Zone control planes</h3>
+<p>Zone control planes hold what the Global control plane does not:</p>
+<ul>
+<li>policies created on the zone (<code>kuma.io/origin: zone</code>): producer policies, namespace-scoped
+consumer policies, anything applied directly to the zone cluster;</li>
+<li><code>MeshGatewayInstance</code> and <code>MeshGatewayConfig</code>, which are never synced to the Global
+control plane.</li>
+</ul>
+<pre class="chroma"><code><span class="line"><span class="cl">kuma-migrator extract --kube-context prod-zone-eu --output-dir ./raw-policies
+</span></span><span class="line"><span class="cl">kuma-migrator extract --kube-context prod-zone-us --output-dir ./raw-policies
+</span></span></code></pre><p>Console output on a Zone control plane:</p>
+<pre><code>CP mode:        zone (eu-west)
+[WARN] Extracting from a Zone CP. Only resources with kuma.io/origin: zone will be kept.
+       For a complete policy set, also run extract against the Global CP.
+[INFO] MeshGatewayInstance and MeshGatewayConfig are zone-local and will be extracted here.
+</code></pre>
+<h3 id="where-gateway-resources-live">Where gateway resources live</h3>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Kind</th>
+<th>Created on</th>
+<th>Global extraction</th>
+<th>Zone extraction</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>MeshGateway</code>, <code>MeshGatewayRoute</code>, <code>MeshHTTPRoute</code>, <code>MeshTCPRoute</code></td>
+<td>Global (usual)</td>
+<td>extracted</td>
+<td>skipped (<code>kuma.io/origin: global</code>)</td>
+</tr>
+<tr>
+<td><code>MeshGateway</code>, <code>MeshGatewayRoute</code>, <code>MeshHTTPRoute</code>, <code>MeshTCPRoute</code></td>
+<td>Zone</td>
+<td>not present</td>
+<td>extracted (no origin label)</td>
+</tr>
+<tr>
+<td><code>MeshGatewayInstance</code>, <code>MeshGatewayConfig</code></td>
+<td>Zone only</td>
+<td>skipped</td>
+<td>extracted, with or without an origin label</td>
+</tr>
+<tr>
+<td>any policy with <code>kuma.io/origin: zone</code></td>
+<td>Zone, synced read-only to Global</td>
+<td>skipped, warning printed</td>
+<td>extracted</td>
+</tr>
+</tbody>
+</table></div>
+<p>See <a href="../../topics/gateways/">Gateways</a> and <a href="../../topics/multizone/">Multizone</a>.</p>
+<h2 id="environment-detection">Environment detection</h2>
+<p>The <code>--kumactl-context</code> path reads <code>environment</code> (<code>kubernetes</code> or <code>universal</code>) from
+<code>GET &lt;cp&gt;/config</code>, prints it, and records it in <code>.kuma-migrator.json</code>. On Universal,
+<code>Dataplane</code>, <code>ZoneIngress</code> and <code>ZoneEgress</code> are hand-written, so they are extracted and
+scanned. <code>Workload</code> is generated by the control plane in both environments and stays skipped.
+The <code>--kube-context</code> path always uses the Kubernetes skip list.</p>
+<p>If <code>GET &lt;cp&gt;/config</code> fails, <code>extract</code> prints a warning and continues in unknown mode: no origin
+filter, Kubernetes skip list. On Kong Mesh 3.0, <code>/config</code> requires the
+<code>VIEW_CONTROL_PLANE_METADATA</code> access type, so a <code>401</code> or <code>403</code> here usually means the role
+behind the <code>kumactl</code> context lacks it. Check it with <code>kumactl get access-roles -o yaml</code>.</p>
+<h2 id="konnect">Konnect</h2>
+<p>A control plane URL containing <code>api.konghq.com</code> is treated as Kong Konnect:</p>
+<ul>
+<li><strong>Authentication.</strong> <code>kumactl</code> stores a Konnect personal access token as a header
+(<code>Authorization: Bearer kpat_…</code>) instead of <code>authType: tokens</code>. <code>extract</code> reads both forms.</li>
+<li><strong>Mode.</strong> Konnect has no <code>/config</code> endpoint; it is always treated as a Global control plane.</li>
+<li><strong>Fetching.</strong> Meshes, zones and resources are read with direct authenticated HTTPS calls to
+the Konnect API, not through the <code>kumactl</code> binary.</li>
+<li><strong>Format.</strong> Konnect list endpoints return Universal format (<code>{total, items: [...]}</code>)
+regardless of the requested format. <code>--output-format kubernetes</code> converts each item.</li>
+</ul>
+<h2 id="universal-format">Universal format</h2>
+<p><code>kumactl</code> and Konnect return Universal format: <code>type</code>, <code>name</code> and <code>mesh</code> at the top level, no
+<code>apiVersion</code> or <code>metadata</code>. <code>extract</code> handles both single resources and
+<code>{total: N, items: [...]}</code> lists. By default the files keep Universal format.
+<code>--output-format kubernetes</code> converts them: <code>type</code> becomes <code>kind</code>, <code>name</code> becomes
+<code>metadata.name</code>, <code>mesh</code> becomes the <code>kuma.io/mesh</code> label, and the control-plane-only fields
+(<code>kri</code>, <code>creationTime</code>, <code>modificationTime</code>) are dropped. Documents that are already in
+Kubernetes format are not changed.</p>
+<p><code>migrate</code> reads both formats.</p>
+<h2 id="self-hosted-kumactl-specifics">Self-hosted kumactl specifics</h2>
+<p><code>/_resources</code> reports some types as mesh-scoped that <code>kumactl</code> then rejects with
+<code>unknown flag: --mesh</code>. <code>extract</code> detects that error and fetches the type once without
+<code>--mesh</code>. A type that fails this way does not stop the remaining types.</p>
+<p>Use <code>-k</code> / <code>--tls-skip-verify</code>, or <code>adminServer.tlsSkipVerify: true</code> in the configuration
+file, for a control plane API with a self-signed certificate.</p>
+
+    </article>
+    <nav class="pager" aria-label="Previous and next page">
+      <a class="prev" href="../cli/"><span>Previous</span>CLI reference</a>
+      <a class="next" href="../migrate/"><span>Next</span>Migrate</a>
+    </nav>
+  </main>
+  <nav class="toc" aria-label="On this page">
+    <p class="toc-title">On this page</p>
+    <ul><li class="toc-l2"><a href="#connection-modes">Connection modes</a></li><li class="toc-l2"><a href="#output-layout">Output layout</a></li><li class="toc-l2"><a href="#control-plane-modes">Control plane modes</a></li><li class="toc-l3"><a href="#global-control-plane">Global control plane</a></li><li class="toc-l3"><a href="#zone-control-planes">Zone control planes</a></li><li class="toc-l3"><a href="#where-gateway-resources-live">Where gateway resources live</a></li><li class="toc-l2"><a href="#environment-detection">Environment detection</a></li><li class="toc-l2"><a href="#konnect">Konnect</a></li><li class="toc-l2"><a href="#universal-format">Universal format</a></li><li class="toc-l2"><a href="#self-hosted-kumactl-specifics">Self-hosted kumactl specifics</a></li></ul>
+  </nav>
+</div>
+<footer class="site-footer">
+  <p>
+    <a href="../../../">kuma-migrator</a> ·
+    <a href="https://github.com/Kong/kuma-migrator">Source</a> ·
+    <a href="https://github.com/Kong/kuma-migrator/releases">Releases</a> ·
+    <a href="https://github.com/Kong/kuma-migrator/issues">Issues</a> ·
+    <a href="https://github.com/Kong/kuma-migrator/blob/main/site/content/guides/extract.md">View source of this page</a>
+  </p>
+  <p>Apache-2.0 licensed. Part of Kong's <a href="https://konghq.com/products/kong-mesh">Kong Mesh</a> tooling.</p>
+</footer>
+<script src="../../static/search-index.js"></script>
+<script src="../../static/search.js"></script>
+</body>
+</html>

@@ -1,0 +1,7 @@
+{{define "main"}}<h1>{{.Title}}</h1>
+{{with .Description}}<p class="lede">{{.}}</p>{{end}}
+{{.Content}}
+<div class="cards cards-sections">
+  {{range .Cards}}<a class="card" href="{{.URL}}"><h2>{{.Title}}</h2>{{with .Description}}<p>{{.}}</p>{{end}}</a>
+  {{end}}
+</div>{{end}}

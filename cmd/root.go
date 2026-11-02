@@ -36,7 +36,7 @@ Migration paths:
   - Deprecated from[] on Mesh* policies → new rules[] API (Kuma 2.10+)
   - Mesh CRD observability sections → standalone MeshMetric/MeshTrace/MeshAccessLog
   - ExternalService → MeshExternalService
-  - MeshGateway/MeshGatewayRoute/MeshHTTPRoute/MeshTCPRoute → Gateway API CRDs
+  - MeshGateway/MeshGatewayRoute → Gateway API CRDs (MeshHTTPRoute/MeshTCPRoute pass through)
   - Kong Mesh OPAPolicy → MeshOPA
 
 Alongside the transforms, every output document is scanned for deprecated and

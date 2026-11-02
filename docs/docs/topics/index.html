@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Topics – kuma-migrator docs</title>
+<meta name="description" content="Migration planning by area of the mesh — what changed upstream, what kuma-migrator does on each target, and the manual steps left to you.">
+<link rel="canonical" href="https://kong.github.io/kuma-migrator/docs/topics/">
+<link rel="icon" href="../static/favicon.svg" type="image/svg+xml">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="kuma-migrator">
+<meta property="og:title" content="Topics – kuma-migrator docs">
+<meta property="og:description" content="Migration planning by area of the mesh — what changed upstream, what kuma-migrator does on each target, and the manual steps left to you.">
+<meta property="og:url" content="https://kong.github.io/kuma-migrator/docs/topics/">
+<meta property="og:image" content="https://kong.github.io/kuma-migrator/assets/migration-overview.svg">
+<meta name="twitter:card" content="summary_large_image">
+
+<link rel="stylesheet" href="../static/style.css">
+<link rel="stylesheet" href="../static/chroma.css">
+</head>
+<body data-root="../">
+<a class="skip" href="#content">Skip to content</a>
+<header class="site-header">
+  <div class="bar">
+    <a class="brand" href="../../"><img src="../static/favicon.svg" width="28" height="28" alt=""><span>kuma-migrator</span></a>
+    <a class="docs-home" href="../">Docs</a>
+    <nav class="top-nav" aria-label="Sections">
+      <a href="../guides/">Guides</a>
+      <a href="./" class="active" aria-current="true">Topics</a>
+      <a href="../policies/">Policies</a>
+      <a href="https://github.com/Kong/kuma-migrator">GitHub</a>
+    </nav>
+    <div class="search">
+      <input id="search-input" type="search" placeholder="Search docs" aria-label="Search docs" autocomplete="off">
+      <ul id="search-results" hidden></ul>
+    </div>
+  </div>
+</header>
+
+<div class="layout">
+  <details class="nav-mobile">
+    <summary>Topics menu</summary>
+    <div class="nav-group"><ul><li><a href="./" class="active" aria-current="page">Overview</a></li><li><a href="meshes/">Meshes</a></li><li><a href="mtls-identity/">mTLS &amp; identity</a></li><li><a href="external-pki/">External PKI</a></li><li><a href="meshservice/">MeshService</a></li><li><a href="multizone/">Multizone</a></li><li><a href="gateways/">Gateways &amp; GAMMA</a></li><li><a href="external-services/">External services</a></li><li><a href="access-control/">Access control</a></li><li><a href="observability/">Observability</a></li><li><a href="policy-targeting/">Policy targeting</a></li><li><a href="dataplanes/">Dataplanes</a></li><li><a href="legacy-policies/">Legacy policies</a></li></ul></div>
+
+  </details>
+  <aside class="sidebar" aria-label="Topics pages">
+    <p class="sidebar-section"><a href="./">Topics</a></p>
+    <div class="nav-group"><ul><li><a href="./" class="active" aria-current="page">Overview</a></li><li><a href="meshes/">Meshes</a></li><li><a href="mtls-identity/">mTLS &amp; identity</a></li><li><a href="external-pki/">External PKI</a></li><li><a href="meshservice/">MeshService</a></li><li><a href="multizone/">Multizone</a></li><li><a href="gateways/">Gateways &amp; GAMMA</a></li><li><a href="external-services/">External services</a></li><li><a href="access-control/">Access control</a></li><li><a href="observability/">Observability</a></li><li><a href="policy-targeting/">Policy targeting</a></li><li><a href="dataplanes/">Dataplanes</a></li><li><a href="legacy-policies/">Legacy policies</a></li></ul></div>
+
+  </aside>
+  <main id="content">
+    <article class="doc">
+<h1>Topics</h1>
+<p class="lede">Migration planning by area of the mesh — what changed upstream, what kuma-migrator does on each target, and the manual steps left to you.</p>
+<p>A topic page covers one area of a mesh — identity, gateways, multizone, access control — across
+every resource kind that touches it. Use it to plan the migration of that area: what changed
+upstream between 2.x, 2.14 and 3.0, what <code>kuma-migrator</code> rewrites with <code>--to-latest v2</code> and
+<code>--to-latest v3</code>, what it cannot rewrite and why, and the manual steps in the order to run them.</p>
+<p>The <a href="../policies/">policy pages</a> cover the same ground from the other direction: one
+page per resource kind, with its status on each target and the files that handle it. A topic
+page links to the policy pages of every kind it discusses.</p>
+<h2 id="how-to-read-a-topic-page">How to read a topic page</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Section</th>
+<th>Content</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>What changed upstream</td>
+<td>The upstream changes with the version that introduced them, linked to the Kuma <a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md"><code>UPGRADE.md</code></a>, the <a href="https://developer.konghq.com/mesh/version-specific-upgrade-notes/">Kong Mesh upgrade notes</a> or the docs page they come from</td>
+</tr>
+<tr>
+<td>What kuma-migrator does</td>
+<td>A <code>v2</code> / <code>v3</code> comparison table</td>
+</tr>
+<tr>
+<td>What it cannot do</td>
+<td>The information the fix needs that a manifest does not carry</td>
+</tr>
+<tr>
+<td>Manual steps</td>
+<td>The remaining work, in the order to run it</td>
+</tr>
+<tr>
+<td>Example</td>
+<td>Input and output from a real <code>migrate</code> run. Output is never written by hand</td>
+</tr>
+</tbody>
+</table></div>
+<p>Every example was produced by running <code>kuma-migrator migrate --input-dir in --output-dir out --to-latest v2|v3</code> on the input shown. Warnings quoted on these pages are shortened; the full
+text is in <code>migration-report.md</code>.</p>
+<h2 id="pages">Pages</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Topic</th>
+<th>Covers</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="meshes/">Meshes</a></td>
+<td>The <code>Mesh</code> resource: observability, passthrough, routing and <code>meshServices</code> fields</td>
+</tr>
+<tr>
+<td><a href="mtls-identity/">mTLS and workload identity</a></td>
+<td><code>Mesh.mtls</code> → <code>MeshIdentity</code> + <code>MeshTrust</code>, <code>PERMISSIVE</code> → <code>MeshTLS</code></td>
+</tr>
+<tr>
+<td><a href="external-pki/">External PKI</a></td>
+<td>Kong Mesh Vault, ACM Private CA and cert-manager backends → <code>MeshIdentity</code> <code>Extension</code> provider</td>
+</tr>
+<tr>
+<td><a href="meshservice/">MeshService</a></td>
+<td><code>kuma.io/service</code> tags → <code>MeshService</code>, <code>meshServices.mode</code>, hostnames, names</td>
+</tr>
+<tr>
+<td><a href="multizone/">Multizone</a></td>
+<td>Control plane modes, origin filtering, zone proxies, cross-zone load balancing</td>
+</tr>
+<tr>
+<td><a href="gateways/">Gateways, Gateway API and GAMMA</a></td>
+<td>Built-in gateway removal, <code>MeshGateway*</code> → Gateway API, <code>MeshHTTPRoute</code> on 3.0</td>
+</tr>
+<tr>
+<td><a href="external-services/">External services</a></td>
+<td><code>ExternalService</code> → <code>MeshExternalService</code>, TLS data sources, passthrough</td>
+</tr>
+<tr>
+<td><a href="access-control/">Access control</a></td>
+<td><code>MeshTrafficPermission</code> <code>from[]</code> vs <code>rules[]</code>, <code>MeshOPA</code>, Kong Mesh RBAC</td>
+</tr>
+<tr>
+<td><a href="observability/">Observability</a></td>
+<td>Metrics, tracing and access logs; OpenTelemetry backends</td>
+</tr>
+<tr>
+<td><a href="policy-targeting/">Policy targeting</a></td>
+<td><code>targetRef</code> kinds per position and target, policy roles, control-plane-owned labels</td>
+</tr>
+<tr>
+<td><a href="dataplanes/">Dataplanes</a></td>
+<td>Universal <code>Dataplane</code> fields and Pod annotations removed in 3.0</td>
+</tr>
+<tr>
+<td><a href="legacy-policies/">Legacy policies</a></td>
+<td>The 12 source/destination policies and their <code>Mesh*</code> successors</td>
+</tr>
+</tbody>
+</table></div>
+<h2 id="before-you-start">Before you start</h2>
+<ul>
+<li>Pick the target first. <a href="../guides/target-version/">Choosing a target version</a> explains why
+the <code>v2</code> and <code>v3</code> outputs differ and must not be mixed.</li>
+<li>Kong Mesh supports upgrading at most two minor versions at a time, so a fleet on 2.8 goes
+2.8 → 2.10 → 2.12 → 2.14 before 3.0. Most 3.0 preparation has to be applied on 2.14, because
+the replacements (<code>MeshIdentity</code> extensions, <code>MeshOpenTelemetryBackend</code>, the
+<code>SecureDataSource</code> shape) do not exist earlier.</li>
+<li>Extract from every control plane that holds resources, not only the Global one. See
+<a href="multizone/">Multizone</a> and <a href="../guides/extract/">Extract</a>.</li>
+</ul>
+
+<div class="cards">
+  <a class="card" href="meshes/"><h3>Meshes</h3><p>Every field of the Mesh resource that changed between 2.x and 3.0, and what kuma-migrator does with each one.</p></a>
+  <a class="card" href="mtls-identity/"><h3>mTLS and workload identity</h3><p>Moving a mesh from Mesh.mtls to MeshIdentity and MeshTrust before Kuma 3.0, and why kuma-migrator reports it instead of rewriting it.</p></a>
+  <a class="card" href="external-pki/"><h3>External PKI</h3><p>Moving Kong Mesh Vault, ACM Private CA and cert-manager mTLS backends to the MeshIdentity Extension provider before Kong Mesh 3.0.</p></a>
+  <a class="card" href="meshservice/"><h3>MeshService</h3><p>Moving policies, routes and workload addresses from kuma.io/service tags to MeshService, and setting meshServices.mode before Kuma 3.0.</p></a>
+  <a class="card" href="multizone/"><h3>Multizone</h3><p>Control plane modes, which control plane to extract from, zone proxies, MeshMultiZoneService and cross-zone load balancing across 2.x and 3.0.</p></a>
+  <a class="card" href="gateways/"><h3>Gateways, Gateway API and GAMMA</h3><p>The built-in gateway removal in Kuma 3.0, MeshGateway* to Gateway API, delegated gateways, and why MeshHTTPRoute and MeshTCPRoute stay.</p></a>
+  <a class="card" href="external-services/"><h3>External services</h3><p>ExternalService to MeshExternalService, the SecureDataSource TLS shape, MeshPassthrough, and what Kuma 3.0 requires for traffic leaving the mesh.</p></a>
+  <a class="card" href="access-control/"><h3>Access control</h3><p>MeshTrafficPermission from[] versus SPIFFE rules[], MeshOPA, and the Kong Mesh RBAC changes in 3.0 — what kuma-migrator converts and what stays manual.</p></a>
+  <a class="card" href="observability/"><h3>Observability</h3><p>Metrics, tracing and access logs from Mesh fields and legacy policies to MeshMetric, MeshTrace, MeshAccessLog and MeshOpenTelemetryBackend.</p></a>
+  <a class="card" href="policy-targeting/"><h3>Policy targeting</h3><p>Which targetRef kinds each policy accepts at each position on 2.14 and 3.0, labels-only selection, policy roles, and control-plane-owned labels.</p></a>
+  <a class="card" href="dataplanes/"><h3>Dataplanes</h3><p>Universal Dataplane fields and Kubernetes Pod annotations that change or disappear between 2.x and 3.0, and what kuma-migrator rewrites.</p></a>
+  <a class="card" href="legacy-policies/"><h3>Legacy policies</h3><p>The twelve source/destination policies Kuma 3.0 removes, how kuma-migrator maps their selectors and conf to the Mesh* successors, and the two it leaves to you.</p></a>
+  
+</div>
+    </article>
+    
+  </main>
+  <nav class="toc" aria-label="On this page">
+    <p class="toc-title">On this page</p>
+    <ul><li class="toc-l2"><a href="#how-to-read-a-topic-page">How to read a topic page</a></li><li class="toc-l2"><a href="#pages">Pages</a></li><li class="toc-l2"><a href="#before-you-start">Before you start</a></li></ul>
+  </nav>
+</div>
+<footer class="site-footer">
+  <p>
+    <a href="../../">kuma-migrator</a> ·
+    <a href="https://github.com/Kong/kuma-migrator">Source</a> ·
+    <a href="https://github.com/Kong/kuma-migrator/releases">Releases</a> ·
+    <a href="https://github.com/Kong/kuma-migrator/issues">Issues</a> ·
+    <a href="https://github.com/Kong/kuma-migrator/blob/main/site/content/topics/_index.md">View source of this page</a>
+  </p>
+  <p>Apache-2.0 licensed. Part of Kong's <a href="https://konghq.com/products/kong-mesh">Kong Mesh</a> tooling.</p>
+</footer>
+<script src="../static/search-index.js"></script>
+<script src="../static/search.js"></script>
+</body>
+</html>

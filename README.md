@@ -29,7 +29,7 @@ brew install --cask bcollard/kuma-migrator/kuma-migrator
 
 Pre-built binaries for Linux, macOS, and Windows are on the
 [Releases](https://github.com/Kong/kuma-migrator/releases) page.
-See [Installation](docs/installation.md) for all options.
+See [Installation](https://kong.github.io/kuma-migrator/docs/guides/installation/) for all options.
 
 ## Quick start
 
@@ -77,7 +77,7 @@ forward-looking advisories. `v3` rewrites what it safely can (for example `Mesh.
 labels-only `targetRef`s, inline OTel endpoints → `MeshOpenTelemetryBackend`), flags the rest,
 writes what 3.0 cannot accept to a separate `_manual/` subtree, and lists the objects to delete
 before the upgrade.
-See [Choosing a target version](docs/target-version.md).
+See [Target versions](https://kong.github.io/kuma-migrator/docs/guides/target-version/).
 
 ## What it handles
 
@@ -85,7 +85,7 @@ See [Choosing a target version](docs/target-version.md).
 |---|---|
 | **Legacy** | `sources`/`destinations`/`selectors` policies → `targetRef`/`to`/`from`/`rules`, with the `conf` body rewritten to the successor's schema — except `TrafficRoute` (ambiguous HTTP vs TCP) and `VirtualOutbound` (no single successor), which have no mechanical conversion and are reported for manual migration |
 | **Subset** | `MeshSubset` with service tags → `Dataplane`/`MeshService` |
-| **Rules** | Deprecated `from[]` → `rules[]`, for `MeshTimeout`/`MeshCircuitBreaker`/`MeshRateLimit`/`MeshAccessLog`/`MeshTLS` only (Kuma 2.10+) — `MeshTrafficPermission` uses a different, SPIFFE-identity-based `rules[]` shape and is **not** auto-converted (`MeshFaultInjection` only under `v3`, when every source is `kind: Mesh`); see [MeshTrafficPermission modes](docs/meshtrafficpermission-modes.md) |
+| **Rules** | Deprecated `from[]` → `rules[]`, for `MeshTimeout`/`MeshCircuitBreaker`/`MeshRateLimit`/`MeshAccessLog`/`MeshTLS` only (Kuma 2.10+) — `MeshTrafficPermission` uses a different, SPIFFE-identity-based `rules[]` shape and is **not** auto-converted (`MeshFaultInjection` only under `v3`, when every source is `kind: Mesh`); see [Access control](https://kong.github.io/kuma-migrator/docs/topics/access-control/) |
 | **Mesh** | `Mesh` CRD observability and passthrough → standalone `MeshMetric`/`MeshTrace`/`MeshAccessLog`/`MeshPassthrough`; under `v3` also removes the fields 3.0 drops (`mtls`, `routing.*`) |
 | **ExternalService** | `ExternalService` → `MeshExternalService` |
 | **GW** | `MeshGateway` and `MeshGatewayRoute` → Gateway API (with a `ReferenceGrant` for cross-namespace backends). `MeshHTTPRoute`/`MeshTCPRoute` pass through unchanged |
@@ -96,25 +96,25 @@ line and 3.0. A few are repaired in place; the rest are reported with the reason
 rewritten automatically — usually because the manifest alone does not carry enough information,
 and guessing would silently change behaviour.
 
-Full list: [Migration paths and deprecation warnings](docs/migration-paths.md).
+Per-kind behaviour on each target: [Policy reference](https://kong.github.io/kuma-migrator/docs/policies/).
 
 ## Documentation
 
+Full documentation: **[kong.github.io/kuma-migrator/docs](https://kong.github.io/kuma-migrator/docs/)**.
+
 | Page | What it covers |
 |---|---|
-| [Installation](docs/installation.md) | Homebrew, binaries, from source |
-| [CLI reference](docs/cli-reference.md) | Every command, flag, and the config file |
-| [Extracting from a control plane](docs/extract.md) | CP-mode rules, output layout, Konnect, Universal vs Kubernetes format |
-| [Plan and migrate](docs/plan-and-migrate.md) | Dry run, output layout, Gateway API placement |
-| [Choosing a target version](docs/target-version.md) | `--to-latest` and the checks that change with it |
-| [Applying the migrated manifests](docs/apply.md) | Apply order, and cleaning up changed kinds |
-| [Migration paths and deprecations](docs/migration-paths.md) | Everything detected, fixed or flagged |
-| [MeshTrafficPermission modes](docs/meshtrafficpermission-modes.md) | `from[]` vs `rules[]`, and why it is not mechanical |
-| [Transformation examples](docs/transformation-examples.md) | Before-and-after YAML per scenario |
-| [Console output and reports](docs/output-and-reports.md) | What you see, and what the report contains |
-| [Notes and caveats](docs/notes.md) | Behaviour worth knowing before relying on the output |
-
-Index: [docs/](docs/README.md).
+| [Installation](https://kong.github.io/kuma-migrator/docs/guides/installation/) | Homebrew, binaries, from source |
+| [Typical usage](https://kong.github.io/kuma-migrator/docs/guides/usage/) | End-to-end runs for Kubernetes, multizone, Kong Mesh, Konnect and Universal |
+| [Upgrade plans](https://kong.github.io/kuma-migrator/docs/guides/upgrade-plans/) | Upgrade paths, which target to use, the sequence for 3.0, rollback |
+| [CLI reference](https://kong.github.io/kuma-migrator/docs/guides/cli/) | Every command, flag, and the config file |
+| [Extract](https://kong.github.io/kuma-migrator/docs/guides/extract/) | CP-mode rules, output layout, Konnect, Universal vs Kubernetes format |
+| [Migrate](https://kong.github.io/kuma-migrator/docs/guides/migrate/) | Dry run, output layout, Gateway API placement |
+| [Target versions](https://kong.github.io/kuma-migrator/docs/guides/target-version/) | `--to-latest` and the checks that change with it |
+| [Apply](https://kong.github.io/kuma-migrator/docs/guides/apply/) | Apply order, and cleaning up changed kinds |
+| [Output and reports](https://kong.github.io/kuma-migrator/docs/guides/output-and-reports/) | What you see, and what the report contains |
+| [Topics](https://kong.github.io/kuma-migrator/docs/topics/) | One area of the mesh (identity, gateways, multizone, access control, …) across every kind |
+| [Policy reference](https://kong.github.io/kuma-migrator/docs/policies/) | One page per resource kind: what is detected, fixed or flagged on each target |
 
 ## Changelog
 

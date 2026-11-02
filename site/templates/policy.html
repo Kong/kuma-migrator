@@ -1,0 +1,28 @@
+{{define "target"}}<section class="target-card">
+    <header><span class="target-label">{{.Label}}</span> <span class="status status-{{.Status}}">{{.Status}}</span></header>
+    {{if .Outputs}}<p class="outputs">Output: {{range $i, $o := .Outputs}}{{if $i}}, {{end}}{{if $o.URL}}<a href="{{$o.URL}}"><code>{{$o.Title}}</code></a>{{else}}<code>{{$o.Title}}</code>{{end}}{{end}}</p>{{else}}<p class="outputs muted">No output kind.</p>{{end}}
+    {{with .Notes}}<div class="notes">{{.}}</div>{{end}}
+  </section>{{end}}
+{{define "main"}}{{with .Policy}}<p class="crumb"><a href="{{$.SectionURL}}">Policies</a> · {{.Group}}</p>
+<h1><code class="kind-title">{{.Kind}}</code></h1>
+<p class="lede">{{.Summary}}</p>
+<p class="meta-row"><span class="product">{{.Product}}</span></p>
+
+<h2 id="targets">Behaviour per target</h2>
+<div class="targets">
+  {{template "target" .V2}}
+  {{template "target" .V3}}
+</div>
+
+{{if .Timeline}}<h2 id="timeline">Timeline</h2>
+<div class="table-wrap"><table>
+  <thead><tr><th>Version</th><th>Change</th></tr></thead>
+  <tbody>{{range .Timeline}}<tr><td class="version">{{.Version}}</td><td>{{.Change}}</td></tr>{{end}}</tbody>
+</table></div>{{end}}
+
+{{if .Topics}}<h2 id="related-topics">Related topics</h2>
+<ul class="link-list">{{range .Topics}}<li><a href="{{.URL}}">{{.Title}}</a>{{with .Description}} — {{.}}{{end}}</li>{{end}}</ul>{{end}}
+
+{{if .Code}}<h2 id="source-files">Source files</h2>
+<ul class="link-list">{{range .Code}}<li><a href="{{.URL}}"><code>{{.Title}}</code></a></li>{{end}}</ul>{{end}}
+{{end}}{{end}}

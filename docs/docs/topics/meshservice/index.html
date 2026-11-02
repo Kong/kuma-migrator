@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MeshService – kuma-migrator docs</title>
+<meta name="description" content="Moving policies, routes and workload addresses from kuma.io/service tags to MeshService, and setting meshServices.mode before Kuma 3.0.">
+<link rel="canonical" href="https://kong.github.io/kuma-migrator/docs/topics/meshservice/">
+<link rel="icon" href="../../static/favicon.svg" type="image/svg+xml">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="kuma-migrator">
+<meta property="og:title" content="MeshService – kuma-migrator docs">
+<meta property="og:description" content="Moving policies, routes and workload addresses from kuma.io/service tags to MeshService, and setting meshServices.mode before Kuma 3.0.">
+<meta property="og:url" content="https://kong.github.io/kuma-migrator/docs/topics/meshservice/">
+<meta property="og:image" content="https://kong.github.io/kuma-migrator/assets/migration-overview.svg">
+<meta name="twitter:card" content="summary_large_image">
+
+<link rel="stylesheet" href="../../static/style.css">
+<link rel="stylesheet" href="../../static/chroma.css">
+</head>
+<body data-root="../../">
+<a class="skip" href="#content">Skip to content</a>
+<header class="site-header">
+  <div class="bar">
+    <a class="brand" href="../../../"><img src="../../static/favicon.svg" width="28" height="28" alt=""><span>kuma-migrator</span></a>
+    <a class="docs-home" href="../../">Docs</a>
+    <nav class="top-nav" aria-label="Sections">
+      <a href="../../guides/">Guides</a>
+      <a href="../" class="active" aria-current="true">Topics</a>
+      <a href="../../policies/">Policies</a>
+      <a href="https://github.com/Kong/kuma-migrator">GitHub</a>
+    </nav>
+    <div class="search">
+      <input id="search-input" type="search" placeholder="Search docs" aria-label="Search docs" autocomplete="off">
+      <ul id="search-results" hidden></ul>
+    </div>
+  </div>
+</header>
+
+<div class="layout">
+  <details class="nav-mobile">
+    <summary>Topics menu</summary>
+    <div class="nav-group"><ul><li><a href="../">Overview</a></li><li><a href="../meshes/">Meshes</a></li><li><a href="../mtls-identity/">mTLS &amp; identity</a></li><li><a href="../external-pki/">External PKI</a></li><li><a href="./" class="active" aria-current="page">MeshService</a></li><li><a href="../multizone/">Multizone</a></li><li><a href="../gateways/">Gateways &amp; GAMMA</a></li><li><a href="../external-services/">External services</a></li><li><a href="../access-control/">Access control</a></li><li><a href="../observability/">Observability</a></li><li><a href="../policy-targeting/">Policy targeting</a></li><li><a href="../dataplanes/">Dataplanes</a></li><li><a href="../legacy-policies/">Legacy policies</a></li></ul></div>
+
+  </details>
+  <aside class="sidebar" aria-label="Topics pages">
+    <p class="sidebar-section"><a href="../">Topics</a></p>
+    <div class="nav-group"><ul><li><a href="../">Overview</a></li><li><a href="../meshes/">Meshes</a></li><li><a href="../mtls-identity/">mTLS &amp; identity</a></li><li><a href="../external-pki/">External PKI</a></li><li><a href="./" class="active" aria-current="page">MeshService</a></li><li><a href="../multizone/">Multizone</a></li><li><a href="../gateways/">Gateways &amp; GAMMA</a></li><li><a href="../external-services/">External services</a></li><li><a href="../access-control/">Access control</a></li><li><a href="../observability/">Observability</a></li><li><a href="../policy-targeting/">Policy targeting</a></li><li><a href="../dataplanes/">Dataplanes</a></li><li><a href="../legacy-policies/">Legacy policies</a></li></ul></div>
+
+  </aside>
+  <main id="content">
+    <article class="doc">
+<p class="crumb"><a href="../">Topics</a></p>
+<h1>MeshService</h1>
+<p class="lede">Moving policies, routes and workload addresses from kuma.io/service tags to MeshService, and setting meshServices.mode before Kuma 3.0.</p>
+<p>On 2.x a destination is identified by the <code>kuma.io/service</code> tag of its inbounds — on
+Kubernetes a generated value such as <code>backend_demo_svc_3001</code>. <a href="../../policies/meshservice/">MeshService</a>
+replaces it with a real resource that has a name, a namespace, ports and a hostname, and that
+lives in one zone. On 3.0 <code>kuma.io/service</code>-based destinations are gone: unified resource
+naming is unconditional and the <code>meshServices</code> switch has no effect.</p>
+<h2 id="what-changed-upstream">What changed upstream</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Version</th>
+<th>Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>2.8</td>
+<td><code>MeshService</code> <code>spec.ports[].protocol</code> renamed to <code>appProtocol</code>; <code>HostnameGenerator</code> templates applied to <code>MeshService</code>s (<a href="https://github.com/kumahq/kuma/blob/master/CHANGELOG.md">CHANGELOG</a>)</td>
+</tr>
+<tr>
+<td>2.9</td>
+<td><code>MeshService</code> generation controlled by <code>Mesh.spec.meshServices.mode</code> (<a href="https://github.com/kumahq/kuma/blob/master/CHANGELOG.md">CHANGELOG</a>)</td>
+</tr>
+<tr>
+<td>2.10</td>
+<td>Names of <code>Mesh</code>, <code>MeshService</code>, <code>MeshExternalService</code> and <code>MeshMultiZoneService</code> that are not RFC 1035 labels are deprecated (<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md">UPGRADE</a>)</td>
+</tr>
+<tr>
+<td>2.14</td>
+<td><code>HostnameGenerator</code> templates validated at creation (RFC 1123 subdomain); <code>MeshMultiZoneService</code> names over 63 characters deprecated (<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md">UPGRADE</a>)</td>
+</tr>
+<tr>
+<td>3.0</td>
+<td><code>meshServices</code> has no effect; unified naming is unconditional. The field stays as deprecated so stored values keep syncing to 2.x zones. 3.0 rejects any mode other than <code>Exclusive</code> (<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#meshservices-removed-from-the-mesh-schema">UPGRADE</a>)</td>
+</tr>
+<tr>
+<td>3.0</td>
+<td>Policies select <code>MeshService</code> by <code>labels</code> only (<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#real-resource-policy-selection-now-uses-labels-only">UPGRADE</a>)</td>
+</tr>
+<tr>
+<td>3.0</td>
+<td><code>MeshService</code> <code>spec.selector.dataplaneTags</code> removed; an unmigrated selector is dropped and the <code>MeshService</code> matches no proxies (<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#dataplanetags-removed-from-the-meshservice-selector">UPGRADE</a>)</td>
+</tr>
+<tr>
+<td>3.0</td>
+<td><code>MeshService</code> <code>spec.identities[]</code> accepts SPIFFE IDs only (<code>type: ServiceTag</code> rejected) (<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#meshservicespecidentities-now-accepts-spiffe-ids-only">UPGRADE</a>)</td>
+</tr>
+<tr>
+<td>3.0</td>
+<td>Non-RFC 1035 names rejected (<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#names-of-mesh-zone-meshservice-meshexternalservice-and-meshmultizoneservice-must-be-rfc-1035-labels">UPGRADE</a>)</td>
+</tr>
+<tr>
+<td>3.0</td>
+<td><code>reachableServices</code> removed; <code>reachableBackends</code> refs select by <code>labels</code> only; a transparent-proxy data plane without <code>reachableBackends</code> gets no outbounds (<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#data-plane-proxies-without-reachablebackends-get-no-outbounds">UPGRADE</a>)</td>
+</tr>
+</tbody>
+</table></div>
+<p>The upstream migration guide is the &quot;Migration&quot; section of the
+<a href="https://kuma.io/docs/latest/networking/meshservice/">MeshService docs</a>.</p>
+<h3 id="meshservicesmode"><code>meshServices.mode</code></h3>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Mode</th>
+<th>Behaviour on 2.x</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Disabled</code></td>
+<td>No <code>MeshService</code> generation. A <code>Mesh</code> with no <code>meshServices</code> block resolves to this</td>
+</tr>
+<tr>
+<td><code>Everywhere</code></td>
+<td><code>MeshService</code>s generated; both <code>kuma.io/service</code> and <code>MeshService</code> produce Envoy clusters (about twice the resources)</td>
+</tr>
+<tr>
+<td><code>ReachableBackends</code></td>
+<td><code>MeshService</code>s generated but only configured on a proxy that lists them in <code>reachableBackends</code>. <code>kuma.io/service</code> stays fully active. Use it to migrate consumer by consumer</td>
+</tr>
+<tr>
+<td><code>Exclusive</code></td>
+<td>Only <code>MeshService</code>, <code>MeshExternalService</code> and <code>MeshMultiZoneService</code>. <code>kuma.io/service</code> matching is off</td>
+</tr>
+</tbody>
+</table></div>
+<p>Only <code>Exclusive</code> turns <code>kuma.io/service</code> off. On 3.0 every mesh behaves as <code>Exclusive</code>. Because a
+2.x zone reads a missing field as <code>Disabled</code> and then deletes every generated <code>MeshService</code>,
+<code>Exclusive</code> must be stored on every mesh <strong>before the Global CP is upgraded</strong>. Drop the field once
+every zone runs 3.0.</p>
+<h2 id="what-kuma-migrator-does">What kuma-migrator does</h2>
+<p>The Subset scenario rewrites <code>kuma.io/service</code> and <code>k8s.kuma.io/service-name</code> selectors
+(<a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/convert.go"><code>convert.go</code></a>). A
+Kubernetes <code>kuma.io/service</code> value <code>&lt;name&gt;_&lt;namespace&gt;_svc_&lt;port&gt;</code> is decoded into name,
+namespace and port; a Universal value is used as the name.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Input</th>
+<th><code>--to-latest v2</code></th>
+<th><code>--to-latest v3</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>spec.targetRef</code> <code>MeshSubset</code> with <code>kuma.io/service: '*'</code></td>
+<td><code>kind: Mesh</code></td>
+<td>Same</td>
+</tr>
+<tr>
+<td><code>spec.targetRef</code> <code>MeshSubset</code> with a service tag</td>
+<td><code>kind: Dataplane</code> with <code>labels: {app: &lt;name&gt;, k8s.kuma.io/namespace: &lt;ns&gt;}</code> plus other tags; <code>app</code> is a best guess and warned</td>
+<td>Same</td>
+</tr>
+<tr>
+<td><code>to[]</code>/<code>from[]</code> <code>MeshSubset</code> with a service tag</td>
+<td><code>kind: MeshService</code> with <code>name</code>/<code>namespace</code> (same namespace as the policy) or <code>labels</code> (system namespace, other tags)</td>
+<td><code>kind: MeshService</code> with <code>labels</code> only</td>
+</tr>
+<tr>
+<td><code>MeshService</code> ref with a Kuma-internal name (<code>backend_demo_svc_3001</code>)</td>
+<td>Decoded: <code>to[]</code>/<code>from[]</code> → <code>MeshService</code> name/namespace; top level → <code>Dataplane</code></td>
+<td>Same, with labels</td>
+</tr>
+<tr>
+<td><code>rules[]</code> and <code>to[]</code> in one policy</td>
+<td>Split: <code>rules[]</code> keeps the name, <code>to[]</code> goes to <code>&lt;name&gt;-outbound</code></td>
+<td>Same</td>
+</tr>
+<tr>
+<td><code>Mesh</code></td>
+<td><code>meshServices.mode: Exclusive</code> injected, with a warning to migrate policies and workloads first</td>
+<td>Same, with the mixed-version note</td>
+</tr>
+<tr>
+<td><code>MeshService</code> <code>ports[].protocol</code></td>
+<td>Renamed to <code>appProtocol</code></td>
+<td>Same</td>
+</tr>
+<tr>
+<td><code>MeshService</code> <code>selector.dataplaneTags</code></td>
+<td>Advisory</td>
+<td>Rewritten to <code>dataplaneLabels.matchLabels</code>; a <code>kuma.io/</code>-prefixed tag is not converted (reserved label prefix) and is warned</td>
+</tr>
+<tr>
+<td><code>MeshService</code> <code>identities[]</code> <code>type: ServiceTag</code></td>
+<td>Advisory</td>
+<td>Entry dropped</td>
+</tr>
+<tr>
+<td><code>Dataplane</code> <code>reachableServices</code></td>
+<td>Warning</td>
+<td>Converted to <code>reachableBackends</code> refs with labels where the value decodes; warned otherwise</td>
+</tr>
+<tr>
+<td><code>reachableBackends</code> ref by <code>name</code>/<code>namespace</code></td>
+<td>—</td>
+<td>Rewritten to labels</td>
+</tr>
+<tr>
+<td>Non-RFC 1035 <code>Mesh</code>/<code>MeshService</code>/<code>MeshExternalService</code>/<code>MeshMultiZoneService</code> name</td>
+<td>Warning</td>
+<td>Warning</td>
+</tr>
+<tr>
+<td><code>HostnameGenerator</code> template that renders an invalid DNS subdomain</td>
+<td>Warning</td>
+<td>Warning</td>
+</tr>
+<tr>
+<td>Deployment/StatefulSet env var holding <code>&lt;svc&gt;_&lt;ns&gt;_svc_&lt;port&gt;.mesh</code></td>
+<td>Listed in the report's address mapping, with the Kubernetes and <code>.mesh</code> replacements</td>
+<td>Same</td>
+</tr>
+</tbody>
+</table></div>
+<p><code>reachableBackends</code> and <code>dataplaneTags</code> are rewritten under <code>v3</code> only: on 2.14 a labels selector
+also matches same-named services synced from other zones, so the rewrite would widen selection.</p>
+<h2 id="what-it-cannot-do">What it cannot do</h2>
+<ul>
+<li><strong>Know the pod labels.</strong> A top-level <code>kuma.io/service</code> selector becomes <code>Dataplane</code> labels with
+<code>app: &lt;name&gt;</code>. Most charts set <code>app</code>, but the tool cannot check. Every such case is warned.</li>
+<li><strong>Choose between <code>MeshService</code> and <code>MeshMultiZoneService</code>.</strong> A <code>MeshService</code> is one zone's
+service. If clients relied on <code>kuma.io/service</code> load-balancing across zones, they need a
+<a href="../../policies/meshmultizoneservice/">MeshMultiZoneService</a>, which you create. See
+<a href="../multizone/">Multizone</a>.</li>
+<li><strong>Check label refinements.</strong> A <code>MeshSubset</code> that combined a service tag with another tag (for
+example <code>version: v2</code>) becomes a <code>MeshService</code> selected by <code>kuma.io/display-name</code>,
+<code>k8s.kuma.io/namespace</code> and <code>version: v2</code>. The <code>MeshService</code> only matches if it carries that
+label, which comes from the Kubernetes <code>Service</code>, not from the pods.</li>
+<li><strong>Find the MeshService port</strong> of a Universal outbound or a <code>reachableServices</code> entry whose name
+does not decode.</li>
+<li><strong>Rename resources.</strong> A name that is not an RFC 1035 label must be renamed, which changes the
+hostname and every reference to it.</li>
+</ul>
+<h2 id="manual-steps">Manual steps</h2>
+<ol>
+<li>On 2.14, set <code>meshServices.mode: ReachableBackends</code> (gradual) or <code>Everywhere</code> on each mesh.</li>
+<li>For every consumer of a <code>kuma.io/service</code> destination, decide <code>MeshService</code> (one zone) or
+<code>MeshMultiZoneService</code> (all zones), and create the <code>MeshMultiZoneService</code>s.</li>
+<li>Apply the <code>v2</code> output: policies and routes that refer to <code>MeshService</code>.</li>
+<li>Update workload addresses listed in the report's address mapping (for example
+<code>backend_demo_svc_3001.mesh</code> → <code>backend.demo.svc.cluster.local:3001</code>).</li>
+<li>Fill <code>reachableBackends</code> on transparent-proxy data planes (required on 3.0).</li>
+<li>Set <code>meshServices.mode: Exclusive</code>. This must be stored before the Global CP upgrade.</li>
+<li>Rename resources the report flags as non-RFC 1035.</li>
+<li>Before upgrading, run <code>--to-latest v3</code> and apply the labels-only selectors and the
+<code>dataplaneLabels</code> selectors.</li>
+</ol>
+<h2 id="example">Example</h2>
+<p>Input — two files: a policy still on <code>MeshSubset</code>, and one partially migrated
+(<code>kind: MeshService</code> with the Kuma-internal name):</p>
+<pre class="chroma"><code><span class="line"><span class="cl"><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l">kuma.io/v1alpha1</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshTimeout</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">metadata</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">web-to-backend</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l">kong-mesh-system</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">labels</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kuma.io/mesh</span><span class="p">:</span><span class="w"> </span><span class="l">default</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">spec</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">targetRef</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshSubset</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">tags</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">kuma.io/service</span><span class="p">:</span><span class="w"> </span><span class="l">web_demo_svc_8080</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">to</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span>- <span class="nt">targetRef</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshSubset</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">tags</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">          </span><span class="nt">kuma.io/service</span><span class="p">:</span><span class="w"> </span><span class="l">backend_demo_svc_3001</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">          </span><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l">v2</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">default</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">http</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">          </span><span class="nt">requestTimeout</span><span class="p">:</span><span class="w"> </span><span class="l">5s</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nn">---</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l">kuma.io/v1alpha1</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshRetry</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">metadata</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">web-retry</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l">demo</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">labels</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kuma.io/mesh</span><span class="p">:</span><span class="w"> </span><span class="l">default</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">spec</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">targetRef</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">Mesh</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">to</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span>- <span class="nt">targetRef</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshService</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">backend_demo_svc_3001</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">default</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">http</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">          </span><span class="nt">numRetries</span><span class="p">:</span><span class="w"> </span><span class="m">2</span><span class="w">
+</span></span></span></code></pre><p>Output with <code>--to-latest v2</code>:</p>
+<pre class="chroma"><code><span class="line"><span class="cl"><span class="c"># resiliency/MeshTimeout-kong-mesh-system-web-to-backend.yaml</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l">kuma.io/v1alpha1</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshTimeout</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">metadata</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">labels</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kuma.io/mesh</span><span class="p">:</span><span class="w"> </span><span class="l">default</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">web-to-backend</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l">kong-mesh-system</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">spec</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">targetRef</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">Dataplane</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">labels</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">app</span><span class="p">:</span><span class="w"> </span><span class="l">web</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">k8s.kuma.io/namespace</span><span class="p">:</span><span class="w"> </span><span class="l">demo</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">to</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span>- <span class="nt">default</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">http</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">requestTimeout</span><span class="p">:</span><span class="w"> </span><span class="l">5s</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">targetRef</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshService</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">labels</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">k8s.kuma.io/namespace</span><span class="p">:</span><span class="w"> </span><span class="l">demo</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">kuma.io/display-name</span><span class="p">:</span><span class="w"> </span><span class="l">backend</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l">v2</span><span class="w">
+</span></span></span></code></pre><pre class="chroma"><code><span class="line"><span class="cl"><span class="c"># resiliency/MeshRetry-demo-web-retry.yaml</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l">kuma.io/v1alpha1</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshRetry</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">metadata</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">labels</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kuma.io/mesh</span><span class="p">:</span><span class="w"> </span><span class="l">default</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">web-retry</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l">demo</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">spec</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">targetRef</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">Mesh</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">to</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span>- <span class="nt">default</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">http</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">numRetries</span><span class="p">:</span><span class="w"> </span><span class="m">2</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">targetRef</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshService</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">backend</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l">demo</span><span class="w">
+</span></span></span></code></pre><p>With <code>--to-latest v3</code> the <code>MeshTimeout</code> is identical (it already uses labels) and the <code>MeshRetry</code>
+destination becomes a label selector:</p>
+<pre class="chroma"><code><span class="line"><span class="cl"><span class="c"># resiliency/MeshRetry-demo-web-retry.yaml (v3)</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">targetRef</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshService</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">labels</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">k8s.kuma.io/namespace</span><span class="p">:</span><span class="w"> </span><span class="l">demo</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">kuma.io/display-name</span><span class="p">:</span><span class="w"> </span><span class="l">backend</span><span class="w">
+</span></span></span></code></pre><p>Warning on both targets:</p>
+<pre><code>⚠  spec.targetRef Dataplane labels use 'app: web' as a best-guess pod label — verify this
+   matches your actual pod labels before applying
+</code></pre>
+<p>A Universal <code>MeshService</code> still selecting by <code>dataplaneTags: {kuma.io/service: backend}</code> is
+reported but not rewritten under <code>v3</code>, because <code>kuma.io/service</code> cannot be a <code>Dataplane</code> label:</p>
+<pre><code>⚠  MeshService &quot;backend&quot;: spec.selector.dataplaneTags is removed in 3.0 and dropped silently,
+   leaving a MeshService that matches no proxies. Not converted: kuma.io/service=backend cannot
+   be a Dataplane label (reserved kuma.io/ prefix), and dropping it would widen the selector. …
+</code></pre>
+<h2 id="related">Related</h2>
+<ul>
+<li><a href="../policy-targeting/">Policy targeting</a> — labels-only selection and policy roles</li>
+<li><a href="../multizone/">Multizone</a> — <code>MeshMultiZoneService</code></li>
+<li><a href="../dataplanes/">Dataplanes</a> — <code>reachableServices</code> and <code>reachableBackends</code></li>
+<li><a href="../meshes/">Meshes</a></li>
+</ul>
+
+    </article>
+    <nav class="pager" aria-label="Previous and next page">
+      <a class="prev" href="../external-pki/"><span>Previous</span>External PKI</a>
+      <a class="next" href="../multizone/"><span>Next</span>Multizone</a>
+    </nav>
+  </main>
+  <nav class="toc" aria-label="On this page">
+    <p class="toc-title">On this page</p>
+    <ul><li class="toc-l2"><a href="#what-changed-upstream">What changed upstream</a></li><li class="toc-l3"><a href="#meshservicesmode">meshServices.mode</a></li><li class="toc-l2"><a href="#what-kuma-migrator-does">What kuma-migrator does</a></li><li class="toc-l2"><a href="#what-it-cannot-do">What it cannot do</a></li><li class="toc-l2"><a href="#manual-steps">Manual steps</a></li><li class="toc-l2"><a href="#example">Example</a></li><li class="toc-l2"><a href="#related">Related</a></li></ul>
+  </nav>
+</div>
+<footer class="site-footer">
+  <p>
+    <a href="../../../">kuma-migrator</a> ·
+    <a href="https://github.com/Kong/kuma-migrator">Source</a> ·
+    <a href="https://github.com/Kong/kuma-migrator/releases">Releases</a> ·
+    <a href="https://github.com/Kong/kuma-migrator/issues">Issues</a> ·
+    <a href="https://github.com/Kong/kuma-migrator/blob/main/site/content/topics/meshservice.md">View source of this page</a>
+  </p>
+  <p>Apache-2.0 licensed. Part of Kong's <a href="https://konghq.com/products/kong-mesh">Kong Mesh</a> tooling.</p>
+</footer>
+<script src="../../static/search-index.js"></script>
+<script src="../../static/search.js"></script>
+</body>
+</html>

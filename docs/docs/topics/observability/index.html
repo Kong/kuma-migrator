@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Observability – kuma-migrator docs</title>
+<meta name="description" content="Metrics, tracing and access logs from Mesh fields and legacy policies to MeshMetric, MeshTrace, MeshAccessLog and MeshOpenTelemetryBackend.">
+<link rel="canonical" href="https://kong.github.io/kuma-migrator/docs/topics/observability/">
+<link rel="icon" href="../../static/favicon.svg" type="image/svg+xml">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="kuma-migrator">
+<meta property="og:title" content="Observability – kuma-migrator docs">
+<meta property="og:description" content="Metrics, tracing and access logs from Mesh fields and legacy policies to MeshMetric, MeshTrace, MeshAccessLog and MeshOpenTelemetryBackend.">
+<meta property="og:url" content="https://kong.github.io/kuma-migrator/docs/topics/observability/">
+<meta property="og:image" content="https://kong.github.io/kuma-migrator/assets/migration-overview.svg">
+<meta name="twitter:card" content="summary_large_image">
+
+<link rel="stylesheet" href="../../static/style.css">
+<link rel="stylesheet" href="../../static/chroma.css">
+</head>
+<body data-root="../../">
+<a class="skip" href="#content">Skip to content</a>
+<header class="site-header">
+  <div class="bar">
+    <a class="brand" href="../../../"><img src="../../static/favicon.svg" width="28" height="28" alt=""><span>kuma-migrator</span></a>
+    <a class="docs-home" href="../../">Docs</a>
+    <nav class="top-nav" aria-label="Sections">
+      <a href="../../guides/">Guides</a>
+      <a href="../" class="active" aria-current="true">Topics</a>
+      <a href="../../policies/">Policies</a>
+      <a href="https://github.com/Kong/kuma-migrator">GitHub</a>
+    </nav>
+    <div class="search">
+      <input id="search-input" type="search" placeholder="Search docs" aria-label="Search docs" autocomplete="off">
+      <ul id="search-results" hidden></ul>
+    </div>
+  </div>
+</header>
+
+<div class="layout">
+  <details class="nav-mobile">
+    <summary>Topics menu</summary>
+    <div class="nav-group"><ul><li><a href="../">Overview</a></li><li><a href="../meshes/">Meshes</a></li><li><a href="../mtls-identity/">mTLS &amp; identity</a></li><li><a href="../external-pki/">External PKI</a></li><li><a href="../meshservice/">MeshService</a></li><li><a href="../multizone/">Multizone</a></li><li><a href="../gateways/">Gateways &amp; GAMMA</a></li><li><a href="../external-services/">External services</a></li><li><a href="../access-control/">Access control</a></li><li><a href="./" class="active" aria-current="page">Observability</a></li><li><a href="../policy-targeting/">Policy targeting</a></li><li><a href="../dataplanes/">Dataplanes</a></li><li><a href="../legacy-policies/">Legacy policies</a></li></ul></div>
+
+  </details>
+  <aside class="sidebar" aria-label="Topics pages">
+    <p class="sidebar-section"><a href="../">Topics</a></p>
+    <div class="nav-group"><ul><li><a href="../">Overview</a></li><li><a href="../meshes/">Meshes</a></li><li><a href="../mtls-identity/">mTLS &amp; identity</a></li><li><a href="../external-pki/">External PKI</a></li><li><a href="../meshservice/">MeshService</a></li><li><a href="../multizone/">Multizone</a></li><li><a href="../gateways/">Gateways &amp; GAMMA</a></li><li><a href="../external-services/">External services</a></li><li><a href="../access-control/">Access control</a></li><li><a href="./" class="active" aria-current="page">Observability</a></li><li><a href="../policy-targeting/">Policy targeting</a></li><li><a href="../dataplanes/">Dataplanes</a></li><li><a href="../legacy-policies/">Legacy policies</a></li></ul></div>
+
+  </aside>
+  <main id="content">
+    <article class="doc">
+<p class="crumb"><a href="../">Topics</a></p>
+<h1>Observability</h1>
+<p class="lede">Metrics, tracing and access logs from Mesh fields and legacy policies to MeshMetric, MeshTrace, MeshAccessLog and MeshOpenTelemetryBackend.</p>
+<p>Observability on 2.x is configured in three places: backends declared on the <code>Mesh</code>
+(<code>metrics</code>, <code>tracing</code>, <code>logging</code>), legacy policies that select traffic for them
+(<a href="../../policies/trafficlog/">TrafficLog</a>, <a href="../../policies/traffictrace/">TrafficTrace</a>), and the targetRef
+policies <a href="../../policies/meshmetric/">MeshMetric</a>, <a href="../../policies/meshtrace/">MeshTrace</a> and
+<a href="../../policies/meshaccesslog/">MeshAccessLog</a>. On 3.0 only the policies remain, and an OpenTelemetry
+destination must be a separate <a href="../../policies/meshopentelemetrybackend/">MeshOpenTelemetryBackend</a>.</p>
+<h2 id="what-changed-upstream">What changed upstream</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Version</th>
+<th>Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>2.7</td>
+<td><code>MeshMetric</code> <code>sidecar.regex</code> replaced by <code>sidecar.profiles.exclude</code></td>
+</tr>
+<tr>
+<td>2.14.0</td>
+<td><code>MeshOpenTelemetryBackend</code> introduced (kuma#15863). Inline <code>openTelemetry.endpoint</code> on <code>MeshMetric</code>/<code>MeshTrace</code>/<code>MeshAccessLog</code> deprecated in favour of <code>backendRef</code> (<a href="https://github.com/kumahq/kuma/blob/master/CHANGELOG.md">CHANGELOG</a>)</td>
+</tr>
+<tr>
+<td>2.14</td>
+<td><code>MeshAccessLog</code> OpenTelemetry <code>attributes[].key</code> validated more strictly (reserved <code>otel.</code> prefix, casing, placeholders)</td>
+</tr>
+<tr>
+<td>3.0</td>
+<td><code>Mesh.spec.metrics</code>, <code>tracing</code>, <code>logging</code> removed; the control plane ignores them (<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#meshspectracing-removed">tracing</a>, <a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#meshspeclogging-removed">logging</a>, <a href="https://github.com/kumahq/kuma/blob/master/api/mesh/v1alpha1/mesh.proto"><code>mesh.proto</code></a>)</td>
+</tr>
+<tr>
+<td>3.0</td>
+<td><code>TrafficLog</code> and <code>TrafficTrace</code> removed (<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#legacy-policy-resources-removed">UPGRADE</a>)</td>
+</tr>
+<tr>
+<td>3.0</td>
+<td>Inline <code>openTelemetry.endpoint</code> removed from <a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#meshmetric-opentelemetry-backend-no-longer-accepts-an-inline-endpoint"><code>MeshMetric</code></a>, <a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#meshaccesslog-opentelemetry-backend-no-longer-accepts-an-inline-endpoint"><code>MeshAccessLog</code></a> and <a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#meshtrace-opentelemetry-backend-no-longer-accepts-an-inline-endpoint"><code>MeshTrace</code></a>; a policy still setting it fails validation</td>
+</tr>
+<tr>
+<td>3.0</td>
+<td><code>backendRef</code> exports always go through <code>kuma-dp</code>; the <code>otelPipeEnabled</code> settings are removed (<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#opentelemetry-backends-referenced-by-backendref-always-export-through-kuma-dp">UPGRADE</a>)</td>
+</tr>
+<tr>
+<td>3.0</td>
+<td><code>MeshMetric</code> Prometheus <code>ActiveMTLSBackend</code> secures the endpoint with the workload identity: remote scrapers need a client certificate the mesh trusts (<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#meshmetric-activemtlsbackend-requires-a-client-certificate">UPGRADE</a>)</td>
+</tr>
+<tr>
+<td>3.0</td>
+<td>MADS no longer starts on Kubernetes control planes; use <code>MeshMetric</code> with Prometheus Kubernetes service discovery (<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#mads-restricted-to-universal-deployment-mode">UPGRADE</a>)</td>
+</tr>
+<tr>
+<td>3.0</td>
+<td><code>MeshMetric</code> no longer reports <code>kuma.proxy_role: gateway</code>; former gateways report <code>sidecar</code> (<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#kumaiogateway-is-removed">UPGRADE</a>)</td>
+</tr>
+<tr>
+<td>3.0</td>
+<td><code>from[]</code> removed from <code>MeshAccessLog</code>; use <code>rules[]</code> (<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#from-removed-from-meshaccesslog">UPGRADE</a>)</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="backendref-constraints">backendRef constraints</h3>
+<p>A <code>backendRef</code> selects the <code>MeshOpenTelemetryBackend</code> by <code>labels</code> only (no <code>name</code>), is mutually
+exclusive with an inline <code>endpoint</code>, and the backend must live in the system namespace. With
+<code>protocol: grpc</code>, <code>endpoint.path</code> must be empty.</p>
+<p>Do not switch to <code>backendRef</code> while any control plane or data plane is below 2.14:
+<code>MeshOpenTelemetryBackend</code> does not exist there, and against an older data plane the control
+plane skips the OpenTelemetry route without logging it. The inline <code>endpoint</code> keeps working up
+to and including 2.14.</p>
+<h2 id="what-kuma-migrator-does">What kuma-migrator does</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Input</th>
+<th><code>--to-latest v2</code></th>
+<th><code>--to-latest v3</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Mesh.metrics</code></td>
+<td>Mesh-wide <code>MeshMetric</code> <code>&lt;mesh&gt;-metrics</code></td>
+<td>Same</td>
+</tr>
+<tr>
+<td><code>Mesh.tracing</code></td>
+<td>Mesh-wide <code>MeshTrace</code> <code>&lt;mesh&gt;-trace</code>; backend <code>sampling</code> → <code>default.sampling.overall</code></td>
+<td>Same</td>
+</tr>
+<tr>
+<td><code>Mesh.logging</code></td>
+<td>Mesh-wide <code>MeshAccessLog</code> <code>&lt;mesh&gt;-accesslog</code></td>
+<td>Same</td>
+</tr>
+<tr>
+<td><code>TrafficLog</code></td>
+<td><code>MeshAccessLog</code> (outbound shape). <code>conf.backend</code> is resolved against <code>Mesh.logging.backends</code> and inlined</td>
+<td>Same, plus the delete-before-upgrade advisory</td>
+</tr>
+<tr>
+<td><code>TrafficTrace</code></td>
+<td><code>MeshTrace</code> (selector shape). Backend and its sampling resolved against <code>Mesh.tracing.backends</code></td>
+<td>Same</td>
+</tr>
+<tr>
+<td><code>TrafficLog</code>/<code>TrafficTrace</code> whose <code>Mesh</code> is not in the input</td>
+<td>Warning naming the backend to write by hand</td>
+<td>Same</td>
+</tr>
+<tr>
+<td>Inline <code>openTelemetry.endpoint</code></td>
+<td>Warning, including the &quot;not before 2.14&quot; constraint</td>
+<td>Generated <code>MeshOpenTelemetryBackend</code> <code>&lt;policy&gt;-otel</code> in <code>kuma-system</code>, <code>protocol: grpc</code>, and a <code>backendRef.labels</code> selecting it by <code>kuma.io/display-name</code></td>
+</tr>
+<tr>
+<td><code>MeshMetric</code> <code>sidecar.regex</code></td>
+<td>Rewritten to <code>sidecar.profiles.exclude[{type: Regex}]</code></td>
+<td>Same</td>
+</tr>
+<tr>
+<td><code>MeshAccessLog</code> OTel attribute keys that 2.14 rejects</td>
+<td>Warning</td>
+<td>Warning</td>
+</tr>
+<tr>
+<td><code>MeshMetric</code> <code>ActiveMTLSBackend</code></td>
+<td>—</td>
+<td>Warning</td>
+</tr>
+<tr>
+<td><code>MeshAccessLog</code> <code>from[]</code></td>
+<td>Converted to <code>rules[]</code> (Rules scenario)</td>
+<td>Same; a source narrower than <code>kind: Mesh</code> is warned</td>
+</tr>
+<tr>
+<td>Pod annotations <code>prometheus.metrics.kuma.io/port</code> / <code>/path</code></td>
+<td>Warning: use <code>MeshMetric</code></td>
+<td>Same</td>
+</tr>
+</tbody>
+</table></div>
+<p>Code: <a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/mesh.go"><code>mesh.go</code></a>,
+<a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/legacybackend.go"><code>legacybackend.go</code></a>,
+<a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/v3_mesh.go"><code>v3_mesh.go</code></a>
+(<code>convertInlineOtelEndpointsForV3</code>).</p>
+<p>Keep the <code>Mesh</code> document in the input directory. <code>TrafficLog</code> and <code>TrafficTrace</code> reference a
+backend by name, and the <code>Mesh</code> is where its definition lives.</p>
+<h2 id="what-it-cannot-do">What it cannot do</h2>
+<ul>
+<li><strong>Scope the <code>Mesh</code>-derived companions.</strong> On 2.x, <code>Mesh.logging</code> and <code>Mesh.tracing</code> backends
+only declare destinations: nothing is logged or traced until a <code>TrafficLog</code>/<code>TrafficTrace</code>
+selects traffic (<a href="https://kuma.io/docs/latest/policies/traffic-log/">traffic log docs</a>,
+<a href="https://kuma.io/docs/latest/policies/traffic-trace/">traffic trace docs</a>). The generated
+<code>&lt;mesh&gt;-accesslog</code> and <code>&lt;mesh&gt;-trace</code> policies target <code>kind: Mesh</code> and every declared backend,
+so they turn on logging and tracing for the whole mesh. Combined with converted
+<code>TrafficLog</code>/<code>TrafficTrace</code> policies, matching traffic is logged twice. Delete or narrow the
+companions when the mesh already had <code>TrafficLog</code>/<code>TrafficTrace</code> policies.</li>
+<li><strong>Share backends.</strong> One <code>MeshOpenTelemetryBackend</code> is generated per policy. Several policies
+pointing at the same collector can share one; merge them by hand.</li>
+<li><strong>Pick the system namespace.</strong> The generated backend is placed in <code>kuma-system</code>. Kong Mesh
+installs use <code>kong-mesh-system</code>; change it.</li>
+<li><strong>Issue scraper certificates</strong> for <code>ActiveMTLSBackend</code>.</li>
+</ul>
+<h2 id="manual-steps">Manual steps</h2>
+<ol>
+<li>Apply the <code>v2</code> companions and converted policies on 2.x after reviewing their scope.</li>
+<li>Delete <code>TrafficLog</code>/<code>TrafficTrace</code> once their <code>MeshAccessLog</code>/<code>MeshTrace</code> replacements apply.</li>
+<li>Upgrade every control plane and data plane to 2.14.</li>
+<li>Create <code>MeshOpenTelemetryBackend</code>s in the system namespace and switch policies to
+<code>backendRef</code> (the <code>v3</code> output contains both).</li>
+<li>Fix <code>MeshAccessLog</code> OpenTelemetry attribute keys the report lists.</li>
+<li>Give remote Prometheus scrapers a mesh-trusted client certificate, or set <code>ActiveMTLSBackend</code>
+endpoints to <code>Disabled</code>. On Kubernetes, move from MADS to Prometheus service discovery.</li>
+<li>Update dashboards and alerts that select <code>kuma.proxy_role: gateway</code>.</li>
+</ol>
+<h2 id="example">Example</h2>
+<p>Input — two files: a <code>MeshTrace</code> with an inline OpenTelemetry endpoint, and a <code>TrafficLog</code> whose
+backend is declared on a Universal <code>Mesh</code>:</p>
+<pre class="chroma"><code><span class="line"><span class="cl"><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l">kuma.io/v1alpha1</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshTrace</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">metadata</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">otel-trace</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l">kong-mesh-system</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">labels</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kuma.io/mesh</span><span class="p">:</span><span class="w"> </span><span class="l">default</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">spec</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">targetRef</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">Mesh</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">default</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">backends</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span>- <span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l">OpenTelemetry</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">openTelemetry</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">          </span><span class="nt">endpoint</span><span class="p">:</span><span class="w"> </span><span class="l">otel-collector.observability:4317</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">sampling</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">overall</span><span class="p">:</span><span class="w"> </span><span class="m">50</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nn">---</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l">TrafficLog</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">mesh</span><span class="p">:</span><span class="w"> </span><span class="l">default</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">all-traffic</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">sources</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span>- <span class="nt">match</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">kuma.io/service</span><span class="p">:</span><span class="w"> </span><span class="s1">&#39;*&#39;</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">destinations</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span>- <span class="nt">match</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">kuma.io/service</span><span class="p">:</span><span class="w"> </span><span class="s1">&#39;*&#39;</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">conf</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">backend</span><span class="p">:</span><span class="w"> </span><span class="l">file-log</span><span class="w">
+</span></span></span></code></pre><pre class="chroma"><code><span class="line"><span class="cl"><span class="c"># Mesh, in the same input directory</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l">Mesh</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">default</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">meshServices</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">mode</span><span class="p">:</span><span class="w"> </span><span class="l">Exclusive</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">logging</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">backends</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span>- <span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">file-log</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l">file</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">conf</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">path</span><span class="p">:</span><span class="w"> </span><span class="l">/dev/stdout</span><span class="w">
+</span></span></span></code></pre><p>The <code>TrafficLog</code> becomes a <code>MeshAccessLog</code> with the backend inlined, on both targets:</p>
+<pre class="chroma"><code><span class="line"><span class="cl"><span class="c"># observability/MeshAccessLog-all-traffic.yaml</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l">kuma.io/v1alpha1</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshAccessLog</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">metadata</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">labels</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kuma.io/mesh</span><span class="p">:</span><span class="w"> </span><span class="l">default</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">all-traffic</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">spec</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">targetRef</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">Mesh</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">to</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span>- <span class="nt">default</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">backends</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span>- <span class="nt">file</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">          </span><span class="nt">path</span><span class="p">:</span><span class="w"> </span><span class="l">/dev/stdout</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l">File</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">targetRef</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">Mesh</span><span class="w">
+</span></span></span></code></pre><p>The <code>Mesh.logging</code> block also produces <code>observability/MeshAccessLog-kong-mesh-system-default-accesslog.yaml</code>,
+a second mesh-wide <code>MeshAccessLog</code> with the same backend (see &quot;What it cannot do&quot;).</p>
+<p>With <code>--to-latest v2</code> the <code>MeshTrace</code> is copied unchanged, with this warning (shortened):</p>
+<pre><code>⚠  MeshTrace &quot;otel-trace&quot;: an inline openTelemetry.endpoint is deprecated in Kuma 2.14 and removed
+   in 3.0 — define a MeshOpenTelemetryBackend resource and reference it via backendRef. … Do NOT
+   make this change while any control plane or data plane is still below 2.14 …
+</code></pre>
+<p>With <code>--to-latest v3</code> it is split in two:</p>
+<pre class="chroma"><code><span class="line"><span class="cl"><span class="c"># observability/MeshTrace-kong-mesh-system-otel-trace.yaml</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l">kuma.io/v1alpha1</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshTrace</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">metadata</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">labels</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kuma.io/mesh</span><span class="p">:</span><span class="w"> </span><span class="l">default</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">otel-trace</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l">kong-mesh-system</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">spec</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">default</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">backends</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span>- <span class="nt">openTelemetry</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">backendRef</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">          </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshOpenTelemetryBackend</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">          </span><span class="nt">labels</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">            </span><span class="nt">kuma.io/display-name</span><span class="p">:</span><span class="w"> </span><span class="l">otel-trace-otel</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l">OpenTelemetry</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">sampling</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">overall</span><span class="p">:</span><span class="w"> </span><span class="m">50</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">targetRef</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">Mesh</span><span class="w">
+</span></span></span></code></pre><pre class="chroma"><code><span class="line"><span class="cl"><span class="c"># other/MeshOpenTelemetryBackend-kuma-system-otel-trace-otel.yaml</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l">kuma.io/v1alpha1</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshOpenTelemetryBackend</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">metadata</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">labels</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kuma.io/mesh</span><span class="p">:</span><span class="w"> </span><span class="l">default</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">otel-trace-otel</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l">kuma-system</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">spec</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">endpoint</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">address</span><span class="p">:</span><span class="w"> </span><span class="l">otel-collector.observability</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">port</span><span class="p">:</span><span class="w"> </span><span class="m">4317</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">protocol</span><span class="p">:</span><span class="w"> </span><span class="l">grpc</span><span class="w">
+</span></span></span></code></pre><h2 id="related">Related</h2>
+<ul>
+<li><a href="../meshes/">Meshes</a></li>
+<li><a href="../legacy-policies/">Legacy policies</a> — <code>TrafficLog</code>/<code>TrafficTrace</code> shapes</li>
+<li><a href="../mtls-identity/">mTLS and workload identity</a> — <code>ActiveMTLSBackend</code></li>
+</ul>
+
+    </article>
+    <nav class="pager" aria-label="Previous and next page">
+      <a class="prev" href="../access-control/"><span>Previous</span>Access control</a>
+      <a class="next" href="../policy-targeting/"><span>Next</span>Policy targeting</a>
+    </nav>
+  </main>
+  <nav class="toc" aria-label="On this page">
+    <p class="toc-title">On this page</p>
+    <ul><li class="toc-l2"><a href="#what-changed-upstream">What changed upstream</a></li><li class="toc-l3"><a href="#backendref-constraints">backendRef constraints</a></li><li class="toc-l2"><a href="#what-kuma-migrator-does">What kuma-migrator does</a></li><li class="toc-l2"><a href="#what-it-cannot-do">What it cannot do</a></li><li class="toc-l2"><a href="#manual-steps">Manual steps</a></li><li class="toc-l2"><a href="#example">Example</a></li><li class="toc-l2"><a href="#related">Related</a></li></ul>
+  </nav>
+</div>
+<footer class="site-footer">
+  <p>
+    <a href="../../../">kuma-migrator</a> ·
+    <a href="https://github.com/Kong/kuma-migrator">Source</a> ·
+    <a href="https://github.com/Kong/kuma-migrator/releases">Releases</a> ·
+    <a href="https://github.com/Kong/kuma-migrator/issues">Issues</a> ·
+    <a href="https://github.com/Kong/kuma-migrator/blob/main/site/content/topics/observability.md">View source of this page</a>
+  </p>
+  <p>Apache-2.0 licensed. Part of Kong's <a href="https://konghq.com/products/kong-mesh">Kong Mesh</a> tooling.</p>
+</footer>
+<script src="../../static/search-index.js"></script>
+<script src="../../static/search.js"></script>
+</body>
+</html>

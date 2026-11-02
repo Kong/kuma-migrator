@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Architecture – kuma-migrator docs</title>
+<meta name="description" content="How kuma-migrator is built, from reading the control plane to writing the report.">
+<link rel="canonical" href="https://kong.github.io/kuma-migrator/docs/guides/architecture/">
+<link rel="icon" href="../../static/favicon.svg" type="image/svg+xml">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="kuma-migrator">
+<meta property="og:title" content="Architecture – kuma-migrator docs">
+<meta property="og:description" content="How kuma-migrator is built, from reading the control plane to writing the report.">
+<meta property="og:url" content="https://kong.github.io/kuma-migrator/docs/guides/architecture/">
+<meta property="og:image" content="https://kong.github.io/kuma-migrator/assets/migration-overview.svg">
+<meta name="twitter:card" content="summary_large_image">
+
+<link rel="stylesheet" href="../../static/style.css">
+<link rel="stylesheet" href="../../static/chroma.css">
+</head>
+<body data-root="../../">
+<a class="skip" href="#content">Skip to content</a>
+<header class="site-header">
+  <div class="bar">
+    <a class="brand" href="../../../"><img src="../../static/favicon.svg" width="28" height="28" alt=""><span>kuma-migrator</span></a>
+    <a class="docs-home" href="../../">Docs</a>
+    <nav class="top-nav" aria-label="Sections">
+      <a href="../" class="active" aria-current="true">Guides</a>
+      <a href="../../topics/">Topics</a>
+      <a href="../../policies/">Policies</a>
+      <a href="https://github.com/Kong/kuma-migrator">GitHub</a>
+    </nav>
+    <div class="search">
+      <input id="search-input" type="search" placeholder="Search docs" aria-label="Search docs" autocomplete="off">
+      <ul id="search-results" hidden></ul>
+    </div>
+  </div>
+</header>
+
+<div class="layout">
+  <details class="nav-mobile">
+    <summary>Guides menu</summary>
+    <div class="nav-group"><ul><li><a href="../">Overview</a></li><li><a href="../installation/">Installation</a></li><li><a href="../usage/">Typical usage</a></li><li><a href="../upgrade-plans/">Upgrade plans</a></li><li><a href="../cli/">CLI reference</a></li><li><a href="../extract/">Extract</a></li><li><a href="../migrate/">Migrate</a></li><li><a href="../target-version/">Target versions (--to-latest)</a></li><li><a href="../apply/">Apply</a></li><li><a href="../output-and-reports/">Output and reports</a></li><li><a href="../examples/">Examples</a></li><li><a href="./" class="active" aria-current="page">Architecture</a></li><li><a href="../notes/">Notes and caveats</a></li></ul></div>
+
+  </details>
+  <aside class="sidebar" aria-label="Guides pages">
+    <p class="sidebar-section"><a href="../">Guides</a></p>
+    <div class="nav-group"><ul><li><a href="../">Overview</a></li><li><a href="../installation/">Installation</a></li><li><a href="../usage/">Typical usage</a></li><li><a href="../upgrade-plans/">Upgrade plans</a></li><li><a href="../cli/">CLI reference</a></li><li><a href="../extract/">Extract</a></li><li><a href="../migrate/">Migrate</a></li><li><a href="../target-version/">Target versions (--to-latest)</a></li><li><a href="../apply/">Apply</a></li><li><a href="../output-and-reports/">Output and reports</a></li><li><a href="../examples/">Examples</a></li><li><a href="./" class="active" aria-current="page">Architecture</a></li><li><a href="../notes/">Notes and caveats</a></li></ul></div>
+
+  </aside>
+  <main id="content">
+    <article class="doc">
+<p class="crumb"><a href="../">Guides</a></p>
+<h1>Architecture</h1>
+<p class="lede">How kuma-migrator is built, from reading the control plane to writing the report.</p>
+<p><code>kuma-migrator</code> is a Go CLI built on <a href="https://github.com/spf13/cobra">cobra</a>. It has two
+commands that do work, <code>extract</code> and <code>migrate</code>, and they share only the on-disk layout and a
+small metadata file. <code>extract</code> reads a control plane and writes YAML files. <code>migrate</code> reads
+YAML files and writes YAML files plus a report. Neither command writes to a control plane.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Package</th>
+<th>Role</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="https://github.com/Kong/kuma-migrator/tree/main/cmd"><code>cmd/</code></a></td>
+<td>Flag parsing; calls into <code>pkg/</code></td>
+</tr>
+<tr>
+<td><a href="https://github.com/Kong/kuma-migrator/tree/main/pkg/extractor"><code>pkg/extractor</code></a></td>
+<td><code>extract</code>: control plane discovery, mode detection, origin filtering, file layout</td>
+</tr>
+<tr>
+<td><a href="https://github.com/Kong/kuma-migrator/tree/main/pkg/migrator"><code>pkg/migrator</code></a></td>
+<td><code>migrate</code>: scenario detection, transforms, deprecation scan, report</td>
+</tr>
+<tr>
+<td><a href="https://github.com/Kong/kuma-migrator/tree/main/pkg/resource"><code>pkg/resource</code></a></td>
+<td>Kind → subfolder map shared by both commands</td>
+</tr>
+<tr>
+<td><a href="https://github.com/Kong/kuma-migrator/tree/main/pkg/config"><code>pkg/config</code></a></td>
+<td><code>~/.config/kuma-migrator.yaml</code>: skip lists, TLS setting</td>
+</tr>
+<tr>
+<td><a href="https://github.com/Kong/kuma-migrator/tree/main/pkg/ui"><code>pkg/ui</code></a></td>
+<td>Console output</td>
+</tr>
+</tbody>
+</table></div>
+<p>YAML is parsed with <a href="https://github.com/kubernetes-sigs/yaml"><code>sigs.k8s.io/yaml</code></a>, which goes
+through JSON and so matches the JSON tags of Kuma's own Go types.</p>
+<h2 id="pipeline">Pipeline</h2>
+<p><img src="../../../img/architecture.svg" alt="kuma-migrator pipeline: extract reads the control plane into an input tree; migrate runs a pre-pass, then for each document the skip list, scenario detection, the transform and the deprecation scan, and writes the apply tree, the _manual subtree and the report"></p>
+<h2 id="extract">extract</h2>
+<p><a href="https://github.com/Kong/kuma-migrator/tree/main/pkg/extractor"><code>pkg/extractor</code></a> has one
+entry point per connection mode. Both end in the same writer,
+<code>writeResourceFiles</code> in
+<a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/extractor/extractor.go"><code>extractor.go</code></a>,
+which splits multi-document and list responses, applies the filters and writes one file per
+resource.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Step</th>
+<th><code>--kube-context</code> (<a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/extractor/kube.go"><code>kube.go</code></a>)</th>
+<th><code>--kumactl-context</code> (<a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/extractor/kumactl.go"><code>kumactl.go</code></a>)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Find the control plane</td>
+<td>the Kubernetes context</td>
+<td><code>~/.kumactl/config</code> or <code>$KUMACTL_CONFIG</code>; bearer token from <code>authConf</code> or an <code>Authorization</code> header</td>
+</tr>
+<tr>
+<td>Detect mode</td>
+<td><code>KUMA_MODE</code> and <code>KUMA_MULTIZONE_ZONE_NAME</code> on <code>kuma-control-plane</code> (<code>kuma-system</code>) or <code>kong-mesh-control-plane</code> (<code>kong-mesh-system</code>)</td>
+<td><code>GET &lt;cp&gt;/config</code>; Konnect (<code>api.konghq.com</code>) is always <code>global</code></td>
+</tr>
+<tr>
+<td>Detect environment</td>
+<td>always <code>kubernetes</code></td>
+<td><code>environment</code> from <code>GET &lt;cp&gt;/config</code></td>
+</tr>
+<tr>
+<td>Discover types</td>
+<td><code>kuma.io/v1alpha1</code> CRDs</td>
+<td><code>GET &lt;cp&gt;/_resources</code>; <code>readOnly</code> ignored</td>
+</tr>
+<tr>
+<td>List meshes</td>
+<td><code>kuma.io/mesh</code> label of each resource</td>
+<td><code>kumactl get meshes</code>; Konnect: <code>GET &lt;base&gt;/meshes</code></td>
+</tr>
+<tr>
+<td>Fetch</td>
+<td><code>kubectl get &lt;kind&gt; -o yaml</code></td>
+<td><code>kumactl get &lt;type&gt; [--mesh &lt;m&gt;] -o yaml</code>; Konnect: <code>GET &lt;base&gt;/meshes/&lt;m&gt;/&lt;type&gt;</code></td>
+</tr>
+<tr>
+<td>Format</td>
+<td>Kubernetes</td>
+<td>Universal, or Kubernetes with <code>--output-format kubernetes</code> (<code>universalToKubernetes</code>)</td>
+</tr>
+</tbody>
+</table></div>
+<p>Mode and filtering live in
+<a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/extractor/cpmode.go"><code>cpmode.go</code></a> and
+<code>extractor.go</code>:</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Mode</th>
+<th>Directory label</th>
+<th>Origin filter</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>global</code></td>
+<td><code>&lt;context&gt;-global-ctx</code></td>
+<td>drop <code>kuma.io/origin: zone</code> (recorded as <code>ZoneOriginSkip</code> and printed with the zone to target); drop <code>MeshGatewayInstance</code>, <code>MeshGatewayConfig</code></td>
+</tr>
+<tr>
+<td><code>zone</code></td>
+<td><code>&lt;context&gt;-zone-ctx</code></td>
+<td>keep <code>kuma.io/origin: zone</code>; keep gateway kinds without an origin label; drop the rest</td>
+</tr>
+<tr>
+<td><code>standalone</code></td>
+<td><code>&lt;context&gt;-standalone-ctx</code></td>
+<td>none</td>
+</tr>
+<tr>
+<td>unknown</td>
+<td><code>&lt;context&gt;-unknown-ctx</code></td>
+<td>none</td>
+</tr>
+</tbody>
+</table></div>
+<p>Each context directory gets a <code>.kuma-migrator.json</code> (<code>ContextMeta</code>: <code>tool</code>, <code>context</code>,
+<code>cpMode</code>, <code>isKonnect</code>, <code>environment</code>), written before any resource. <code>migrate</code> reads it back
+through <code>ReadContextMeta</code> for two decisions: the skip list (<code>environment</code>) and the apply
+command in the report (<code>tool</code>, <code>context</code>, <code>isKonnect</code>).</p>
+<h2 id="on-disk-layout">On-disk layout</h2>
+<pre><code>&lt;dir&gt;/
+  &lt;context&gt;-&lt;mode&gt;-ctx/
+    .kuma-migrator.json
+    mesh-&lt;mesh&gt;/&lt;sub&gt;/&lt;Kind&gt;-[&lt;namespace&gt;-]&lt;name&gt;.yaml
+    global-scoped-resources/&lt;sub&gt;/...
+    _manual/mesh-&lt;mesh&gt;/&lt;sub&gt;/...          ← migrate --to-latest v3 only
+  migration-report.md                      ← migrate only
+</code></pre>
+<p><code>&lt;sub&gt;</code> comes from <code>resource.KindSubfolder</code>
+(<a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/resource/subfolder.go"><code>subfolder.go</code></a>):
+<code>resiliency</code>, <code>routing</code>, <code>zero-trust</code>, <code>observability</code>, <code>mesh</code>, <code>other</code>. <code>migrate</code> recognises
+the context and mesh from the path (<code>runMigration</code> in
+<a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/migrator.go"><code>migrator.go</code></a>):
+the first path component that is not a kind subfolder is the context, the second one, unless
+it is <code>global-scoped-resources</code>, is the mesh with its <code>mesh-</code> prefix stripped. Output paths
+mirror input paths, with three exceptions: each document goes to the subfolder of its
+<strong>output</strong> kind, Gateway API output goes to <code>global-scoped-resources/</code>, and under <code>v3</code> a
+document that 3.0 cannot accept goes to <code>_manual/</code>.</p>
+<h2 id="migrate">migrate</h2>
+<p><code>Plan</code> (<code>--dry-run</code>) and <code>Migrate</code> both call <code>runMigration(..., writeFiles)</code>, so the preview
+and the real run cannot diverge. <code>runMigration</code> does three things in order.</p>
+<h3 id="pre-pass">Pre-pass</h3>
+<p><code>BuildTransformOptions</code> in
+<a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/legacybackend.go"><code>legacybackend.go</code></a>
+walks the whole input tree once and builds the indexes that a single document cannot provide:</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Index</th>
+<th>Built from</th>
+<th>Used by</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>MeshBackendIndex</code></td>
+<td><code>Mesh.spec.logging.backends</code>, <code>Mesh.spec.tracing.backends</code></td>
+<td><code>TrafficLog</code>/<code>TrafficTrace</code> → <code>MeshAccessLog</code>/<code>MeshTrace</code>: the legacy policy names a backend, the new one declares it inline</td>
+</tr>
+<tr>
+<td><code>GatewayClassIndex</code></td>
+<td><code>MeshGatewayInstance</code> <code>kuma.io/service</code> tag → GatewayClass name</td>
+<td><code>MeshGateway</code> → <code>Gateway</code>: <code>spec.gatewayClassName</code></td>
+</tr>
+<tr>
+<td><code>MeshIdentityIndex</code></td>
+<td>meshes that have a <code>MeshIdentity</code></td>
+<td><code>MeshExternalService</code> under v3: 3.0 needs a workload identity on the client</td>
+</tr>
+</tbody>
+</table></div>
+<p>A missing index is not an error: the conversion that needs it prints a warning naming what to
+write by hand.</p>
+<h3 id="per-file-and-per-document">Per file and per document</h3>
+<p><code>processFile</code> splits each file into documents and handles each one:</p>
+<ol>
+<li>
+<p><strong>Skip list.</strong> <code>skipPolicy</code> picks the Kubernetes or Universal list from the context's
+<code>environment</code>, falling back to the document shape (<code>type</code> without <code>kind</code> means Universal).</p>
+</li>
+<li>
+<p><strong>Scenario.</strong> <code>DetectScenario</code>
+(<a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/detect.go"><code>detect.go</code></a>)
+returns exactly one scenario. The checks run in this order, first match wins:</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Order</th>
+<th>Check</th>
+<th>Scenario</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><code>ExternalService</code></td>
+<td>ExternalService</td>
+</tr>
+<tr>
+<td>2</td>
+<td><code>OPAPolicy</code></td>
+<td>OPAPolicy</td>
+</tr>
+<tr>
+<td>3</td>
+<td><code>MeshGateway</code>, <code>MeshGatewayInstance</code>, <code>MeshGatewayRoute</code></td>
+<td>Gateway</td>
+</tr>
+<tr>
+<td>4</td>
+<td><code>Mesh</code> with embedded observability or passthrough</td>
+<td>Mesh (else Passthrough)</td>
+</tr>
+<tr>
+<td>5</td>
+<td>a recognised non-policy kind (<code>ContainerPatch</code>)</td>
+<td>Passthrough</td>
+</tr>
+<tr>
+<td>6</td>
+<td><code>sources</code>/<code>destinations</code> present, or a legacy kind</td>
+<td>Legacy</td>
+</tr>
+<tr>
+<td>7</td>
+<td>a <code>rules[]</code> kind with <code>from[]</code> and no service tags</td>
+<td>Rules</td>
+</tr>
+<tr>
+<td>8</td>
+<td>no kind, or a kind not starting with <code>Mesh</code></td>
+<td>Skipped</td>
+</tr>
+<tr>
+<td>9</td>
+<td><code>MeshSubset</code>, a service tag, or a <code>_svc_</code> <code>MeshService</code> name in any <code>targetRef</code></td>
+<td>Subset</td>
+</tr>
+<tr>
+<td>10</td>
+<td>anything else</td>
+<td>Passthrough</td>
+</tr>
+</tbody>
+</table></div>
+<p>Universal documents are normalised first: <code>type</code> is read as <code>kind</code>.</p>
+</li>
+<li>
+<p><strong>Transform.</strong> <code>TransformDocumentWithOptions</code>
+(<a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/transform.go"><code>transform.go</code></a>)
+routes to the scenario's transform. A transform returns a list of documents, so one input
+can produce several outputs.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Scenario</th>
+<th>Transform</th>
+<th>Source</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Legacy</td>
+<td><code>transformScenarioLegacy</code>, conf conversion per kind</td>
+<td><a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/transform.go"><code>transform.go</code></a>, <a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/legacyconf.go"><code>legacyconf.go</code></a></td>
+</tr>
+<tr>
+<td>Subset</td>
+<td><code>transformScenarioSubset</code>, <code>ConvertTargetRef</code></td>
+<td><a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/convert.go"><code>convert.go</code></a></td>
+</tr>
+<tr>
+<td>Rules</td>
+<td><code>TransformFromToRulesForTarget</code></td>
+<td><a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/rulesapi.go"><code>rulesapi.go</code></a></td>
+</tr>
+<tr>
+<td>Mesh</td>
+<td><code>TransformMeshForTarget</code></td>
+<td><a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/mesh.go"><code>mesh.go</code></a>, <a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/v3_mesh.go"><code>v3_mesh.go</code></a></td>
+</tr>
+<tr>
+<td>ExternalService</td>
+<td><code>TransformExternalService</code></td>
+<td><a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/externalservice.go"><code>externalservice.go</code></a></td>
+</tr>
+<tr>
+<td>Gateway</td>
+<td><code>TransformMeshGateway</code>, <code>TransformMeshGatewayInstance</code>, <code>TransformMeshGatewayRoute</code></td>
+<td><a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/gateway.go"><code>gateway.go</code></a>, <a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/gatewayroute.go"><code>gatewayroute.go</code></a></td>
+</tr>
+<tr>
+<td>OPAPolicy</td>
+<td><code>TransformOPAPolicy</code></td>
+<td><a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/opapolicy.go"><code>opapolicy.go</code></a></td>
+</tr>
+<tr>
+<td>Passthrough, Skipped</td>
+<td>copied; under v3 a <code>Mesh</code> still goes through <code>transformPassthroughMeshForV3</code></td>
+<td><a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/v3_mesh.go"><code>v3_mesh.go</code></a></td>
+</tr>
+</tbody>
+</table></div>
+</li>
+<li>
+<p><strong>v3 companions.</strong> Under <code>--to-latest v3</code>, two passes run on the transform's output before
+the scan. <code>convertInlineOtelEndpointsForV3</code> replaces each inline OpenTelemetry endpoint
+with a <code>backendRef</code> and appends a generated <code>MeshOpenTelemetryBackend</code> document.
+<code>removedGatewaySourceNote</code> adds the delete-before-upgrading note for a converted
+<code>MeshGateway</code>/<code>MeshGatewayRoute</code>. The <code>Mesh</code> transform adds its own companions:
+<code>MeshTLS</code> for a permissive mTLS backend and <code>MeshPassthrough</code> for outbound passthrough.</p>
+</li>
+<li>
+<p><strong>Deprecation scan.</strong> <code>ScanForDeprecations</code>
+(<a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/deprecation.go"><code>deprecation.go</code></a>)
+runs on <strong>every output document</strong>, whatever the scenario, including passthrough and
+skipped documents. It switches on the kind, applies the auto-fixes (for example
+<code>sidecar.regex</code> → <code>profiles.exclude</code>, <code>spiffeId</code> → <code>spiffeID</code>), and returns warnings for
+everything it does not rewrite. Under v3 it also runs the 3.0 rewrites that apply to any
+policy: label-only <code>targetRef</code>s, removal of control-plane-owned labels, route
+<code>backendRefs</code>. The v3-specific checks are in the <code>v3_*.go</code> files.</p>
+</li>
+<li>
+<p><strong>Workload scan.</strong> <code>ScanWorkloadEnvVars</code> and <code>ScanKumaAnnotations</code>
+(<a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/workload.go"><code>workload.go</code></a>)
+look at the input document for <code>kuma.io/service</code>-encoded addresses in env vars and
+<code>&quot;yes&quot;</code>/<code>&quot;no&quot;</code> annotation values. Their results feed the report's Action Items.</p>
+</li>
+</ol>
+<p>A transform error keeps the original document. Under v2 it is written back to the apply tree.
+Under v3 it goes to <code>_manual/</code>, along with any output that is still a kind 3.0 removes
+(<code>MeshGlobalRateLimit</code>, Universal <code>ZoneIngress</code>/<code>ZoneEgress</code>).</p>
+<h3 id="target-version">Target version</h3>
+<p><code>TargetVersion</code> (<a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/target.go"><code>target.go</code></a>)
+is threaded from the flag through <code>runMigration</code>, every transform and <code>ScanForDeprecations</code>.
+The two targets share the code path; each check that differs asks <code>target.IsV3()</code>. See
+<a href="../target-version/">Target versions</a>.</p>
+<h2 id="report">Report</h2>
+<p><a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/report.go"><code>report.go</code></a> renders
+the <code>MigrationReport</code> collected during the walk into Markdown. Each <code>FileReport</code> holds the
+input path, every output path (<code>OutputRelPaths</code>), the <code>_manual/</code> paths (<code>ManualRelPaths</code>) and
+one <code>DocChange</code> per document with its scenario, warnings and error.</p>
+<p>The Apply Checklist is computed from that data:</p>
+<ul>
+<li><code>collectApplyDirs</code> groups <code>OutputRelPaths</code> by directory, orders contexts Global/standalone
+first and zones after, and orders subfolders <code>resiliency</code>, <code>routing</code>, <code>zero-trust</code>,
+<code>observability</code>, <code>other</code>, with <code>mesh</code> last.</li>
+<li>For each context, <code>ReadContextMeta</code> decides between <code>kubectl apply -f &lt;dir&gt;/</code> and one
+<code>kumactl apply -f &lt;file&gt;</code> per file, with a <code>kumactl config use-context</code> reminder.</li>
+<li><code>_manual/</code> paths are never in <code>OutputRelPaths</code>, so no step applies them.</li>
+<li>Under v3, <code>collectV3Deletions</code> lists every source object of a kind 3.0 removes, with its
+replacement or <code>_manual/</code> copy and a delete command for the extraction tool. It produces
+<strong>Delete Before Upgrading to 3.0</strong> and the matching checklist step.</li>
+</ul>
+<p>See <a href="../output-and-reports/">Output and reports</a> and <a href="../apply/">Apply</a>.</p>
+<h2 id="tests">Tests</h2>
+<p>Every transform has unit tests next to it (<code>*_test.go</code>). Inputs are inline YAML in the test
+files. <code>pipeline_v3_test.go</code> runs whole input trees through <code>runMigration</code> on both
+targets. Run them with <code>make test</code>. See
+<a href="https://github.com/Kong/kuma-migrator/blob/main/CONTRIBUTING.md">CONTRIBUTING.md</a> for how to
+add a scenario.</p>
+
+    </article>
+    <nav class="pager" aria-label="Previous and next page">
+      <a class="prev" href="../examples/"><span>Previous</span>Examples</a>
+      <a class="next" href="../notes/"><span>Next</span>Notes and caveats</a>
+    </nav>
+  </main>
+  <nav class="toc" aria-label="On this page">
+    <p class="toc-title">On this page</p>
+    <ul><li class="toc-l2"><a href="#pipeline">Pipeline</a></li><li class="toc-l2"><a href="#extract">extract</a></li><li class="toc-l2"><a href="#on-disk-layout">On-disk layout</a></li><li class="toc-l2"><a href="#migrate">migrate</a></li><li class="toc-l3"><a href="#pre-pass">Pre-pass</a></li><li class="toc-l3"><a href="#per-file-and-per-document">Per file and per document</a></li><li class="toc-l3"><a href="#target-version">Target version</a></li><li class="toc-l2"><a href="#report">Report</a></li><li class="toc-l2"><a href="#tests">Tests</a></li></ul>
+  </nav>
+</div>
+<footer class="site-footer">
+  <p>
+    <a href="../../../">kuma-migrator</a> ·
+    <a href="https://github.com/Kong/kuma-migrator">Source</a> ·
+    <a href="https://github.com/Kong/kuma-migrator/releases">Releases</a> ·
+    <a href="https://github.com/Kong/kuma-migrator/issues">Issues</a> ·
+    <a href="https://github.com/Kong/kuma-migrator/blob/main/site/content/guides/architecture.md">View source of this page</a>
+  </p>
+  <p>Apache-2.0 licensed. Part of Kong's <a href="https://konghq.com/products/kong-mesh">Kong Mesh</a> tooling.</p>
+</footer>
+<script src="../../static/search-index.js"></script>
+<script src="../../static/search.js"></script>
+</body>
+</html>

@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.PageTitle}}</title>
+{{with .Description}}<meta name="description" content="{{.}}">
+{{end}}<link rel="canonical" href="{{.Canonical}}">
+<link rel="icon" href="{{.Root}}static/favicon.svg" type="image/svg+xml">
+<meta property="og:type" content="{{.OGType}}">
+<meta property="og:site_name" content="kuma-migrator">
+<meta property="og:title" content="{{.PageTitle}}">
+{{with .Description}}<meta property="og:description" content="{{.}}">
+{{end}}<meta property="og:url" content="{{.Canonical}}">
+<meta property="og:image" content="https://kong.github.io/kuma-migrator/assets/migration-overview.svg">
+<meta name="twitter:card" content="summary_large_image">
+<!-- Everything is same-origin: no fonts, stylesheets or scripts are fetched from anywhere else. -->
+<link rel="stylesheet" href="{{.Root}}static/style.css">
+<link rel="stylesheet" href="{{.Root}}static/chroma.css">
+</head>
+<body data-root="{{.Root}}">
+<a class="skip" href="#content">Skip to content</a>
+<header class="site-header">
+  <div class="bar">
+    <a class="brand" href="{{.Landing}}"><img src="{{.Root}}static/favicon.svg" width="28" height="28" alt=""><span>kuma-migrator</span></a>
+    <a class="docs-home" href="{{.Home}}">Docs</a>
+    <nav class="top-nav" aria-label="Sections">
+      {{range .TopNav}}<a href="{{.URL}}"{{if .Active}} class="active" aria-current="true"{{end}}>{{.Title}}</a>
+      {{end}}<a href="{{.RepoURL}}">GitHub</a>
+    </nav>
+    <div class="search">
+      <input id="search-input" type="search" placeholder="Search docs" aria-label="Search docs" autocomplete="off">
+      <ul id="search-results" hidden></ul>
+    </div>
+  </div>
+</header>
+{{define "nav"}}{{range .}}<div class="nav-group">{{with .Title}}<p class="nav-title">{{.}}</p>{{end}}<ul>{{range .Links}}<li><a href="{{.URL}}"{{if .Active}} class="active" aria-current="page"{{end}}>{{.Title}}</a></li>{{end}}</ul></div>
+{{end}}{{end}}
+<div class="layout{{if not .Nav}} no-sidebar{{end}}{{if not .TOC}} no-toc{{end}}">
+  {{if .Nav}}<details class="nav-mobile">
+    <summary>{{.SectionName}} menu</summary>
+    {{template "nav" .Nav}}
+  </details>
+  <aside class="sidebar" aria-label="{{.SectionName}} pages">
+    <p class="sidebar-section"><a href="{{.SectionURL}}">{{.SectionName}}</a></p>
+    {{template "nav" .Nav}}
+  </aside>{{end}}
+  <main id="content">
+    <article class="doc">
+{{template "main" .}}
+    </article>
+    {{if or .Prev .Next}}<nav class="pager" aria-label="Previous and next page">
+      {{with .Prev}}<a class="prev" href="{{.URL}}"><span>Previous</span>{{.Title}}</a>{{else}}<span></span>{{end}}
+      {{with .Next}}<a class="next" href="{{.URL}}"><span>Next</span>{{.Title}}</a>{{end}}
+    </nav>{{end}}
+  </main>
+  {{if .TOC}}<nav class="toc" aria-label="On this page">
+    <p class="toc-title">On this page</p>
+    <ul>{{range .TOC}}<li class="toc-l{{.Level}}"><a href="#{{.ID}}">{{.Text}}</a></li>{{end}}</ul>
+  </nav>{{end}}
+</div>
+<footer class="site-footer">
+  <p>
+    <a href="{{.Landing}}">kuma-migrator</a> ·
+    <a href="{{.RepoURL}}">Source</a> ·
+    <a href="{{.RepoURL}}/releases">Releases</a> ·
+    <a href="{{.RepoURL}}/issues">Issues</a>{{with .EditURL}} ·
+    <a href="{{.}}">View source of this page</a>{{end}}
+  </p>
+  <p>Apache-2.0 licensed. Part of Kong's <a href="https://konghq.com/products/kong-mesh">Kong Mesh</a> tooling.</p>
+</footer>
+<script src="{{.Root}}static/search-index.js"></script>
+<script src="{{.Root}}static/search.js"></script>
+</body>
+</html>

@@ -1,0 +1,16 @@
+{{define "status"}}<span class="status status-{{.Status}}">{{.Status}}</span>{{range .Outputs}} {{if .URL}}<a href="{{.URL}}"><code>{{.Title}}</code></a>{{else}}<code>{{.Title}}</code>{{end}}{{end}}{{end}}
+{{define "main"}}<h1>{{.Title}}</h1>
+{{with .Description}}<p class="lede">{{.}}</p>{{end}}
+{{.Content}}
+{{range .Groups}}<h2 id="{{.ID}}">{{.Title}}</h2>
+<div class="table-wrap"><table class="policy-table">
+  <thead><tr><th>Kind</th><th>v2</th><th>v3</th></tr></thead>
+  <tbody>
+  {{range .Policies}}<tr>
+    <td class="kind"><a href="{{.URL}}">{{.Kind}}</a>{{if eq .Product "Kong Mesh"}} <span class="product">Kong Mesh</span>{{end}}</td>
+    <td>{{template "status" .V2}}</td>
+    <td>{{template "status" .V3}}</td>
+  </tr>
+  {{end}}</tbody>
+</table></div>
+{{end}}{{end}}

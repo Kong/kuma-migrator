@@ -1,35 +1,32 @@
 # kuma-migrator documentation
 
-[← Back to the README](../README.md)
+The documentation moved to <https://kong.github.io/kuma-migrator/docs/>. Its sources are in
+[`site/content/`](../site/content/).
 
-## Getting started
-
-| Page | What it covers |
-|---|---|
-| [Installation](installation.md) | Homebrew, pre-built binaries, building from source |
-| [CLI reference](cli-reference.md) | Every command, flag, and the config file |
-
-## The workflow
+## Guides
 
 | Page | What it covers |
 |---|---|
-| [Extracting from a control plane](extract.md) | `extract`, CP-mode rules, output layout, Konnect, Universal vs Kubernetes format |
-| [Plan and migrate](plan-and-migrate.md) | `migrate --dry-run` and `migrate`, and the layout they produce |
-| [Choosing a target version](target-version.md) | `--to-latest v2\|v3` and the checks that change with it |
-| [Applying the migrated manifests](apply.md) | Apply order, and cleaning up resources whose kind changed |
+| [Installation](https://kong.github.io/kuma-migrator/docs/guides/installation/) | Homebrew, release archives, building from source |
+| [Typical usage](https://kong.github.io/kuma-migrator/docs/guides/usage/) | End-to-end runs for Kubernetes, multizone, Kong Mesh, Konnect and Universal |
+| [Upgrade plans](https://kong.github.io/kuma-migrator/docs/guides/upgrade-plans/) | Upgrade paths, which target to use, the sequence for 3.0, rollback |
+| [CLI reference](https://kong.github.io/kuma-migrator/docs/guides/cli/) | Every command, flag and the configuration file |
+| [Extract](https://kong.github.io/kuma-migrator/docs/guides/extract/) | Control plane modes, origin filtering, output layout, Konnect, Universal |
+| [Migrate](https://kong.github.io/kuma-migrator/docs/guides/migrate/) | `--dry-run`, the real run, input and output layout |
+| [Target versions](https://kong.github.io/kuma-migrator/docs/guides/target-version/) | `--to-latest v2\|v3` and what changes with it |
+| [Apply](https://kong.github.io/kuma-migrator/docs/guides/apply/) | Apply order, removing originals, the `_manual/` subtree |
+| [Output and reports](https://kong.github.io/kuma-migrator/docs/guides/output-and-reports/) | Console output and the Markdown report |
+| [Transformation examples](https://kong.github.io/kuma-migrator/docs/guides/examples/) | Before-and-after YAML per scenario |
+| [Architecture](https://kong.github.io/kuma-migrator/docs/guides/architecture/) | How the pipeline is built |
+| [Notes and caveats](https://kong.github.io/kuma-migrator/docs/guides/notes/) | Behaviour to know before relying on the output |
 
-## Reference
+## Topics and policies
 
 | Page | What it covers |
 |---|---|
-| [Migration paths and deprecation warnings](migration-paths.md) | Every transformation, and every deprecation detected but not auto-fixed |
-| [MeshTrafficPermission: `from[]` vs `rules[]`](meshtrafficpermission-modes.md) | The two identity models, and why the move between them is not mechanical |
-| [MeshHTTPRoute and the 3.0 routing changes](meshhttproute-3.0.md) | Where routing is heading in 3.0, the `404` behaviour change, and the `targetRef` matrix for every policy |
-| [Transformation examples](transformation-examples.md) | Before-and-after YAML per scenario |
-| [Console output and reports](output-and-reports.md) | What the CLI prints, and what the Markdown report contains |
-| [Notes and caveats](notes.md) | Behaviour worth knowing before relying on the output |
+| [Topics](https://kong.github.io/kuma-migrator/docs/topics/) | One area of the mesh (identity, gateways, multizone, access control, …) across every kind |
+| [Policies](https://kong.github.io/kuma-migrator/docs/policies/) | One page per resource kind: what the tool does on each target |
 
 ## Not product documentation
 
-[`contrib/`](contrib/) holds drafts written for upstream projects rather than for this tool —
-currently a `MeshTrafficPermission` comparison intended for the Kuma website.
+[`contrib/`](contrib/) holds drafts written for upstream projects rather than for this tool.

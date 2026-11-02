@@ -249,7 +249,8 @@
       into 3.0 — rewrites what can be rewritten safely, and reports what cannot, with the reason.
     </p>
     <div class="cta">
-      <a class="btn btn-primary" href="https://github.com/Kong/kuma-migrator#install">Install</a>
+      <a class="btn btn-primary" href="docs/">Read the docs</a>
+      <a class="btn btn-ghost" href="docs/guides/installation/">Install</a>
       <a class="btn btn-ghost" href="https://github.com/Kong/kuma-migrator">Source on GitHub</a>
     </div>
     <div class="badge-row">
@@ -347,8 +348,8 @@
 
     <p>
       Why MTP's <code>from[]</code> is never auto-converted:
-      <a href="https://github.com/Kong/kuma-migrator/blob/main/docs/meshtrafficpermission-modes.md">MeshTrafficPermission modes</a>.
-      Full list: <a href="https://github.com/Kong/kuma-migrator/blob/main/docs/migration-paths.md">migration paths and deprecation warnings</a>.
+      <a href="docs/topics/access-control/">MeshTrafficPermission and access control</a>.
+      Full list: <a href="docs/policies/">policy reference</a>, one page per resource kind.
     </p>
   </div>
 </section>
@@ -377,7 +378,7 @@
       </p>
     </div>
     <p>
-      See <a href="https://github.com/Kong/kuma-migrator/blob/main/docs/target-version.md">choosing a target version</a>.
+      See <a href="docs/guides/target-version/">choosing a target version</a>.
     </p>
   </div>
 </section>
@@ -424,7 +425,7 @@ make build
 <span class="c"># binary at ./dist/kuma-migrator</span></code></pre>
 
     <p>
-      Full options: <a href="https://github.com/Kong/kuma-migrator/blob/main/docs/installation.md">installation guide</a>.
+      Full options: <a href="docs/guides/installation/">installation guide</a>.
     </p>
   </div>
 </section>
@@ -439,23 +440,24 @@ make build
         <tr><th>Page</th><th>What it covers</th></tr>
       </thead>
       <tbody>
-        <tr><td><a href="https://github.com/Kong/kuma-migrator/blob/main/docs/installation.md">Installation</a></td><td>Homebrew, binaries, from source</td></tr>
-        <tr><td><a href="https://github.com/Kong/kuma-migrator/blob/main/docs/cli-reference.md">CLI reference</a></td><td>Every command, flag, and the config file</td></tr>
-        <tr><td><a href="https://github.com/Kong/kuma-migrator/blob/main/docs/extract.md">Extracting from a control plane</a></td><td>CP-mode rules, output layout, Konnect, Universal vs Kubernetes format</td></tr>
-        <tr><td><a href="https://github.com/Kong/kuma-migrator/blob/main/docs/plan-and-migrate.md">Plan and migrate</a></td><td>Dry run, output layout, Gateway API placement</td></tr>
-        <tr><td><a href="https://github.com/Kong/kuma-migrator/blob/main/docs/target-version.md">Choosing a target version</a></td><td><code>--to-latest</code> and the checks that change with it</td></tr>
-        <tr><td><a href="https://github.com/Kong/kuma-migrator/blob/main/docs/apply.md">Applying the migrated manifests</a></td><td>Apply order, and cleaning up changed kinds</td></tr>
-        <tr><td><a href="https://github.com/Kong/kuma-migrator/blob/main/docs/migration-paths.md">Migration paths and deprecations</a></td><td>Everything detected, fixed or flagged</td></tr>
-        <tr><td><a href="https://github.com/Kong/kuma-migrator/blob/main/docs/meshtrafficpermission-modes.md">MeshTrafficPermission modes</a></td><td><code>from[]</code> vs <code>rules[]</code>, and why it is not mechanical</td></tr>
-        <tr><td><a href="https://github.com/Kong/kuma-migrator/blob/main/docs/meshhttproute-3.0.md">MeshHTTPRoute and 3.0 routing</a></td><td>The <code>404</code> change, and the <code>targetRef</code> matrix for every policy</td></tr>
-        <tr><td><a href="https://github.com/Kong/kuma-migrator/blob/main/docs/transformation-examples.md">Transformation examples</a></td><td>Before-and-after YAML per scenario</td></tr>
-        <tr><td><a href="https://github.com/Kong/kuma-migrator/blob/main/docs/output-and-reports.md">Console output and reports</a></td><td>What you see, and what the report contains</td></tr>
-        <tr><td><a href="https://github.com/Kong/kuma-migrator/blob/main/docs/notes.md">Notes and caveats</a></td><td>Behaviour worth knowing before relying on the output</td></tr>
+        <tr><td><a href="docs/guides/installation/">Installation</a></td><td>Homebrew, binaries, from source</td></tr>
+        <tr><td><a href="docs/guides/cli/">CLI reference</a></td><td>Every command, flag, and the config file</td></tr>
+        <tr><td><a href="docs/guides/extract/">Extracting from a control plane</a></td><td>CP-mode rules, output layout, Konnect, Universal vs Kubernetes format</td></tr>
+        <tr><td><a href="docs/guides/migrate/">Plan and migrate</a></td><td>Dry run, output layout, Gateway API placement</td></tr>
+        <tr><td><a href="docs/guides/target-version/">Choosing a target version</a></td><td><code>--to-latest</code> and the checks that change with it</td></tr>
+        <tr><td><a href="docs/guides/apply/">Applying the migrated manifests</a></td><td>Apply order, and cleaning up changed kinds</td></tr>
+        <tr><td><a href="docs/topics/">Topics</a></td><td>Meshes, mTLS and identity, MeshService, multizone, gateways, observability: one concept per page</td></tr>
+        <tr><td><a href="docs/policies/">Policy reference</a></td><td>Every resource kind: what <code>v2</code> and <code>v3</code> do with it, and why</td></tr>
+        <tr><td><a href="docs/topics/access-control/">Access control</a></td><td>MeshTrafficPermission <code>from[]</code> vs <code>rules[]</code>, and why it is not mechanical</td></tr>
+        <tr><td><a href="docs/topics/gateways/">Gateways and routing</a></td><td>MeshHTTPRoute on 3.0: the <code>404</code> change, and the <code>targetRef</code> matrix for every policy</td></tr>
+        <tr><td><a href="docs/guides/examples/">Transformation examples</a></td><td>Before-and-after YAML per scenario</td></tr>
+        <tr><td><a href="docs/guides/output-and-reports/">Console output and reports</a></td><td>What you see, and what the report contains</td></tr>
+        <tr><td><a href="docs/guides/notes/">Notes and caveats</a></td><td>Behaviour worth knowing before relying on the output</td></tr>
       </tbody>
     </table>
 
     <p>
-      Index: <a href="https://github.com/Kong/kuma-migrator/blob/main/docs/README.md">docs/</a>.
+      All guides, topics and the policy reference: <a href="docs/">documentation home</a>.
     </p>
   </div>
 </section>
@@ -555,7 +557,7 @@ make build
     <p>
       <a href="https://github.com/Kong/kuma-migrator">Source</a> ·
       <a href="https://github.com/Kong/kuma-migrator/releases">Releases</a> ·
-      <a href="https://github.com/Kong/kuma-migrator/tree/main/docs">Docs</a> ·
+      <a href="docs/">Docs</a> ·
       <a href="https://github.com/Kong/kuma-migrator/issues">Issues</a>
     </p>
     <p>Apache-2.0 licensed. Part of Kong's <a href="https://konghq.com/products/kong-mesh">Kong Mesh</a> tooling.</p>

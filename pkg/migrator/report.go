@@ -774,7 +774,7 @@ func writeApplyChecklist(b *strings.Builder, r *MigrationReport, isPlan bool) {
 	n++
 
 	linef(b, "**%d. Plan your next upgrade** if you have not yet reached the target version.", n)
-	line(b, "   Re-run `kuma-migrator extract` + `plan` + `migrate` for each minor-version step.")
+	line(b, "   Re-run `kuma-migrator extract` + `migrate --dry-run` + `migrate` for each minor-version step.")
 	line(b, "")
 }
 

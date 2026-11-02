@@ -1,0 +1,49 @@
+name: Docs site
+
+# Separate from ci.yml, whose paths-ignore skips docs/** and **/*.md: this job
+# must run exactly when the site sources or the committed output change.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'site/**'
+      - 'docs/docs/**'
+      - 'docs/sitemap.xml'
+      - 'docs/index.html'
+      - 'docs/img/**'
+      - 'Makefile'
+      - '.github/workflows/site.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'site/**'
+      - 'docs/docs/**'
+      - 'docs/sitemap.xml'
+      - 'docs/index.html'
+      - 'docs/img/**'
+      - 'Makefile'
+      - '.github/workflows/site.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  site:
+    name: Generate & check docs site
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: site/gen/go.mod
+          cache: true
+          cache-dependency-path: site/gen/go.sum
+
+      - name: Test generator
+        run: make site-test
+
+      - name: Regenerate and diff
+        run: make site-check

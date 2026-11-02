@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>mTLS and workload identity – kuma-migrator docs</title>
+<meta name="description" content="Moving a mesh from Mesh.mtls to MeshIdentity and MeshTrust before Kuma 3.0, and why kuma-migrator reports it instead of rewriting it.">
+<link rel="canonical" href="https://kong.github.io/kuma-migrator/docs/topics/mtls-identity/">
+<link rel="icon" href="../../static/favicon.svg" type="image/svg+xml">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="kuma-migrator">
+<meta property="og:title" content="mTLS and workload identity – kuma-migrator docs">
+<meta property="og:description" content="Moving a mesh from Mesh.mtls to MeshIdentity and MeshTrust before Kuma 3.0, and why kuma-migrator reports it instead of rewriting it.">
+<meta property="og:url" content="https://kong.github.io/kuma-migrator/docs/topics/mtls-identity/">
+<meta property="og:image" content="https://kong.github.io/kuma-migrator/assets/migration-overview.svg">
+<meta name="twitter:card" content="summary_large_image">
+
+<link rel="stylesheet" href="../../static/style.css">
+<link rel="stylesheet" href="../../static/chroma.css">
+</head>
+<body data-root="../../">
+<a class="skip" href="#content">Skip to content</a>
+<header class="site-header">
+  <div class="bar">
+    <a class="brand" href="../../../"><img src="../../static/favicon.svg" width="28" height="28" alt=""><span>kuma-migrator</span></a>
+    <a class="docs-home" href="../../">Docs</a>
+    <nav class="top-nav" aria-label="Sections">
+      <a href="../../guides/">Guides</a>
+      <a href="../" class="active" aria-current="true">Topics</a>
+      <a href="../../policies/">Policies</a>
+      <a href="https://github.com/Kong/kuma-migrator">GitHub</a>
+    </nav>
+    <div class="search">
+      <input id="search-input" type="search" placeholder="Search docs" aria-label="Search docs" autocomplete="off">
+      <ul id="search-results" hidden></ul>
+    </div>
+  </div>
+</header>
+
+<div class="layout">
+  <details class="nav-mobile">
+    <summary>Topics menu</summary>
+    <div class="nav-group"><ul><li><a href="../">Overview</a></li><li><a href="../meshes/">Meshes</a></li><li><a href="./" class="active" aria-current="page">mTLS &amp; identity</a></li><li><a href="../external-pki/">External PKI</a></li><li><a href="../meshservice/">MeshService</a></li><li><a href="../multizone/">Multizone</a></li><li><a href="../gateways/">Gateways &amp; GAMMA</a></li><li><a href="../external-services/">External services</a></li><li><a href="../access-control/">Access control</a></li><li><a href="../observability/">Observability</a></li><li><a href="../policy-targeting/">Policy targeting</a></li><li><a href="../dataplanes/">Dataplanes</a></li><li><a href="../legacy-policies/">Legacy policies</a></li></ul></div>
+
+  </details>
+  <aside class="sidebar" aria-label="Topics pages">
+    <p class="sidebar-section"><a href="../">Topics</a></p>
+    <div class="nav-group"><ul><li><a href="../">Overview</a></li><li><a href="../meshes/">Meshes</a></li><li><a href="./" class="active" aria-current="page">mTLS &amp; identity</a></li><li><a href="../external-pki/">External PKI</a></li><li><a href="../meshservice/">MeshService</a></li><li><a href="../multizone/">Multizone</a></li><li><a href="../gateways/">Gateways &amp; GAMMA</a></li><li><a href="../external-services/">External services</a></li><li><a href="../access-control/">Access control</a></li><li><a href="../observability/">Observability</a></li><li><a href="../policy-targeting/">Policy targeting</a></li><li><a href="../dataplanes/">Dataplanes</a></li><li><a href="../legacy-policies/">Legacy policies</a></li></ul></div>
+
+  </aside>
+  <main id="content">
+    <article class="doc">
+<p class="crumb"><a href="../">Topics</a></p>
+<h1>mTLS and workload identity</h1>
+<p class="lede">Moving a mesh from Mesh.mtls to MeshIdentity and MeshTrust before Kuma 3.0, and why kuma-migrator reports it instead of rewriting it.</p>
+<p>On 2.x a mesh gets mutual TLS from <code>Mesh.spec.mtls</code>: a CA backend (<code>builtin</code>, <code>provided</code>, or a
+Kong Mesh enterprise backend) issues every proxy a certificate. Kuma 2.12 added a second model,
+<a href="../../policies/meshidentity/">MeshIdentity</a> + <a href="../../policies/meshtrust/">MeshTrust</a>, which issues SPIFFE
+identities per workload. Kuma 3.0 keeps only the second one.</p>
+<h2 id="what-changed-upstream">What changed upstream</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Version</th>
+<th>Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>2.12.0</td>
+<td><code>MeshIdentity</code> and <code>MeshTrust</code> introduced, with the <code>Bundled</code> and <code>Spire</code> providers (<a href="https://github.com/kumahq/kuma/blob/master/CHANGELOG.md">CHANGELOG</a>)</td>
+</tr>
+<tr>
+<td>2.13</td>
+<td><code>MeshTrust</code> <code>spec.origin</code> removed from the API and CRD; the value moves to <code>status.origin</code> (<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md">UPGRADE</a>)</td>
+</tr>
+<tr>
+<td>2.14.0</td>
+<td><code>MeshIdentity</code> <code>Extension</code> provider; Kong Mesh registers <code>vault</code>, <code>acmpca</code>, <code>certmanager</code> on it. See <a href="../external-pki/">External PKI</a></td>
+</tr>
+<tr>
+<td>3.0</td>
+<td><code>Mesh.mtls</code> removed from the API. It issues nothing: a mesh whose only identity source is <code>mtls</code> <strong>serves and accepts plaintext</strong>, and <a href="../../policies/meshtls/">MeshTLS</a> and <a href="../../policies/meshtrafficpermission/">MeshTrafficPermission</a> stop applying to its proxies (<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#meshmtls-no-longer-produces-mtls">UPGRADE</a>)</td>
+</tr>
+<tr>
+<td>3.0</td>
+<td>The legacy mesh CA is no longer added to the <code>MeshTrust</code> bundle. Proxies still holding a legacy certificate are not trusted by <code>MeshIdentity</code> peers, with no rolling path back (<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#the-legacy-mesh-ca-is-no-longer-added-to-the-meshtrust-bundle">UPGRADE</a>)</td>
+</tr>
+<tr>
+<td>3.0</td>
+<td><code>mtls.backends[].mode: PERMISSIVE</code> no longer makes inbounds permissive. Only <code>MeshTLS</code> decides; without one, inbounds are <code>Strict</code> (<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#mtlsbackendsmode-permissive-no-longer-makes-inbounds-permissive">UPGRADE</a>)</td>
+</tr>
+<tr>
+<td>3.0</td>
+<td><code>MeshTLS</code> <code>from[]</code> removed; use <code>rules[]</code> (<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#from-removed-from-meshtls">UPGRADE</a>)</td>
+</tr>
+<tr>
+<td>3.0</td>
+<td><code>MeshIdentity.spec.spiffeID</code> is immutable; the trust domain is rendered once and recorded in <code>status.trustDomain</code> (<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#meshidentityspecspiffeid-is-immutable-and-its-trust-domain-no-longer-follows-the-zone">UPGRADE</a>)</td>
+</tr>
+<tr>
+<td>3.0</td>
+<td>Kong Mesh <code>vault</code>, <code>acm</code>, <code>certmanager</code> CA backends removed (<a href="https://developer.konghq.com/mesh/version-specific-upgrade-notes/">Kong Mesh upgrade notes</a>)</td>
+</tr>
+</tbody>
+</table></div>
+<p>The upgrade does not delete the <code>&lt;mesh&gt;.ca-builtin-cert-&lt;backend&gt;</code> and
+<code>&lt;mesh&gt;.ca-builtin-key-&lt;backend&gt;</code> Secrets of a <code>builtin</code> backend. Delete them yourself once
+nothing needs the old CA (<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#meshmtls-backends-are-no-longer-provisioned-or-validated">UPGRADE</a>).</p>
+<p>The identity model is described in <a href="https://github.com/kumahq/kuma/blob/master/docs/madr/decisions/074-spiffe-compliance.md">MADR-074 (SPIFFE compliance)</a>
+and the <a href="https://kuma.io/docs/latest/policies/meshidentity/">MeshIdentity docs</a>.</p>
+<h3 id="meshtls-is-orthogonal">MeshTLS is orthogonal</h3>
+<p><code>MeshTLS</code> is not an identity source. It sets the TLS version, cipher suites and the inbound
+mode (<code>Strict</code> / <code>Permissive</code>) of connections that already use mTLS. It needs an identity source
+underneath it: on 3.0 that is <code>MeshIdentity</code>. Moving to <code>MeshIdentity</code> does not require a
+<code>MeshTLS</code> policy, and adding one does not issue certificates
+(<a href="https://kuma.io/docs/latest/policies/meshtls/">MeshTLS docs</a>).</p>
+<p><code>spec.mtls</code> on its own is not deprecated in 2.x and is safe to keep until the cutover.</p>
+<h2 id="what-kuma-migrator-does">What kuma-migrator does</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Input</th>
+<th><code>--to-latest v2</code></th>
+<th><code>--to-latest v3</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Mesh.spec.mtls</code></td>
+<td>Kept. Advisory: <code>MeshIdentity</code> migration required before 3.0</td>
+<td>Removed from the output. <strong>Blocking</strong> warning: create a <code>MeshIdentity</code> (and <code>MeshTrust</code>) that selects every proxy before upgrading</td>
+</tr>
+<tr>
+<td>Enabled backend with <code>mode: PERMISSIVE</code></td>
+<td>Kept. Warning to add a <code>MeshTLS</code> <code>Permissive</code> before 3.0</td>
+<td>Companion <code>MeshTLS</code> <code>&lt;mesh&gt;-tls-permissive</code> with <code>rules[].default.mode: Permissive</code></td>
+</tr>
+<tr>
+<td>Kong Mesh <code>vault</code> / <code>acmpca</code> / <code>certmanager</code> backend</td>
+<td>Advisory names the <code>MeshIdentity</code> <code>Extension</code> provider</td>
+<td>Same, in the blocking warning</td>
+</tr>
+<tr>
+<td><code>MeshTLS</code> with <code>from[]</code></td>
+<td>Converted to <code>rules[]</code> (Rules scenario)</td>
+<td>Same; a <code>from[]</code> source that is not <code>kind: Mesh</code> is warned, because <code>rules[]</code> widens it</td>
+</tr>
+<tr>
+<td><code>MeshTrust</code> <code>spec.origin</code></td>
+<td>Warning (removed in 2.13)</td>
+<td>Warning</td>
+</tr>
+<tr>
+<td><code>MeshMetric</code> Prometheus <code>tls.mode: ActiveMTLSBackend</code></td>
+<td>—</td>
+<td>Warning: on 3.0 remote scrapers need a client certificate the mesh trusts (<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#meshmetric-activemtlsbackend-requires-a-client-certificate">UPGRADE</a>)</td>
+</tr>
+</tbody>
+</table></div>
+<p>Code: <a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/v3_mesh.go"><code>v3_mesh.go</code></a>,
+<a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/deprecation.go"><code>deprecation.go</code></a>
+(<code>warnMeshMtlsBackends</code>).</p>
+<h2 id="what-it-cannot-do">What it cannot do</h2>
+<p>The tool never writes a <code>MeshIdentity</code>. The move is a CA cutover, not a field rename:</p>
+<ul>
+<li><strong>Trust domain.</strong> <code>MeshIdentity</code> renders a trust domain from a template (default
+<code>{{ .Mesh }}.{{ .Zone }}.mesh.local</code>). The zone name is runtime data, and on 3.0 the rendered
+value is fixed at creation.</li>
+<li><strong>SPIFFE paths.</strong> The default path is <code>/ns/{{ .Namespace }}/sa/{{ .ServiceAccount }}</code> on
+Kubernetes and <code>/workload/{{ .Workload }}</code> on Universal. Neither the service accounts nor the
+<code>kuma.io/workload</code> labels are in the <code>Mesh</code> manifest.</li>
+<li><strong>CA material.</strong> A <code>builtin</code> backend's CA lives in a control-plane Secret; a <code>provided</code> backend
+references Secrets or files. A generated <code>Bundled</code> identity with <code>autogenerate</code> would mint a
+new CA, which is a new trust root, not a translation.</li>
+<li><strong>Rollout order.</strong> Which workloads move first, and when <code>MeshTrafficPermission</code> <code>rules[]</code> (which
+match SPIFFE IDs) replace <code>from[]</code>, depends on the mesh. See <a href="../access-control/">Access control</a>.</li>
+</ul>
+<h2 id="manual-steps">Manual steps</h2>
+<p>Run these on 2.14, mesh by mesh, before upgrading any control plane to 3.0.</p>
+<ol>
+<li>Decide the trust domain and path templates. The defaults work for most Kubernetes meshes.</li>
+<li>Create a <code>MeshIdentity</code> (with <code>meshTrustCreation: Enabled</code>, or a hand-written <code>MeshTrust</code>)
+selecting a first group of proxies with <code>spec.selector.dataplane.matchLabels</code>. While
+<code>Mesh.mtls</code> is still enabled and a <code>MeshTrust</code> exists, 2.x adds the legacy mesh CA to the
+trust bundle, so <code>MeshIdentity</code> proxies keep trusting legacy peers
+(<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#the-legacy-mesh-ca-is-no-longer-added-to-the-meshtrust-bundle">UPGRADE</a>).</li>
+<li>Check <code>DataplaneInsight</code> <code>mTLS.issuedBackend</code> on the selected proxies, then widen the selector
+until it matches every proxy (<code>matchLabels: {}</code>).</li>
+<li>If the enabled backend used <code>mode: PERMISSIVE</code>, apply a <code>MeshTLS</code> with
+<code>rules[].default.mode: Permissive</code> (the <code>v3</code> run generates it).</li>
+<li>Rewrite <code>MeshTrafficPermission</code> <code>from[]</code> to SPIFFE <code>rules[]</code> (see
+<a href="../access-control/">Access control</a>).</li>
+<li>Give remote Prometheus scrapers of <code>ActiveMTLSBackend</code> endpoints a client certificate the mesh
+trusts, or set the mode to <code>Disabled</code>.</li>
+<li>Upgrade. Apply the <code>v3</code> <code>Mesh</code> (without <code>mtls</code>). Delete the <code>ca-builtin-*</code> Secrets when no
+tooling needs them.</li>
+</ol>
+<p>A <code>MeshIdentity</code> for the whole mesh, using the default templates and a generated CA:</p>
+<pre class="chroma"><code><span class="line"><span class="cl"><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l">kuma.io/v1alpha1</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshIdentity</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">metadata</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">identity</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l">kong-mesh-system</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">labels</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kuma.io/mesh</span><span class="p">:</span><span class="w"> </span><span class="l">default</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">spec</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">selector</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">dataplane</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">matchLabels</span><span class="p">:</span><span class="w"> </span>{}<span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">spiffeID</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">trustDomain</span><span class="p">:</span><span class="w"> </span><span class="s2">&#34;{{ .Mesh }}.{{ .Zone }}.mesh.local&#34;</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">path</span><span class="p">:</span><span class="w"> </span><span class="s2">&#34;/ns/{{ .Namespace }}/sa/{{ .ServiceAccount }}&#34;</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">provider</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l">Bundled</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">bundled</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">meshTrustCreation</span><span class="p">:</span><span class="w"> </span><span class="l">Enabled</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">insecureAllowSelfSigned</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">certificateParameters</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">expiry</span><span class="p">:</span><span class="w"> </span><span class="l">24h</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">autogenerate</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="w">
+</span></span></span></code></pre><p>This is the example from the <a href="https://developer.konghq.com/mesh/policies/meshidentity/">Kong Mesh MeshIdentity docs</a>.
+To keep your own CA, use <code>bundled.ca.certificate</code> / <code>bundled.ca.privateKey</code> (<code>SecureDataSource</code>)
+instead of <code>autogenerate</code>; for Vault, ACM Private CA or cert-manager see
+<a href="../external-pki/">External PKI</a>.</p>
+<h2 id="example">Example</h2>
+<p>Input:</p>
+<pre class="chroma"><code><span class="line"><span class="cl"><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l">kuma.io/v1alpha1</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">Mesh</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">metadata</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">default</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">spec</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">meshServices</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">mode</span><span class="p">:</span><span class="w"> </span><span class="l">Exclusive</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">networking</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">outbound</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">passthrough</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">mtls</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">enabledBackend</span><span class="p">:</span><span class="w"> </span><span class="l">ca-1</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">backends</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span>- <span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">ca-1</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l">builtin</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">mode</span><span class="p">:</span><span class="w"> </span><span class="l">PERMISSIVE</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">dpCert</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">          </span><span class="nt">rotation</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">            </span><span class="nt">expiration</span><span class="p">:</span><span class="w"> </span><span class="l">1d</span><span class="w">
+</span></span></span></code></pre><p><code>--to-latest v2</code> keeps <code>mtls</code> and extracts the passthrough setting:</p>
+<pre class="chroma"><code><span class="line"><span class="cl"><span class="c"># mesh/Mesh-default.yaml</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l">kuma.io/v1alpha1</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">Mesh</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">metadata</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">default</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">spec</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">meshServices</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">mode</span><span class="p">:</span><span class="w"> </span><span class="l">Exclusive</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">mtls</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">backends</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span>- <span class="nt">dpCert</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">rotation</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">          </span><span class="nt">expiration</span><span class="p">:</span><span class="w"> </span><span class="l">1d</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">mode</span><span class="p">:</span><span class="w"> </span><span class="l">PERMISSIVE</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">ca-1</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l">builtin</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">enabledBackend</span><span class="p">:</span><span class="w"> </span><span class="l">ca-1</span><span class="w">
+</span></span></span></code></pre><p><code>--to-latest v3</code> drops <code>mtls</code> and adds the <code>MeshTLS</code> that keeps inbounds permissive (the
+<code>MeshPassthrough</code> <code>None</code> is generated on both targets):</p>
+<pre class="chroma"><code><span class="line"><span class="cl"><span class="c"># mesh/Mesh-default.yaml</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l">kuma.io/v1alpha1</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">Mesh</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">metadata</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">default</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">spec</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">meshServices</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">mode</span><span class="p">:</span><span class="w"> </span><span class="l">Exclusive</span><span class="w">
+</span></span></span></code></pre><pre class="chroma"><code><span class="line"><span class="cl"><span class="c"># zero-trust/MeshTLS-kong-mesh-system-default-tls-permissive.yaml</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l">kuma.io/v1alpha1</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshTLS</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">metadata</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">labels</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kuma.io/mesh</span><span class="p">:</span><span class="w"> </span><span class="l">default</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">default-tls-permissive</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l">kong-mesh-system</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">spec</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">rules</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span>- <span class="nt">default</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">mode</span><span class="p">:</span><span class="w"> </span><span class="l">Permissive</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">targetRef</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">Mesh</span><span class="w">
+</span></span></span></code></pre><p>The <code>v3</code> blocking warning (shortened):</p>
+<pre><code>⚠  Mesh &quot;default&quot;: spec.mtls is REMOVED in 3.0 and has been dropped from the Mesh output.
+   BLOCKING: before upgrading, create a MeshIdentity (and MeshTrust) that selects every proxy in
+   this mesh, unless one already does. On 3.0 spec.mtls issues no certificates: a mesh whose only
+   identity source is spec.mtls serves and accepts plaintext, and MeshTLS and
+   MeshTrafficPermission stop applying to its proxies. …
+</code></pre>
+<blockquote class="callout callout-v3"><p><strong>v3:</strong> Apply the <code>v3</code> <code>Mesh</code> only after the <code>MeshIdentity</code> covers every proxy. Applying it
+earlier on a 2.x control plane turns mTLS off for the mesh.</p>
+</blockquote>
+<h2 id="related">Related</h2>
+<ul>
+<li><a href="../external-pki/">External PKI</a> — Vault, ACM Private CA and cert-manager</li>
+<li><a href="../access-control/">Access control</a> — <code>MeshTrafficPermission</code> <code>rules[]</code> and SPIFFE IDs</li>
+<li><a href="../meshes/">Meshes</a></li>
+</ul>
+
+    </article>
+    <nav class="pager" aria-label="Previous and next page">
+      <a class="prev" href="../meshes/"><span>Previous</span>Meshes</a>
+      <a class="next" href="../external-pki/"><span>Next</span>External PKI</a>
+    </nav>
+  </main>
+  <nav class="toc" aria-label="On this page">
+    <p class="toc-title">On this page</p>
+    <ul><li class="toc-l2"><a href="#what-changed-upstream">What changed upstream</a></li><li class="toc-l3"><a href="#meshtls-is-orthogonal">MeshTLS is orthogonal</a></li><li class="toc-l2"><a href="#what-kuma-migrator-does">What kuma-migrator does</a></li><li class="toc-l2"><a href="#what-it-cannot-do">What it cannot do</a></li><li class="toc-l2"><a href="#manual-steps">Manual steps</a></li><li class="toc-l2"><a href="#example">Example</a></li><li class="toc-l2"><a href="#related">Related</a></li></ul>
+  </nav>
+</div>
+<footer class="site-footer">
+  <p>
+    <a href="../../../">kuma-migrator</a> ·
+    <a href="https://github.com/Kong/kuma-migrator">Source</a> ·
+    <a href="https://github.com/Kong/kuma-migrator/releases">Releases</a> ·
+    <a href="https://github.com/Kong/kuma-migrator/issues">Issues</a> ·
+    <a href="https://github.com/Kong/kuma-migrator/blob/main/site/content/topics/mtls-identity.md">View source of this page</a>
+  </p>
+  <p>Apache-2.0 licensed. Part of Kong's <a href="https://konghq.com/products/kong-mesh">Kong Mesh</a> tooling.</p>
+</footer>
+<script src="../../static/search-index.js"></script>
+<script src="../../static/search.js"></script>
+</body>
+</html>

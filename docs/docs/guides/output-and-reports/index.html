@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Output and reports – kuma-migrator docs</title>
+<meta name="description" content="What migrate prints while it runs, and what the Markdown report contains.">
+<link rel="canonical" href="https://kong.github.io/kuma-migrator/docs/guides/output-and-reports/">
+<link rel="icon" href="../../static/favicon.svg" type="image/svg+xml">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="kuma-migrator">
+<meta property="og:title" content="Output and reports – kuma-migrator docs">
+<meta property="og:description" content="What migrate prints while it runs, and what the Markdown report contains.">
+<meta property="og:url" content="https://kong.github.io/kuma-migrator/docs/guides/output-and-reports/">
+<meta property="og:image" content="https://kong.github.io/kuma-migrator/assets/migration-overview.svg">
+<meta name="twitter:card" content="summary_large_image">
+
+<link rel="stylesheet" href="../../static/style.css">
+<link rel="stylesheet" href="../../static/chroma.css">
+</head>
+<body data-root="../../">
+<a class="skip" href="#content">Skip to content</a>
+<header class="site-header">
+  <div class="bar">
+    <a class="brand" href="../../../"><img src="../../static/favicon.svg" width="28" height="28" alt=""><span>kuma-migrator</span></a>
+    <a class="docs-home" href="../../">Docs</a>
+    <nav class="top-nav" aria-label="Sections">
+      <a href="../" class="active" aria-current="true">Guides</a>
+      <a href="../../topics/">Topics</a>
+      <a href="../../policies/">Policies</a>
+      <a href="https://github.com/Kong/kuma-migrator">GitHub</a>
+    </nav>
+    <div class="search">
+      <input id="search-input" type="search" placeholder="Search docs" aria-label="Search docs" autocomplete="off">
+      <ul id="search-results" hidden></ul>
+    </div>
+  </div>
+</header>
+
+<div class="layout">
+  <details class="nav-mobile">
+    <summary>Guides menu</summary>
+    <div class="nav-group"><ul><li><a href="../">Overview</a></li><li><a href="../installation/">Installation</a></li><li><a href="../usage/">Typical usage</a></li><li><a href="../upgrade-plans/">Upgrade plans</a></li><li><a href="../cli/">CLI reference</a></li><li><a href="../extract/">Extract</a></li><li><a href="../migrate/">Migrate</a></li><li><a href="../target-version/">Target versions (--to-latest)</a></li><li><a href="../apply/">Apply</a></li><li><a href="./" class="active" aria-current="page">Output and reports</a></li><li><a href="../examples/">Examples</a></li><li><a href="../architecture/">Architecture</a></li><li><a href="../notes/">Notes and caveats</a></li></ul></div>
+
+  </details>
+  <aside class="sidebar" aria-label="Guides pages">
+    <p class="sidebar-section"><a href="../">Guides</a></p>
+    <div class="nav-group"><ul><li><a href="../">Overview</a></li><li><a href="../installation/">Installation</a></li><li><a href="../usage/">Typical usage</a></li><li><a href="../upgrade-plans/">Upgrade plans</a></li><li><a href="../cli/">CLI reference</a></li><li><a href="../extract/">Extract</a></li><li><a href="../migrate/">Migrate</a></li><li><a href="../target-version/">Target versions (--to-latest)</a></li><li><a href="../apply/">Apply</a></li><li><a href="./" class="active" aria-current="page">Output and reports</a></li><li><a href="../examples/">Examples</a></li><li><a href="../architecture/">Architecture</a></li><li><a href="../notes/">Notes and caveats</a></li></ul></div>
+
+  </aside>
+  <main id="content">
+    <article class="doc">
+<p class="crumb"><a href="../">Guides</a></p>
+<h1>Output and reports</h1>
+<p class="lede">What migrate prints while it runs, and what the Markdown report contains.</p>
+<h2 id="console-output">Console output</h2>
+<p>Each input file gets one line: a status icon, a scenario label, the mesh (omitted for
+global-scoped files) and the file name. Two faint lines below show the input path (<code>←</code>) and
+the first output path (<code>→</code>), relative to <code>--input-dir</code> and <code>--output-dir</code>. Warnings follow as
+<code>⚠</code>, errors as <code>✗</code>.</p>
+<p>Output of <code>migrate --dry-run</code> on a Global and a Zone context (warnings shortened):</p>
+<pre><code>  kuma-migrator  migrate --dry-run
+
+  ✓  MESH              default  default.yaml
+       ←  kind-global-global-ctx/mesh-default/mesh/default.yaml
+       →  kind-global-global-ctx/mesh-default/mesh/Mesh-default.yaml
+       ⚠  Mesh.spec.meshServices.mode set to Exclusive — required for MeshService-based policies to take effect (Kuma 2.9+). …
+       ⚠  Mesh &quot;default&quot;: spec.mtls is the legacy mTLS/identity model and is removed in Kuma 3.0. …
+  ✓  LEGACY            default  timeout-default.yaml
+       ←  kind-global-global-ctx/mesh-default/resiliency/timeout-default.yaml
+       →  kind-global-global-ctx/mesh-default/resiliency/MeshTimeout-backend-timeout.yaml
+  ⚠  PARTIAL ERROR     default  route.yaml
+       ←  kind-global-global-ctx/mesh-default/routing/route.yaml
+       →  kind-global-global-ctx/mesh-default/routing/TrafficRoute-route-all-default.yaml
+       ✗  TrafficRoute requires manual migration to MeshHTTPRoute or MeshTCPRoute
+  ✓  SUBSET            default  meshretry.yaml
+       ←  kind-zone-eu-zone-ctx/mesh-default/resiliency/meshretry.yaml
+       →  kind-zone-eu-zone-ctx/mesh-default/resiliency/MeshRetry-demo-backend-retry.yaml
+  ✓  RULES             default  meshtimeout.yaml
+       ←  kind-zone-eu-zone-ctx/mesh-default/resiliency/meshtimeout.yaml
+       →  kind-zone-eu-zone-ctx/mesh-default/resiliency/MeshTimeout-demo-backend-inbound.yaml
+       ⚠  MeshTimeout &quot;backend-inbound&quot;: from[] migrated to rules[] (Kuma 2.10+). …
+
+  ────────────────────────────────────────────────────────────
+  5 file(s) processed  ·  4 migrated  ·  0 already migrated  ·  0 skipped  ·  1 error(s)
+
+
+Report written to: migrated/migration-plan.md
+</code></pre>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Label</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>LEGACY</code>, <code>SUBSET</code>, <code>RULES</code>, <code>MESH</code>, <code>EXTERNAL SERVICE</code>, <code>GATEWAY</code>, <code>OPA</code></td>
+<td>Migrated, by scenario</td>
+</tr>
+<tr>
+<td><code>ALREADY MIGRATED</code></td>
+<td>Passed through unchanged; already uses the current API</td>
+</tr>
+<tr>
+<td><code>SKIP</code></td>
+<td>Not a Kuma policy, or a kind in the skip list</td>
+</tr>
+<tr>
+<td><code>ERROR</code></td>
+<td>The file could not be read or written</td>
+</tr>
+<tr>
+<td><code>PARTIAL ERROR</code></td>
+<td>At least one document in the file could not be converted; the rest were</td>
+</tr>
+</tbody>
+</table></div>
+<p>A file labelled <code>SKIP</code> or <code>ALREADY MIGRATED</code> can still carry warnings: the label reflects
+scenario detection, while the deprecation scan runs on every document. A Kubernetes
+<code>Deployment</code> is not a Kuma policy (<code>SKIP</code>), but a deprecated <code>kuma.io/*</code> annotation on it is
+still reported. A <code>HostnameGenerator</code> passes through (<code>ALREADY MIGRATED</code>), but its
+<code>spec.template</code> is still checked against the 2.14 validation.</p>
+<h2 id="report-sections">Report sections</h2>
+<p><code>migrate --dry-run</code> writes <code>migration-plan.md</code>; <code>migrate</code> writes <code>migration-report.md</code>. Both
+are written to <code>--output-dir</code> by
+<a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/report.go"><code>pkg/migrator/report.go</code></a>.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Section</th>
+<th>Content</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Header</td>
+<td>Input and output directories, the target (<code>v2</code> or <code>v3</code>). Under <code>v3</code>, a banner that the output must not be applied to a 2.x control plane. Under <code>--dry-run</code>, a banner that no files were written</td>
+</tr>
+<tr>
+<td>Summary</td>
+<td>Files processed, migrated, already migrated, skipped, errors</td>
+</tr>
+<tr>
+<td>Files That Would Be Migrated (<code>--dry-run</code>) / Migrated Files</td>
+<td>One table per <code>&lt;context&gt;/&lt;subfolder&gt;/</code>, for example <code>kind-global-global-ctx/resiliency/</code>, with the warnings of each file. Errored files are grouped separately</td>
+</tr>
+<tr>
+<td>Already Migrated</td>
+<td>Files passed through unchanged, with their warnings</td>
+</tr>
+<tr>
+<td>Skipped</td>
+<td>Non-policy files, with their warnings</td>
+</tr>
+<tr>
+<td>Action Items</td>
+<td>Errors, workload service address mappings, deprecated annotations. Present only when one of them is non-empty</td>
+</tr>
+<tr>
+<td>Apply Checklist</td>
+<td>Ordered steps with the <code>kubectl</code> or <code>kumactl</code> commands for each context. A three-step version under <code>--dry-run</code>. See <a href="../apply/">Apply</a></td>
+</tr>
+<tr>
+<td>Original Resources to Delete</td>
+<td>Resources whose kind changed, with delete commands in a collapsible block. Under <code>v3</code>, kinds 3.0 removes are listed in the next section instead</td>
+</tr>
+<tr>
+<td>Delete Before Upgrading to 3.0</td>
+<td><code>v3</code> only. See below</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="delete-before-upgrading-to-30">Delete Before Upgrading to 3.0</h3>
+<p>Under <code>--to-latest v3</code> this section lists every source object of a kind 3.0 removes: the
+legacy policies, <code>ExternalService</code>, <code>OPAPolicy</code>, <code>MeshGlobalRateLimit</code>, <code>MeshGateway*</code>, and
+<code>ZoneIngress</code>/<code>ZoneEgress</code>. For each it shows whether it was converted, where its <code>_manual/</code>
+copy is if it was not, and the delete command for the tool the context was extracted with.</p>
+<pre class="chroma"><code><span class="line"><span class="cl">| Source file | Kind | Name | Namespace / mesh | Replacement |
+</span></span><span class="line"><span class="cl">|---|---|---|---|---|
+</span></span><span class="line"><span class="cl">| <span class="sb">`kind-global-global-ctx/mesh-default/resiliency/timeout-default.yaml`</span> | <span class="sb">`Timeout`</span> | <span class="sb">`backend-timeout`</span> | mesh <span class="sb">`default`</span> | converted (see the apply steps) |
+</span></span><span class="line"><span class="cl">| <span class="sb">`kind-global-global-ctx/mesh-default/routing/route.yaml`</span> | <span class="sb">`TrafficRoute`</span> | <span class="sb">`route-all-default`</span> | mesh <span class="sb">`default`</span> | none — manual migration, copy at <span class="sb">`kind-global-global-ctx/_manual/mesh-default/routing/TrafficRoute-route-all-default.yaml`</span> |
+</span></span></code></pre><p>The Apply Checklist gets a matching step before the Global control plane upgrade. See
+<a href="../upgrade-plans/">Upgrade plans</a> for where it fits.</p>
+
+    </article>
+    <nav class="pager" aria-label="Previous and next page">
+      <a class="prev" href="../apply/"><span>Previous</span>Apply</a>
+      <a class="next" href="../examples/"><span>Next</span>Examples</a>
+    </nav>
+  </main>
+  <nav class="toc" aria-label="On this page">
+    <p class="toc-title">On this page</p>
+    <ul><li class="toc-l2"><a href="#console-output">Console output</a></li><li class="toc-l2"><a href="#report-sections">Report sections</a></li><li class="toc-l3"><a href="#delete-before-upgrading-to-30">Delete Before Upgrading to 3.0</a></li></ul>
+  </nav>
+</div>
+<footer class="site-footer">
+  <p>
+    <a href="../../../">kuma-migrator</a> ·
+    <a href="https://github.com/Kong/kuma-migrator">Source</a> ·
+    <a href="https://github.com/Kong/kuma-migrator/releases">Releases</a> ·
+    <a href="https://github.com/Kong/kuma-migrator/issues">Issues</a> ·
+    <a href="https://github.com/Kong/kuma-migrator/blob/main/site/content/guides/output-and-reports.md">View source of this page</a>
+  </p>
+  <p>Apache-2.0 licensed. Part of Kong's <a href="https://konghq.com/products/kong-mesh">Kong Mesh</a> tooling.</p>
+</footer>
+<script src="../../static/search-index.js"></script>
+<script src="../../static/search.js"></script>
+</body>
+</html>

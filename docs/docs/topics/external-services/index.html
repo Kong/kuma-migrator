@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>External services – kuma-migrator docs</title>
+<meta name="description" content="ExternalService to MeshExternalService, the SecureDataSource TLS shape, MeshPassthrough, and what Kuma 3.0 requires for traffic leaving the mesh.">
+<link rel="canonical" href="https://kong.github.io/kuma-migrator/docs/topics/external-services/">
+<link rel="icon" href="../../static/favicon.svg" type="image/svg+xml">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="kuma-migrator">
+<meta property="og:title" content="External services – kuma-migrator docs">
+<meta property="og:description" content="ExternalService to MeshExternalService, the SecureDataSource TLS shape, MeshPassthrough, and what Kuma 3.0 requires for traffic leaving the mesh.">
+<meta property="og:url" content="https://kong.github.io/kuma-migrator/docs/topics/external-services/">
+<meta property="og:image" content="https://kong.github.io/kuma-migrator/assets/migration-overview.svg">
+<meta name="twitter:card" content="summary_large_image">
+
+<link rel="stylesheet" href="../../static/style.css">
+<link rel="stylesheet" href="../../static/chroma.css">
+</head>
+<body data-root="../../">
+<a class="skip" href="#content">Skip to content</a>
+<header class="site-header">
+  <div class="bar">
+    <a class="brand" href="../../../"><img src="../../static/favicon.svg" width="28" height="28" alt=""><span>kuma-migrator</span></a>
+    <a class="docs-home" href="../../">Docs</a>
+    <nav class="top-nav" aria-label="Sections">
+      <a href="../../guides/">Guides</a>
+      <a href="../" class="active" aria-current="true">Topics</a>
+      <a href="../../policies/">Policies</a>
+      <a href="https://github.com/Kong/kuma-migrator">GitHub</a>
+    </nav>
+    <div class="search">
+      <input id="search-input" type="search" placeholder="Search docs" aria-label="Search docs" autocomplete="off">
+      <ul id="search-results" hidden></ul>
+    </div>
+  </div>
+</header>
+
+<div class="layout">
+  <details class="nav-mobile">
+    <summary>Topics menu</summary>
+    <div class="nav-group"><ul><li><a href="../">Overview</a></li><li><a href="../meshes/">Meshes</a></li><li><a href="../mtls-identity/">mTLS &amp; identity</a></li><li><a href="../external-pki/">External PKI</a></li><li><a href="../meshservice/">MeshService</a></li><li><a href="../multizone/">Multizone</a></li><li><a href="../gateways/">Gateways &amp; GAMMA</a></li><li><a href="./" class="active" aria-current="page">External services</a></li><li><a href="../access-control/">Access control</a></li><li><a href="../observability/">Observability</a></li><li><a href="../policy-targeting/">Policy targeting</a></li><li><a href="../dataplanes/">Dataplanes</a></li><li><a href="../legacy-policies/">Legacy policies</a></li></ul></div>
+
+  </details>
+  <aside class="sidebar" aria-label="Topics pages">
+    <p class="sidebar-section"><a href="../">Topics</a></p>
+    <div class="nav-group"><ul><li><a href="../">Overview</a></li><li><a href="../meshes/">Meshes</a></li><li><a href="../mtls-identity/">mTLS &amp; identity</a></li><li><a href="../external-pki/">External PKI</a></li><li><a href="../meshservice/">MeshService</a></li><li><a href="../multizone/">Multizone</a></li><li><a href="../gateways/">Gateways &amp; GAMMA</a></li><li><a href="./" class="active" aria-current="page">External services</a></li><li><a href="../access-control/">Access control</a></li><li><a href="../observability/">Observability</a></li><li><a href="../policy-targeting/">Policy targeting</a></li><li><a href="../dataplanes/">Dataplanes</a></li><li><a href="../legacy-policies/">Legacy policies</a></li></ul></div>
+
+  </aside>
+  <main id="content">
+    <article class="doc">
+<p class="crumb"><a href="../">Topics</a></p>
+<h1>External services</h1>
+<p class="lede">ExternalService to MeshExternalService, the SecureDataSource TLS shape, MeshPassthrough, and what Kuma 3.0 requires for traffic leaving the mesh.</p>
+<p>Traffic to destinations outside the mesh takes one of two paths: a declared destination
+(<a href="../../policies/externalservice/">ExternalService</a> on older meshes,
+<a href="../../policies/meshexternalservice/">MeshExternalService</a> since 2.8), routed through a zone egress, or
+passthrough to the address the client dialed, controlled by <code>Mesh.networking.outbound.passthrough</code>
+and <a href="../../policies/meshpassthrough/">MeshPassthrough</a>. Kuma 3.0 removes <code>ExternalService</code> and the
+<code>Mesh</code> passthrough switch, and tightens both remaining paths.</p>
+<h2 id="what-changed-upstream">What changed upstream</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Version</th>
+<th>Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>2.8.0</td>
+<td><code>MeshExternalService</code> introduced, with <code>HostnameGenerator</code> support (<a href="https://github.com/kumahq/kuma/blob/master/CHANGELOG.md">CHANGELOG</a>). It needs a zone egress and mutual TLS (<a href="https://kuma.io/docs/latest/networking/meshexternalservice/">docs</a>)</td>
+</tr>
+<tr>
+<td>2.14.0</td>
+<td><code>MeshPassthrough</code> <code>appendMatch[]</code> wildcard validation: partial wildcards (<code>*foo.com</code>), <code>type: Domain</code> with <code>tcp</code>/<code>mysql</code>, wildcard domains on an L7 protocol with no port rejected on apply (<a href="https://github.com/kumahq/kuma/blob/master/CHANGELOG.md">CHANGELOG</a>, kuma#16570)</td>
+</tr>
+<tr>
+<td>2.14.6</td>
+<td><code>MeshExternalService</code> TLS verification accepts both the old <code>DataSource</code> and the new <code>SecureDataSource</code> shape (<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#upgrade-to-2146">UPGRADE</a>). <code>MeshPassthrough</code> validated by filter chain (kuma#18988)</td>
+</tr>
+<tr>
+<td>3.0</td>
+<td><code>ExternalService</code> removed: CRD, API and webhook (<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#legacy-externalservice-resource-removed">UPGRADE</a>)</td>
+</tr>
+<tr>
+<td>3.0</td>
+<td><code>MeshExternalService</code> <code>tls.verification.{caCert,clientCert,clientKey}</code> must use <code>SecureDataSource</code>; <code>File</code> and <code>EnvVar</code> types are rejected. A stored old-shape resource is dropped from xDS with an error on the control plane (<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#meshexternalservice-tls-verification-uses-the-securedatasource-shape">UPGRADE</a>)</td>
+</tr>
+<tr>
+<td>3.0</td>
+<td>A client proxy without a <code>MeshIdentity</code> gets no <code>MeshExternalService</code> cluster: requests fail locally with <code>503 cluster_not_found</code> (<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#meshexternalservice-clusters-require-a-meshidentity">UPGRADE</a>)</td>
+</tr>
+<tr>
+<td>3.0</td>
+<td>A <code>kuma.io/zone</code> label on a <code>MeshExternalService</code> no longer restricts it to that zone; every zone's egress dials the endpoint directly (<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#per-zone-meshexternalservice-routing-removed">UPGRADE</a>)</td>
+</tr>
+<tr>
+<td>3.0</td>
+<td><code>Mesh.routing.defaultForbidMeshExternalServiceAccess</code> and <code>routing.zoneEgress</code> removed; use <code>MeshTrafficPermission</code> for access control (<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#routingdefaultforbidmeshexternalserviceaccess-removed-from-the-mesh-schema">UPGRADE</a>)</td>
+</tr>
+<tr>
+<td>3.0</td>
+<td>A transparent-proxy data plane that no <code>MeshPassthrough</code> selects drops traffic to destinations outside the mesh (<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#outbound-passthrough-defaults-to-none">UPGRADE</a>)</td>
+</tr>
+<tr>
+<td>3.0</td>
+<td><code>MeshPassthrough</code> resolves a non-wildcard <code>Domain</code> match itself and requires a <code>port</code> for it; a stored match without one stops applying (<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#meshpassthrough-resolves-a-domain-match-itself-and-needs-a-port-for-it">UPGRADE</a>)</td>
+</tr>
+<tr>
+<td>3.0</td>
+<td><code>MeshPassthrough</code> rejects matches that resolve to the same Envoy filter chain (<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#meshpassthrough-rejects-matches-that-resolve-to-the-same-envoy-filter-chain">UPGRADE</a>)</td>
+</tr>
+</tbody>
+</table></div>
+<blockquote class="callout callout-note"><p><strong>Note:</strong> <code>UPGRADE.md</code> has two 3.0 entries on outbound passthrough. The older one
+(&quot;<code>Mesh.spec.networking.outbound.passthrough</code> removed&quot;) says 3.0 behaves as if <code>passthrough</code>
+were <code>true</code>. The newer one (&quot;Outbound passthrough defaults to <code>None</code>&quot;) replaces that default.
+<code>kuma-migrator</code> follows the newer entry.</p>
+</blockquote>
+<h2 id="what-kuma-migrator-does">What kuma-migrator does</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Input</th>
+<th><code>--to-latest v2</code></th>
+<th><code>--to-latest v3</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ExternalService</code></td>
+<td><code>MeshExternalService</code>: <code>networking.address</code> → <code>endpoints[]</code> + <code>match.port</code>; <code>kuma.io/protocol</code> tag → <code>match.protocol</code>; <code>match.type: HostnameGenerator</code>; <code>networking.tls</code> → <code>tls</code> with <code>verification.mode: Secured</code></td>
+<td>Same, with the TLS data sources in the <code>SecureDataSource</code> shape, plus the delete-before-upgrade advisory</td>
+</tr>
+<tr>
+<td><code>ExternalService</code> with a <code>unix://</code> address</td>
+<td>Error</td>
+<td>Error</td>
+</tr>
+<tr>
+<td><code>MeshExternalService</code> TLS <code>inlineString</code> / <code>secret</code></td>
+<td>Warning: rewrite on 2.14.6+</td>
+<td>Rewritten: <code>type: InsecureInline</code> + <code>insecureInline.value</code>, or <code>type: Secret</code> + <code>secretRef</code></td>
+</tr>
+<tr>
+<td><code>MeshExternalService</code> TLS <code>inline</code> (base64)</td>
+<td>Warning</td>
+<td>Warning only. Rewriting means decoding credential material and writing it back in clear text, which is your decision</td>
+</tr>
+<tr>
+<td><code>MeshExternalService</code> and no <code>MeshIdentity</code> for its mesh in the input</td>
+<td>—</td>
+<td>Warning: clients get <code>503 cluster_not_found</code> on 3.0</td>
+</tr>
+<tr>
+<td><code>MeshExternalService</code> with a <code>kuma.io/zone</code> label</td>
+<td>—</td>
+<td>Warning: per-zone routing removed</td>
+</tr>
+<tr>
+<td><code>Mesh.networking.outbound.passthrough</code></td>
+<td><code>false</code> → <code>MeshPassthrough</code> <code>None</code>; <code>true</code> → removed, with a warning</td>
+<td><code>false</code> → <code>None</code>; <code>true</code> → <code>MeshPassthrough</code> <code>All</code>; unset → warning</td>
+</tr>
+<tr>
+<td><code>Mesh.routing.defaultForbidMeshExternalServiceAccess</code></td>
+<td>Warning</td>
+<td>Removed, with a note to use <code>MeshTrafficPermission</code></td>
+</tr>
+<tr>
+<td><code>MeshPassthrough</code> partial wildcard, <code>Domain</code> on <code>tcp</code>/<code>mysql</code>, L7 wildcard without port</td>
+<td>Warning</td>
+<td>Warning</td>
+</tr>
+<tr>
+<td><code>MeshPassthrough</code> <code>Domain</code> match without a <code>port</code></td>
+<td>—</td>
+<td>Warning</td>
+</tr>
+<tr>
+<td><code>MeshPassthrough</code> matches that collide on one filter chain</td>
+<td>Warning</td>
+<td>Warning</td>
+</tr>
+</tbody>
+</table></div>
+<p>Code: <a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/externalservice.go"><code>externalservice.go</code></a>,
+<a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/v3_mes.go"><code>v3_mes.go</code></a>,
+<a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/v3_scan.go"><code>v3_scan.go</code></a>.</p>
+<p>The <code>MeshIdentity</code> check looks only at the input directory. If the <code>MeshIdentity</code> exists on the
+control plane but was not extracted, ignore the warning.</p>
+<h2 id="what-it-cannot-do">What it cannot do</h2>
+<ul>
+<li><strong>Pick the virtual port.</strong> <code>match.port</code> is set to the endpoint port. Change it if clients should
+connect on a different port.</li>
+<li><strong>Know the hostname clients use.</strong> The <code>HostnameGenerator</code> renders a name from the resource
+name (for example <code>httpbin.extsvc.mesh.local</code>). Clients that used the old <code>ExternalService</code>
+address need to switch to it.</li>
+<li><strong>Decode <code>inline</code> certificate material.</strong> See above.</li>
+<li><strong>Decide the passthrough policy.</strong> <code>passthroughMode: All</code> keeps 2.x behaviour; <code>Matched</code> with
+<code>appendMatch</code> is an allowlist you write.</li>
+<li><strong>Add ports to <code>Domain</code> matches.</strong> The port the workload uses is not in the policy.</li>
+</ul>
+<h2 id="manual-steps">Manual steps</h2>
+<ol>
+<li>Make sure each zone that serves <code>MeshExternalService</code> traffic runs a zone egress, and the mesh
+has mutual TLS.</li>
+<li>Apply the converted <code>MeshExternalService</code>s on 2.x, move clients to the generated hostnames,
+then delete the <code>ExternalService</code>s.</li>
+<li>Upgrade every control plane to 2.14.6 or later, then rewrite TLS data sources to the
+<code>SecureDataSource</code> shape (the <code>v3</code> output does it for <code>inlineString</code> and <code>secret</code>).</li>
+<li>Create a <code>MeshIdentity</code> covering every client of a <code>MeshExternalService</code> (see
+<a href="../mtls-identity/">mTLS and workload identity</a>).</li>
+<li>Add a <code>MeshPassthrough</code> for transparent-proxy workloads that reach external destinations
+directly, with a <code>port</code> on every non-wildcard <code>Domain</code> match.</li>
+<li>Replace <code>defaultForbidMeshExternalServiceAccess</code> with <code>MeshTrafficPermission</code> rules.</li>
+<li>Remove <code>kuma.io/zone</code> labels from <code>MeshExternalService</code>s and check each zone's network path to
+the endpoints.</li>
+</ol>
+<h2 id="example">Example</h2>
+<p>Input:</p>
+<pre class="chroma"><code><span class="line"><span class="cl"><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l">kuma.io/v1alpha1</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">ExternalService</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">mesh</span><span class="p">:</span><span class="w"> </span><span class="l">default</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">metadata</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">httpbin</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">spec</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">tags</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kuma.io/service</span><span class="p">:</span><span class="w"> </span><span class="l">httpbin</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kuma.io/protocol</span><span class="p">:</span><span class="w"> </span><span class="l">http</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">networking</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">address</span><span class="p">:</span><span class="w"> </span><span class="l">httpbin.org:443</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">tls</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">caCert</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">inlineString</span><span class="p">:</span><span class="w"> </span><span class="p">|</span><span class="sd">
+</span></span></span><span class="line"><span class="cl"><span class="sd">          -----BEGIN CERTIFICATE-----
+</span></span></span><span class="line"><span class="cl"><span class="sd">          MIIB...
+</span></span></span><span class="line"><span class="cl"><span class="sd">          -----END CERTIFICATE-----</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">serverName</span><span class="p">:</span><span class="w"> </span><span class="l">httpbin.org</span><span class="w">
+</span></span></span></code></pre><p>Output with <code>--to-latest v2</code>:</p>
+<pre class="chroma"><code><span class="line"><span class="cl"><span class="c"># routing/MeshExternalService-kong-mesh-system-httpbin.yaml</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l">kuma.io/v1alpha1</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshExternalService</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">metadata</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">labels</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kuma.io/mesh</span><span class="p">:</span><span class="w"> </span><span class="l">default</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">httpbin</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l">kong-mesh-system</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">spec</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">endpoints</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span>- <span class="nt">address</span><span class="p">:</span><span class="w"> </span><span class="l">httpbin.org</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">port</span><span class="p">:</span><span class="w"> </span><span class="m">443</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">match</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">port</span><span class="p">:</span><span class="w"> </span><span class="m">443</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">protocol</span><span class="p">:</span><span class="w"> </span><span class="l">http</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l">HostnameGenerator</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">tls</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">verification</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">caCert</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">inlineString</span><span class="p">:</span><span class="w"> </span><span class="p">|</span><span class="sd">
+</span></span></span><span class="line"><span class="cl"><span class="sd">          -----BEGIN CERTIFICATE-----
+</span></span></span><span class="line"><span class="cl"><span class="sd">          MIIB...
+</span></span></span><span class="line"><span class="cl"><span class="sd">          -----END CERTIFICATE-----</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">mode</span><span class="p">:</span><span class="w"> </span><span class="l">Secured</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">serverName</span><span class="p">:</span><span class="w"> </span><span class="l">httpbin.org</span><span class="w">
+</span></span></span></code></pre><p>Output with <code>--to-latest v3</code> — the same, with the CA in the <code>SecureDataSource</code> shape:</p>
+<pre class="chroma"><code><span class="line"><span class="cl"><span class="w">    </span><span class="nt">verification</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">caCert</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">insecureInline</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">          </span><span class="nt">value</span><span class="p">:</span><span class="w"> </span><span class="p">|</span><span class="sd">
+</span></span></span><span class="line"><span class="cl"><span class="sd">            -----BEGIN CERTIFICATE-----
+</span></span></span><span class="line"><span class="cl"><span class="sd">            MIIB...
+</span></span></span><span class="line"><span class="cl"><span class="sd">            -----END CERTIFICATE-----</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l">InsecureInline</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">mode</span><span class="p">:</span><span class="w"> </span><span class="l">Secured</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">serverName</span><span class="p">:</span><span class="w"> </span><span class="l">httpbin.org</span><span class="w">
+</span></span></span></code></pre><p><code>v3</code> warnings (shortened):</p>
+<pre><code>⚠  spec.tls.verification.caCert.inlineString rewritten to the SecureDataSource shape (type:
+   InsecureInline) that Kuma 3.0 requires. Apply it while every control plane runs 2.14.6 or
+   later and before upgrading the global control plane to 3.0 …
+⚠  no MeshIdentity for mesh default in the input set. Kuma 3.0 gives a client proxy a
+   MeshExternalService cluster only when it has a workload identity … 503 cluster_not_found …
+⚠  ExternalService &quot;httpbin&quot;: ExternalService is removed in 3.0 … Delete it before upgrading,
+   once its converted replacement is in place …
+</code></pre>
+<h2 id="related">Related</h2>
+<ul>
+<li><a href="../meshes/">Meshes</a> — the <code>Mesh</code> passthrough and routing fields</li>
+<li><a href="../mtls-identity/">mTLS and workload identity</a></li>
+<li><a href="../access-control/">Access control</a></li>
+<li><a href="../multizone/">Multizone</a> — zone egress</li>
+</ul>
+
+    </article>
+    <nav class="pager" aria-label="Previous and next page">
+      <a class="prev" href="../gateways/"><span>Previous</span>Gateways &amp; GAMMA</a>
+      <a class="next" href="../access-control/"><span>Next</span>Access control</a>
+    </nav>
+  </main>
+  <nav class="toc" aria-label="On this page">
+    <p class="toc-title">On this page</p>
+    <ul><li class="toc-l2"><a href="#what-changed-upstream">What changed upstream</a></li><li class="toc-l2"><a href="#what-kuma-migrator-does">What kuma-migrator does</a></li><li class="toc-l2"><a href="#what-it-cannot-do">What it cannot do</a></li><li class="toc-l2"><a href="#manual-steps">Manual steps</a></li><li class="toc-l2"><a href="#example">Example</a></li><li class="toc-l2"><a href="#related">Related</a></li></ul>
+  </nav>
+</div>
+<footer class="site-footer">
+  <p>
+    <a href="../../../">kuma-migrator</a> ·
+    <a href="https://github.com/Kong/kuma-migrator">Source</a> ·
+    <a href="https://github.com/Kong/kuma-migrator/releases">Releases</a> ·
+    <a href="https://github.com/Kong/kuma-migrator/issues">Issues</a> ·
+    <a href="https://github.com/Kong/kuma-migrator/blob/main/site/content/topics/external-services.md">View source of this page</a>
+  </p>
+  <p>Apache-2.0 licensed. Part of Kong's <a href="https://konghq.com/products/kong-mesh">Kong Mesh</a> tooling.</p>
+</footer>
+<script src="../../static/search-index.js"></script>
+<script src="../../static/search.js"></script>
+</body>
+</html>
