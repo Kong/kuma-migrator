@@ -158,6 +158,18 @@ func TransformDocumentWithOptions(raw []byte, opts TransformOptions) ([][]byte, 
 		}
 	}
 
+	// Converted Kubernetes policies built from cluster-scoped (or namespace-less)
+	// input go in the control-plane namespace, where the CP gives them the system
+	// role. Done before the post-passes, which read the policy's namespace.
+	if namespacedConversionScenarios[scenario] {
+		var nsWarns []string
+		docs, nsWarns, err = setMissingSystemNamespace(docs, opts)
+		if err != nil {
+			return nil, nil, scenario, err
+		}
+		warnings = append(warnings, nsWarns...)
+	}
+
 	// 3.0 removes the inline OpenTelemetry endpoint; generate MeshOpenTelemetryBackends.
 	if target.IsV3() {
 		var otelWarns []string
@@ -322,7 +334,9 @@ func transformScenarioLegacy(policy UniversalPolicy, opts TransformOptions) ([]K
 		return nil, nil, err
 	}
 
-	// Universal policies have no namespace; leave it empty.
+	// Selectors are converted with no policy namespace: the legacy CRDs are
+	// cluster-scoped. The Kubernetes output is placed in the system namespace
+	// afterwards (setMissingSystemNamespace); Universal output has none.
 	const policyNamespace = ""
 
 	// Convert the conf body before it is attached anywhere: legacy conf bodies
