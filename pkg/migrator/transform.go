@@ -190,6 +190,17 @@ func TransformDocumentWithOptions(raw []byte, opts TransformOptions) ([][]byte, 
 		warnings = append(warnings, otelWarns...)
 	}
 
+	// 3.0 removes MeshHealthCheck healthyPanicThreshold; write the companion
+	// MeshCircuitBreaker that carries it as a real document.
+	if target.IsV3() {
+		var mcbWarns []string
+		docs, mcbWarns, err = splitPanicThresholdDocsForV3(docs, opts)
+		if err != nil {
+			return nil, nil, scenario, err
+		}
+		warnings = append(warnings, mcbWarns...)
+	}
+
 	// The built-in gateway API is deleted outright in 3.0, so converting a MeshGateway or
 	// MeshGatewayRoute is only half the job: the source object still has to go before the
 	// upgrade, or the Helm CRD removal takes it with no record.

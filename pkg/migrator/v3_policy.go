@@ -624,11 +624,124 @@ func splitHealthyPanicThreshold(policy *KubePolicy) (*KubePolicy, []string, erro
 		policy.Metadata.Name, mcbName, panicThresholdCaveat)}, nil
 }
 
+// splitPanicThresholdDocsForV3 moves to[].default.healthyPanicThreshold out of
+// every MeshHealthCheck in docs (a passthrough, Subset or Rules document; the
+// legacy conversion already split its own with splitHealthyPanicThreshold) into
+// a companion MeshCircuitBreaker appended to docs. The companion copies the
+// MeshHealthCheck's layout (Universal or Kubernetes), name prefix, labels,
+// namespace (else the system namespace) and spec.targetRef/to[].targetRef; the
+// ScanForDeprecations post-pass then gives both documents the same 3.0 rewrites
+// (labels-form refs, control-plane labels stripped).
+func splitPanicThresholdDocsForV3(docs [][]byte, opts TransformOptions) ([][]byte, []string, error) {
+	var companions [][]byte
+	var warnings []string
+	for i, doc := range docs {
+		var obj map[string]interface{}
+		if err := yaml.Unmarshal(doc, &obj); err != nil || obj == nil {
+			continue
+		}
+		kind, _ := obj["kind"].(string)
+		if kind == "" {
+			kind, _ = obj["type"].(string)
+		}
+		if kind != "MeshHealthCheck" {
+			continue
+		}
+		spec, _ := obj["spec"].(map[string]interface{})
+		to, _ := spec["to"].([]interface{})
+		var mcbTo []interface{}
+		for _, entry := range to {
+			em, _ := entry.(map[string]interface{})
+			def, _ := em["default"].(map[string]interface{})
+			threshold, ok := def["healthyPanicThreshold"]
+			if !ok {
+				continue
+			}
+			delete(def, "healthyPanicThreshold")
+			mcbTo = append(mcbTo, map[string]interface{}{
+				"targetRef": deepCopyValue(em["targetRef"]),
+				"default": map[string]interface{}{
+					"outlierDetection": map[string]interface{}{
+						"healthyPanicThreshold": threshold,
+						"detectors":             deepCopyValue(panicThresholdDetectors),
+					},
+				},
+			})
+		}
+		if len(mcbTo) == 0 {
+			continue
+		}
+		name := extractNameFromObj(obj)
+		mcbName := name + "-panic-threshold"
+		mcbSpec := map[string]interface{}{"to": mcbTo}
+		if tr, ok := spec["targetRef"]; ok {
+			mcbSpec["targetRef"] = deepCopyValue(tr)
+		}
+		var mcb map[string]interface{}
+		if isUniversalDoc(obj) {
+			mcb = map[string]interface{}{"type": "MeshCircuitBreaker", "name": mcbName, "spec": mcbSpec}
+			if mesh, ok := obj["mesh"]; ok {
+				mcb["mesh"] = mesh
+			}
+			if labels, ok := obj["labels"].(map[string]interface{}); ok && len(labels) > 0 {
+				mcb["labels"] = deepCopyValue(labels)
+			}
+		} else {
+			md, _ := obj["metadata"].(map[string]interface{})
+			ns, _ := md["namespace"].(string)
+			meta := map[string]interface{}{
+				"name":      mcbName,
+				"namespace": resolveSystemNamespaceFor(ns, opts),
+			}
+			if labels, ok := md["labels"].(map[string]interface{}); ok && len(labels) > 0 {
+				meta["labels"] = deepCopyValue(labels)
+			}
+			apiVersion, _ := obj["apiVersion"].(string)
+			if apiVersion == "" {
+				apiVersion = kumaAPIVersion
+			}
+			mcb = map[string]interface{}{
+				"apiVersion": apiVersion,
+				"kind":       "MeshCircuitBreaker",
+				"metadata":   meta,
+				"spec":       mcbSpec,
+			}
+		}
+		fixedMHC, err := yaml.Marshal(obj)
+		if err != nil {
+			return nil, nil, fmt.Errorf("marshal MeshHealthCheck %q: %w", name, err)
+		}
+		companion, err := yaml.Marshal(mcb)
+		if err != nil {
+			return nil, nil, fmt.Errorf("marshal MeshCircuitBreaker %q: %w", mcbName, err)
+		}
+		docs[i] = fixedMHC
+		companions = append(companions, companion)
+		warnings = append(warnings, fmt.Sprintf(
+			"MeshHealthCheck %q: healthyPanicThreshold moved to companion MeshCircuitBreaker %q "+
+				"(to[].default.outlierDetection.healthyPanicThreshold) — Kuma 3.0 removes the field from "+
+				"MeshHealthCheck. %s",
+			name, mcbName, panicThresholdCaveat))
+	}
+	return append(docs, companions...), warnings, nil
+}
+
+// resolveSystemNamespaceFor keeps a document's own namespace, else falls back
+// to the control-plane namespace.
+func resolveSystemNamespaceFor(ns string, opts TransformOptions) string {
+	if ns != "" {
+		return ns
+	}
+	return resolveSystemNamespace(opts, "")
+}
+
 // fixHealthCheckPanicThresholdForV3 removes healthyPanicThreshold from a
 // hand-written MeshHealthCheck (3.0 rejects the unknown field on the API server
 // and prunes it on Kubernetes) and warns with the MeshCircuitBreaker that carries
-// it on 3.0. The scan pass emits one document per input, so the companion is
-// printed in the warning rather than written.
+// it on 3.0. In the migrate pipeline splitPanicThresholdDocsForV3 runs first and
+// writes the companion as a document, so the to[] case only reaches this
+// function when ScanForDeprecations is called on its own; the scan emits one
+// document per input, so the companion is printed in the warning there.
 func fixHealthCheckPanicThresholdForV3(obj map[string]interface{}, name string) (bool, []string) {
 	spec, ok := obj["spec"].(map[string]interface{})
 	if !ok {
