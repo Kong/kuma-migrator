@@ -119,7 +119,11 @@ to <code>None</code>.</li>
 <code>constraints</code> are deleted. For <code>constraints</code> the warning lists the requirements and
 restrictions that stop being enforced (3.0 has no membership check) and the nearest
 control: dataplane tokens bound to the mesh and tags.</li>
-<li>The <code>meshServices</code> warning adds: drop the field once every zone runs 3.0.</li>
+<li><code>meshServices.mode: Exclusive</code> is kept. A 3.0 control plane accepts it with the
+deprecation warning &quot;meshServices was removed in 3.0 and is ignored&quot;; that is expected.
+The field is needed while any zone runs 2.x (a 2.x zone reads a missing field as
+<code>Disabled</code> and deletes its generated <code>MeshService</code>s). Drop it once every zone runs
+3.0. See <a href="../../topics/meshes/#meshservices-on-30">Meshes</a>.</li>
 </ul>
 <p>Companion policies keep the format of the <code>Mesh</code>: Universal input gives Universal
 documents (<code>type</code>/<code>name</code>/<code>mesh</code>), Kubernetes input gives CRDs in the system namespace

@@ -220,15 +220,15 @@ and any input field no converter consumes is reported.</p>
 </tr>
 <tr>
 <td><code>HealthCheck</code></td>
-<td><code>http.requestHeadersToAdd</code> → <code>{add, set}</code> (<code>append</code> unset means <code>add</code>); <code>tcp.send</code>/<code>receive</code> stay base64</td>
+<td><code>http.requestHeadersToAdd</code> → <code>{add, set}</code> (<code>append</code> unset means <code>add</code>); header names lower-cased (warned); <code>tcp.send</code>/<code>receive</code> stay base64</td>
 </tr>
 <tr>
 <td><code>FaultInjection</code></td>
-<td>The single conf becomes a one-element <code>default.http[]</code></td>
+<td>The single conf becomes a one-element <code>default.http[]</code>; <code>responseBandwidth.limit</code> units rewritten to <code>kbps</code>/<code>Mbps</code>/<code>Gbps</code> (<code>50 mbps</code> → <code>50Mbps</code>, warned)</td>
 </tr>
 <tr>
 <td><code>RateLimit</code></td>
-<td><code>http.{requests, interval}</code> → <code>local.http.requestRate.{num, interval}</code>; emitted as <code>rules[]</code> (a specific <code>sources</code> selector is lost and warned)</td>
+<td><code>http.{requests, interval}</code> → <code>local.http.requestRate.{num, interval}</code>; <code>onRateLimit.headers</code> names lower-cased (warned); emitted as <code>rules[]</code> (a specific <code>sources</code> selector is lost and warned)</td>
 </tr>
 <tr>
 <td><code>TrafficLog</code></td>
@@ -240,7 +240,7 @@ and any input field no converter consumes is reported.</p>
 </tr>
 <tr>
 <td><code>ProxyTemplate</code></td>
-<td><code>modifications</code> → <code>appendModifications</code>; operations recased; <code>httpFilter</code>/<code>networkFilter</code>/<code>virtualHost</code> <code>add</code> → <code>AddLast</code> (warned); <code>imports</code> and <code>resources</code> have no equivalent</td>
+<td><code>modifications</code> → <code>appendModifications</code>; operations recased (<code>addLast</code> → <code>AddLast</code>, <code>patch</code> → <code>Patch</code>, …); <code>httpFilter</code>/<code>networkFilter</code> <code>add</code> → <code>AddLast</code> (warned); <code>imports</code> and <code>resources</code> have no equivalent</td>
 </tr>
 <tr>
 <td><code>TrafficPermission</code></td>
@@ -250,6 +250,48 @@ and any input field no converter consumes is reported.</p>
 </table></div>
 <p>Percentages stay numbers when whole and become strings when fractional, as the new schemas type
 them <code>anyOf: [integer, string]</code>.</p>
+<p>Three value formats are stricter on the new kinds, and the converters rewrite them:</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Legacy accepts</th>
+<th>New kind requires</th>
+<th>Rewrite</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ProxyTemplate</code> <code>operation</code></td>
+<td><code>add</code>, <code>addFirst</code>, <code>addLast</code>, <code>addBefore</code>, <code>addAfter</code>, <code>patch</code>, <code>remove</code></td>
+<td>PascalCase enum: <code>Add</code>/<code>Remove</code>/<code>Patch</code> on <code>cluster</code>, <code>listener</code>, <code>virtualHost</code>; <code>AddFirst</code>/<code>AddBefore</code>/<code>AddAfter</code>/<code>AddLast</code>/<code>Remove</code>/<code>Patch</code> on <code>httpFilter</code>, <code>networkFilter</code></td>
+<td>Recased. A filter <code>add</code> becomes <code>AddLast</code> (warned)</td>
+</tr>
+<tr>
+<td>Header names (<code>HealthCheck</code>, <code>RateLimit</code>)</td>
+<td>any case</td>
+<td>Lower-case RFC 7230 token characters only (<a href="https://github.com/kumahq/kuma/blob/master/api/common/v1alpha1/header.go"><code>header.go</code></a>)</td>
+<td>Lower-cased (HTTP header names are case-insensitive), warned. A name with a character no header can have is warned as rejected</td>
+</tr>
+<tr>
+<td><code>FaultInjection</code> <code>responseBandwidth.limit</code></td>
+<td><code>50 mbps</code> (lower-case <code>kbps</code>/<code>mbps</code>/<code>gbps</code>)</td>
+<td><code>kbps</code>, <code>Mbps</code> or <code>Gbps</code></td>
+<td><code>50 mbps</code> → <code>50Mbps</code>, warned. A value that is not <code>&lt;integer&gt;&lt;unit&gt;</code> is copied and warned</td>
+</tr>
+</tbody>
+</table></div>
+<h2 id="namespace-on-kubernetes">Namespace on Kubernetes</h2>
+<p>The legacy CRDs are cluster-scoped; their successors are namespaced. A converted policy is written
+with <code>metadata.namespace</code> set to the control-plane namespace: the <code>systemNamespace</code> config value,
+else the namespace other input documents show (<code>kong-mesh-system</code> or <code>kuma-system</code>), else
+<code>kuma-system</code> with a warning. In that namespace the control plane always computes
+<code>kuma.io/policy-role: system</code>, so the policy applies mesh-wide as the legacy one did. Without a
+namespace, <code>kubectl apply</code> stores it in the current namespace, where it gets a
+<code>workload-owner</code>/<code>consumer</code> role and only selects that namespace's proxies
+(<a href="https://github.com/kumahq/kuma/blob/master/pkg/core/resources/labels/compute.go"><code>compute.go</code></a>).
+The same applies to <code>OPAPolicy</code> → <code>MeshOPA</code> and to a <code>MeshSubset</code> policy written without a
+namespace.</p>
 <h2 id="what-kuma-migrator-does">What kuma-migrator does</h2>
 <div class="table-wrap"><table>
 <thead>
@@ -561,7 +603,7 @@ covers them, move the threshold into it instead
   </main>
   <nav class="toc" aria-label="On this page">
     <p class="toc-title">On this page</p>
-    <ul><li class="toc-l2"><a href="#selector-shapes">Selector shapes</a></li><li class="toc-l2"><a href="#conf-mapping">Conf mapping</a></li><li class="toc-l2"><a href="#what-kuma-migrator-does">What kuma-migrator does</a></li><li class="toc-l2"><a href="#what-it-cannot-do">What it cannot do</a></li><li class="toc-l3"><a href="#trafficroute">TrafficRoute</a></li><li class="toc-l3"><a href="#virtualoutbound">VirtualOutbound</a></li><li class="toc-l3"><a href="#other-gaps">Other gaps</a></li><li class="toc-l2"><a href="#manual-steps">Manual steps</a></li><li class="toc-l2"><a href="#example">Example</a></li><li class="toc-l2"><a href="#related">Related</a></li></ul>
+    <ul><li class="toc-l2"><a href="#selector-shapes">Selector shapes</a></li><li class="toc-l2"><a href="#conf-mapping">Conf mapping</a></li><li class="toc-l2"><a href="#namespace-on-kubernetes">Namespace on Kubernetes</a></li><li class="toc-l2"><a href="#what-kuma-migrator-does">What kuma-migrator does</a></li><li class="toc-l2"><a href="#what-it-cannot-do">What it cannot do</a></li><li class="toc-l3"><a href="#trafficroute">TrafficRoute</a></li><li class="toc-l3"><a href="#virtualoutbound">VirtualOutbound</a></li><li class="toc-l3"><a href="#other-gaps">Other gaps</a></li><li class="toc-l2"><a href="#manual-steps">Manual steps</a></li><li class="toc-l2"><a href="#example">Example</a></li><li class="toc-l2"><a href="#related">Related</a></li></ul>
   </nav>
 </div>
 <footer class="site-footer">

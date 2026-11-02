@@ -53,7 +53,7 @@ them scanned.
 |---|---|---|
 | `inbound[].tags` | Nothing (inbound tags are required on 2.x) | Non-`kuma.io/` tags moved to `labels`; `kuma.io/service`/`kuma.io/protocol` dropped (reserved prefix); warned |
 | `kuma.io/protocol` inbound tag | — | Copied to `inbound[].protocol` |
-| `outbound[].tags` | — | Converted to `backendRef` when the `kuma.io/service` value decodes to name, namespace and port; warned otherwise |
+| `outbound[].tags` | — | Converted to `backendRef` when the `kuma.io/service` value decodes to name, namespace and port. Otherwise 3.0 rejects the `Dataplane` (`networking.outbound[0].backendRef: must be defined`), so it is written to `_manual/` with the `backendRef` to fill in |
 | `reachableServices` | Warning | Converted to `reachableBackends` refs with labels where the value decodes; warned otherwise |
 | `reachableBackends` refs with `name`/`namespace`, on the `Dataplane` or in the `kuma.io/reachable-backends` annotation | Warning | Rewritten to labels (v3 only: on 2.14 a label selector also matches same-named services from other zones) |
 | Transparent proxy without `reachableBackends` | — | Warning: no outbounds on 3.0 |
@@ -155,7 +155,8 @@ type: Dataplane
 ```
 
 The inbound is converted; the outbound and `reachableServices` are not, because `backend` is a
-Universal name with no port. Warnings (shortened):
+Universal name with no port. The outbound alone makes 3.0 reject the `Dataplane`, so it is
+written to `_manual/` instead of the apply tree. Warnings (shortened):
 
 ```text
 ⚠  3.0 no longer reads the inbound protocol from the kuma.io/protocol tag … Auto-set

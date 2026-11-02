@@ -72,9 +72,12 @@
     <header><span class="target-label">--to-latest v2 (2.x)</span> <span class="status status-converted">converted</span></header>
     <p class="outputs">Output: <a href="../meshproxypatch/"><code>MeshProxyPatch</code></a></p>
     <div class="notes"><p>Selector shape: <code>selectors</code> → <code>spec.targetRef</code>. <code>conf.modifications</code> →
-<code>spec.default.appendModifications</code>, with operations recased (<code>patch</code> → <code>Patch</code>,
-<code>add</code> → <code>Add</code>). <code>httpFilter</code>, <code>networkFilter</code> and <code>virtualHost</code> have no plain <code>Add</code>, so
-<code>add</code> becomes <code>AddLast</code> with a warning.</p>
+<code>spec.default.appendModifications</code>, with every operation recased to the
+<code>MeshProxyPatch</code> enum: <code>add</code>, <code>remove</code>, <code>patch</code>, <code>addFirst</code>, <code>addLast</code>, <code>addBefore</code>,
+<code>addAfter</code> → <code>Add</code>, <code>Remove</code>, <code>Patch</code>, <code>AddFirst</code>, <code>AddLast</code>, <code>AddBefore</code>, <code>AddAfter</code>.
+<code>httpFilter</code> and <code>networkFilter</code> have no plain <code>Add</code>, so <code>add</code> there becomes <code>AddLast</code>
+with a warning; <code>cluster</code>, <code>listener</code> and <code>virtualHost</code> keep <code>Add</code>. A positional
+operation on a kind that does not accept it is warned.</p>
 <p><code>conf.imports</code> and <code>conf.resources</code> have no <code>MeshProxyPatch</code> equivalent and are
 reported, not converted.</p>
 </div>

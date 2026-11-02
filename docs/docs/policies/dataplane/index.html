@@ -87,16 +87,30 @@ be MeshService display names, and 3.0 removes the field.</li>
     <div class="notes"><p>Universal only. The file is labelled <code>SCANNED</code> (&quot;rewritten by the deprecation scan&quot;)
 on stdout and listed under <strong>Scanned Non-Policy Resources</strong> in the report. Rewrites:</p>
 <ul>
-<li><code>networking.gateway</code> (any type) removed; its non-reserved tags move to labels.</li>
-<li>Inbound <code>kuma.io/protocol</code> tag → <code>inbound[].protocol</code>.</li>
-<li><code>inbound[].tags</code> → top-level <code>labels</code>; <code>kuma.io/</code> and <code>k8s.kuma.io/</code> keys are dropped
-(reserved prefixes).</li>
-<li><code>reachableServices</code> → <code>reachableBackends</code> where the name resolves;
-<code>reachableBackends</code> name refs → labels.</li>
-<li>Control-plane-owned labels (e.g. <code>k8s.kuma.io/service-account</code>) removed.</li>
+<li>
+<p><code>networking.gateway</code> (any type) removed; its non-reserved tags move to labels.</p>
+</li>
+<li>
+<p>Inbound <code>kuma.io/protocol</code> tag → <code>inbound[].protocol</code>.</p>
+</li>
+<li>
+<p><code>inbound[].tags</code> → top-level <code>labels</code>; <code>kuma.io/</code> and <code>k8s.kuma.io/</code> keys are dropped
+(reserved prefixes).</p>
+</li>
+<li>
+<p><code>reachableServices</code> → <code>reachableBackends</code> where the name resolves;
+<code>reachableBackends</code> name refs → labels.</p>
+</li>
+<li>
+<p>Control-plane-owned labels (e.g. <code>k8s.kuma.io/service-account</code>) removed.</p>
+</li>
+<li>
+<p><code>outbound[].tags</code> → <code>backendRef</code> (<code>kind: MeshService</code>, labels, port) when the
+<code>kuma.io/service</code> value is <code>&lt;name&gt;_&lt;ns&gt;_svc_&lt;port&gt;</code>. Otherwise the MeshService port is
+not in the manifest: 3.0 rejects the Dataplane (<code>networking.outbound[0].backendRef: must be defined</code>), so it is written to <code>_manual/</code> with the <code>backendRef</code> to fill in.</p>
+</li>
 </ul>
-<p>Reported, not rewritten: <code>outbound[].tags</code> (the MeshService port is not in the manifest;
-use <code>backendRef</code>), <code>advertisedAddress</code>, <code>redirectPortInbound</code>/<code>redirectPortOutbound</code>
+<p>Reported, not rewritten: <code>advertisedAddress</code>, <code>redirectPortInbound</code>/<code>redirectPortOutbound</code>
 (removed in 3.1), <code>ipFamilyMode</code>, and transparent proxying without <code>reachableBackends</code>
 (no outbounds on 3.0).</p>
 </div>

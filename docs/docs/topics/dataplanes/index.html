@@ -210,7 +210,7 @@ them scanned.</p>
 <tr>
 <td><code>outbound[].tags</code></td>
 <td>—</td>
-<td>Converted to <code>backendRef</code> when the <code>kuma.io/service</code> value decodes to name, namespace and port; warned otherwise</td>
+<td>Converted to <code>backendRef</code> when the <code>kuma.io/service</code> value decodes to name, namespace and port. Otherwise 3.0 rejects the <code>Dataplane</code> (<code>networking.outbound[0].backendRef: must be defined</code>), so it is written to <code>_manual/</code> with the <code>backendRef</code> to fill in</td>
 </tr>
 <tr>
 <td><code>reachableServices</code></td>
@@ -341,7 +341,8 @@ then re-inject every pod.</li>
 <span class="nt">type</span><span class="p">:</span> <span class="l">Dataplane</span>
 </code></pre></div>
 <p>The inbound is converted; the outbound and <code>reachableServices</code> are not, because <code>backend</code> is a
-Universal name with no port. Warnings (shortened):</p>
+Universal name with no port. The outbound alone makes 3.0 reject the <code>Dataplane</code>, so it is
+written to <code>_manual/</code> instead of the apply tree. Warnings (shortened):</p>
 <div class="code"><pre class="chroma" data-lang="text"><code><span class="o-warn">⚠</span>  3.0 no longer reads the inbound protocol from the kuma.io/protocol tag … Auto-set
    inbound[].protocol from the tag: inbound port 8080=http.
 <span class="o-warn">⚠</span>  networking.inbound[].tags is removed in 3.0 and dropped silently on apply … Auto-moved to

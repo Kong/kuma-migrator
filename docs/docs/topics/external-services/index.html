@@ -148,7 +148,7 @@ were <code>true</code>. The newer one (&quot;Outbound passthrough defaults to <c
 <tr>
 <td><code>MeshExternalService</code> TLS <code>inline</code> (base64)</td>
 <td>Warning</td>
-<td>Warning only. Rewriting means decoding credential material and writing it back in clear text, which is your decision</td>
+<td>Not rewritten: that means decoding credential material and writing it back in clear text, which is your decision. 3.0 rejects the field (<code>spec.tls.verification.caCert.inline: unknown field</code>), so the document is written to <code>_manual/</code>; rewrite it there and apply it by hand</td>
 </tr>
 <tr>
 <td><code>MeshExternalService</code> and no <code>MeshIdentity</code> for its mesh in the input</td>

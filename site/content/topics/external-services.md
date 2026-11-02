@@ -39,7 +39,7 @@ and [MeshPassthrough](policy:MeshPassthrough). Kuma 3.0 removes `ExternalService
 | `ExternalService` | `MeshExternalService`: `networking.address` → `endpoints[]` + `match.port`; `kuma.io/protocol` tag → `match.protocol`; `match.type: HostnameGenerator`; `networking.tls` → `tls` with `verification.mode: Secured` | Same, with the TLS data sources in the `SecureDataSource` shape, plus the delete-before-upgrade advisory |
 | `ExternalService` with a `unix://` address | Error | Error |
 | `MeshExternalService` TLS `inlineString` / `secret` | Warning: rewrite on 2.14.6+ | Rewritten: `type: InsecureInline` + `insecureInline.value`, or `type: Secret` + `secretRef` |
-| `MeshExternalService` TLS `inline` (base64) | Warning | Warning only. Rewriting means decoding credential material and writing it back in clear text, which is your decision |
+| `MeshExternalService` TLS `inline` (base64) | Warning | Not rewritten: that means decoding credential material and writing it back in clear text, which is your decision. 3.0 rejects the field (`spec.tls.verification.caCert.inline: unknown field`), so the document is written to `_manual/`; rewrite it there and apply it by hand |
 | `MeshExternalService` and no `MeshIdentity` for its mesh in the input | — | Warning: clients get `503 cluster_not_found` on 3.0 |
 | `MeshExternalService` with a `kuma.io/zone` label | — | Warning: per-zone routing removed |
 | `Mesh.networking.outbound.passthrough` | `false` → `MeshPassthrough` `None`; `true` → removed, with a warning | `false` → `None`; `true` → `MeshPassthrough` `All`; unset → warning |

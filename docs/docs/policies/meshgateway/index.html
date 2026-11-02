@@ -88,12 +88,19 @@ instance. An instance without <code>spec.tags[&quot;kuma.io/service&quot;]</code
 none leaves <code>REPLACE-WITH-YOUR-GATEWAYCLASS</code> and warns.</li>
 <li><code>spec.selectors</code> has no Gateway API equivalent and is reported.</li>
 </ul>
+<p><strong>Universal input</strong> is copied unchanged, with an advisory that 3.0 removes the built-in
+gateway: Universal has no Gateway API, so a <code>Gateway</code> could not be applied
+(<code>kumactl apply</code>: <code>invalid resource type</code>).</p>
 </div>
   </section>
   <section class="target-card">
     <header><span class="target-label">--to-latest v3 (3.0)</span> <span class="status status-converted">converted</span></header>
     <p class="outputs">Output: <code>Gateway</code></p>
-    <div class="notes"><p>The listener block and <code>metadata.namespace</code> are converted as on v2, but
+    <div class="notes"><p><strong>Universal input</strong> is rejected by the target and written to <code>_manual/</code> unchanged, with
+the delegated-gateway steps for Universal: run your gateway on a <code>Dataplane</code> without
+<code>kuma.io/gateway</code> and start <code>kuma-dp</code> with <code>--exclude-inbound-ports</code> covering its listen
+ports. Kubernetes input:</p>
+<p>The listener block and <code>metadata.namespace</code> are converted as on v2, but
 <code>gatewayClassName</code> is always <code>REPLACE-WITH-YOUR-GATEWAYCLASS</code>: 3.0 has no Gateway or GatewayClass reconciler. Set it to
 the class of the gateway implementation you adopt, and rejoin the workload as a delegated
 gateway (<code>traffic.kuma.io/exclude-inbound-ports</code> on the pod, <code>kuma.io/ignore: &quot;true&quot;</code> on
@@ -114,7 +121,7 @@ object stored under it.</p>
 <ul class="link-list"><li><a href="../../topics/gateways/">Gateways, Gateway API and GAMMA</a> — The built-in gateway removal in Kuma 3.0, MeshGateway* to Gateway API, delegated gateways, and why MeshHTTPRoute and MeshTCPRoute stay.</li></ul>
 
 <h2 id="source-files">Source files</h2>
-<ul class="link-list"><li><a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/gateway.go"><code>pkg/migrator/gateway.go</code></a></li></ul>
+<ul class="link-list"><li><a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/gateway.go"><code>pkg/migrator/gateway.go</code></a></li><li><a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/gateway_universal.go"><code>pkg/migrator/gateway_universal.go</code></a></li></ul>
 
     </article>
     <nav class="pager" aria-label="Previous and next page">

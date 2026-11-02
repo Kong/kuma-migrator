@@ -20,7 +20,7 @@ naming is unconditional and the `meshServices` switch has no effect.
 | 2.14 | `HostnameGenerator` templates validated at creation (RFC 1123 subdomain); `MeshMultiZoneService` names over 63 characters deprecated ([UPGRADE](https://github.com/kumahq/kuma/blob/master/UPGRADE.md)) |
 | 3.0 | `meshServices` has no effect; unified naming is unconditional. The field stays as deprecated so stored values keep syncing to 2.x zones. 3.0 rejects any mode other than `Exclusive` ([UPGRADE](https://github.com/kumahq/kuma/blob/master/UPGRADE.md#meshservices-removed-from-the-mesh-schema)) |
 | 3.0 | Policies select `MeshService` by `labels` only ([UPGRADE](https://github.com/kumahq/kuma/blob/master/UPGRADE.md#real-resource-policy-selection-now-uses-labels-only)) |
-| 3.0 | `MeshService` `spec.selector.dataplaneTags` removed; an unmigrated selector is dropped and the `MeshService` matches no proxies ([UPGRADE](https://github.com/kumahq/kuma/blob/master/UPGRADE.md#dataplanetags-removed-from-the-meshservice-selector)) |
+| 3.0 | `MeshService` `spec.selector.dataplaneTags` removed: a write that still carries it is rejected (`spec.selector.dataplaneTags: unknown field`), and a stored one loses its selector and matches no proxies ([UPGRADE](https://github.com/kumahq/kuma/blob/master/UPGRADE.md#dataplanetags-removed-from-the-meshservice-selector)) |
 | 3.0 | `MeshService` `spec.identities[]` accepts SPIFFE IDs only (`type: ServiceTag` rejected) ([UPGRADE](https://github.com/kumahq/kuma/blob/master/UPGRADE.md#meshservicespecidentities-now-accepts-spiffe-ids-only)) |
 | 3.0 | Non-RFC 1035 names rejected ([UPGRADE](https://github.com/kumahq/kuma/blob/master/UPGRADE.md#names-of-mesh-zone-meshservice-meshexternalservice-and-meshmultizoneservice-must-be-rfc-1035-labels)) |
 | 3.0 | `reachableServices` removed; `reachableBackends` refs select by `labels` only; a transparent-proxy data plane without `reachableBackends` gets no outbounds ([UPGRADE](https://github.com/kumahq/kuma/blob/master/UPGRADE.md#data-plane-proxies-without-reachablebackends-get-no-outbounds)) |
@@ -61,7 +61,7 @@ namespace and port; a Universal value is used as the name.
 | `rules[]` and `to[]` in one policy | Split: `rules[]` keeps the name, `to[]` goes to `<name>-outbound` | Same |
 | `Mesh` | `meshServices.mode: Exclusive` injected, with a warning to migrate policies and workloads first | Same, with the mixed-version note |
 | `MeshService` `ports[].protocol` | Renamed to `appProtocol` | Same |
-| `MeshService` `selector.dataplaneTags` | Advisory | Rewritten to `dataplaneLabels.matchLabels`; a `kuma.io/`-prefixed tag is not converted (reserved label prefix) and is warned |
+| `MeshService` `selector.dataplaneTags` | Advisory | Rewritten to `dataplaneLabels.matchLabels`; a `kuma.io/`-prefixed tag is not converted (reserved label prefix), and the `MeshService` is written to `_manual/` because 3.0 rejects it |
 | `MeshService` `identities[]` `type: ServiceTag` | Advisory | Entry dropped |
 | `Dataplane` `reachableServices` | Warning | Converted to `reachableBackends` refs with labels where the value decodes; warned otherwise |
 | `reachableBackends` ref by `name`/`namespace` | — | Rewritten to labels |
@@ -224,12 +224,14 @@ Warning on both targets:
 ```
 
 A Universal `MeshService` still selecting by `dataplaneTags: {kuma.io/service: backend}` is
-reported but not rewritten under `v3`, because `kuma.io/service` cannot be a `Dataplane` label:
+not rewritten under `v3`, because `kuma.io/service` cannot be a `Dataplane` label. 3.0 rejects
+it as written, so it goes to `_manual/`:
 
 ```text
-⚠  MeshService "backend": spec.selector.dataplaneTags is removed in 3.0 and dropped silently,
-   leaving a MeshService that matches no proxies. Not converted: kuma.io/service=backend cannot
-   be a Dataplane label (reserved kuma.io/ prefix), and dropping it would widen the selector. …
+⚠  MeshService "backend": spec.selector.dataplaneTags is removed in 3.0 — a 3.0 control plane
+   rejects the MeshService as written (unknown field), so it is kept out of the apply tree. Not
+   converted: kuma.io/service=backend cannot be a Dataplane label (reserved kuma.io/ prefix), and
+   dropping it would widen the selector. …
 ```
 
 ## Related

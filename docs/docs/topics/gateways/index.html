@@ -222,6 +222,11 @@ entries accept only the three service kinds (no <code>Mesh</code>). The full per
 <td>Same</td>
 </tr>
 <tr>
+<td>Universal <code>MeshGateway</code>, <code>MeshGatewayRoute</code></td>
+<td>Copied unchanged (valid on 2.14), with an advisory that 3.0 removes them. Universal has no Gateway API, so no <code>Gateway</code>/<code>HTTPRoute</code>/<code>TCPRoute</code> is generated</td>
+<td><strong>Rejected by target</strong>: the original goes to <code>_manual/</code>, with the delegated-gateway steps for Universal (a <code>Dataplane</code> without <code>kuma.io/gateway</code>, <code>kuma-dp --exclude-inbound-ports</code> over the listen ports) and a note to delete the objects before upgrading</td>
+</tr>
+<tr>
 <td><code>MeshHTTPRoute</code>, <code>MeshTCPRoute</code></td>
 <td>Copied unchanged (Passthrough) and scanned</td>
 <td><code>targetRef</code>/<code>to[]</code>/<code>backendRefs</code> <code>name</code>/<code>namespace</code> → labels; a <code>MeshServiceSubset</code> backendRef whose only tag is <code>kuma.io/service</code> → <code>MeshService</code>; other tags warned. Advisory when a <code>MeshHTTPRoute</code> has no catch-all rule (<code>404</code> change). Warning when a <code>MeshHTTPRoute</code> <code>backendRefs[]</code> entry names a <code>port</code>/<code>sectionName</code> that the <code>MeshService</code> in the input does not have (matched by port name or number, never <code>targetPort</code>); a <code>MeshService</code> missing from the input is noted once per run</td>
@@ -241,6 +246,9 @@ entries accept only the three service kinds (no <code>Mesh</code>). The full per
 <p>Code: <a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/gateway.go"><code>gateway.go</code></a>,
 <a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/gatewayroute.go"><code>gatewayroute.go</code></a>,
 <a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/v3_gateway.go"><code>v3_gateway.go</code></a>.</p>
+<p>The Gateway API conversions apply to Kubernetes input only. On Universal there is no API server
+to store a <code>Gateway</code> or <code>HTTPRoute</code>, and <code>kumactl apply</code> rejects them
+(<code>invalid resource type</code>).</p>
 <h3 id="why-meshhttproute-is-not-converted-to-httproute">Why MeshHTTPRoute is not converted to HTTPRoute</h3>
 <p>Rewriting a hand-written <code>MeshHTTPRoute</code> as a Gateway API <code>HTTPRoute</code> is not part of any upgrade,
 and it changes behaviour:</p>

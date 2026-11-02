@@ -74,15 +74,17 @@
     <div class="notes"><ul>
 <li><code>to[].default.loadBalancer.{ringHash,maglev}.hashPolicies</code> → <code>to[].default.hashPolicies</code>
 (auto-fixed).</li>
-<li><code>hashPolicies[].type: SourceIP</code> is reported; use <code>type: Connection</code> with
-<code>connection.sourceIP: true</code>.</li>
+<li><code>hashPolicies[].type: SourceIP</code> → <code>type: Connection</code> with <code>connection.sourceIP: true</code>
+(auto-fixed, at either location). 2.14 accepts <code>SourceIP</code> but builds no Envoy hash
+policy from it, so source-IP hashing starts to take effect once the output is applied;
+the warning says so.</li>
 </ul>
 </div>
   </section>
   <section class="target-card">
     <header><span class="target-label">--to-latest v3 (3.0)</span> <span class="status status-rewritten">rewritten</span></header>
     <p class="outputs">Output: <a href="./"><code>MeshLoadBalancingStrategy</code></a></p>
-    <div class="notes"><p>v2 rewrites, plus:</p>
+    <div class="notes"><p>v2 rewrites (3.0 removes <code>SourceIP</code> from the enum and rejects it), plus:</p>
 <ul>
 <li><code>to[].default.localityAwareness.crossZone</code> on an entry whose <code>targetRef.kind</code> is not
 <code>MeshMultiZoneService</code> is reported; 3.0 rejects it.</li>

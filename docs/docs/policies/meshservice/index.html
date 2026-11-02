@@ -73,8 +73,9 @@
     <p class="outputs">Output: <a href="./"><code>MeshService</code></a></p>
     <div class="notes"><ul>
 <li><code>spec.ports[].protocol</code> → <code>appProtocol</code> (auto-fixed).</li>
-<li><code>spec.selector.dataplaneTags</code> is reported: 3.0 drops it silently and the service
-matches no proxies. Not rewritten on v2: on 2.14 a labels selector also matches
+<li><code>spec.selector.dataplaneTags</code> is reported: a 3.0 control plane rejects the
+MeshService on write (<code>spec.selector.dataplaneTags: unknown field</code>), and one already
+stored loses its selector and matches no proxies. Not rewritten on v2: on 2.14 a labels selector also matches
 same-named services synced from other zones.</li>
 <li>Names that are not RFC 1035 labels are reported.</li>
 </ul>
@@ -86,7 +87,10 @@ same-named services synced from other zones.</li>
     <div class="notes"><ul>
 <li><code>ports[].protocol</code> → <code>appProtocol</code>.</li>
 <li><code>selector.dataplaneTags</code> → <code>selector.dataplaneLabels.matchLabels</code>. The keys must exist
-as labels on the Dataplanes (Pod labels on Kubernetes, top-level labels on Universal).</li>
+as labels on the Dataplanes (Pod labels on Kubernetes, top-level labels on Universal).
+A selector with a reserved <code>kuma.io/</code> key (such as <code>kuma.io/service</code>) or one that
+conflicts with existing <code>matchLabels</code> is not converted; 3.0 rejects it as an unknown
+field, so the MeshService is written to <code>_manual/</code>.</li>
 <li><code>identities[]</code> entries of <code>type: ServiceTag</code> removed; add <code>type: SpiffeID</code> entries if
 clients need them.</li>
 <li>Control-plane-owned labels removed.</li>

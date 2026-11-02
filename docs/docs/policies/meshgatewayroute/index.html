@@ -92,12 +92,17 @@ namespace is still unknown is reported instead.</li>
 <p>A warning states the alternative successor: if Kuma should keep routing this traffic,
 write a <code>MeshHTTPRoute</code>/<code>MeshTCPRoute</code>. Kuma never reconciles <code>TCPRoute</code>; only the
 gateway implementation you adopt does.</p>
+<p><strong>Universal input</strong> is copied unchanged with a 3.0 advisory: Universal has no Gateway
+API.</p>
 </div>
   </section>
   <section class="target-card">
     <header><span class="target-label">--to-latest v3 (3.0)</span> <span class="status status-converted">converted</span></header>
     <p class="outputs">Output: <code>HTTPRoute</code>, <code>TCPRoute</code>, <code>ReferenceGrant</code></p>
-    <div class="notes"><p>Same conversion. Generated routes carry <code>kuma.io/mesh</code> as a label and integer
+    <div class="notes"><p><strong>Universal input</strong> is rejected by the target and written to <code>_manual/</code> unchanged, with
+the same delegated-gateway guidance as <a href="../meshgateway/">MeshGateway</a>. Kubernetes
+input:</p>
+<p>Same conversion. Generated routes carry <code>kuma.io/mesh</code> as a label and integer
 <code>backendRefs[].port</code>. 3.0 ignores HTTPRoutes whose parentRef is a <code>Gateway</code>, so only your
 gateway implementation reconciles them. Delete the source <code>MeshGatewayRoute</code> before
 upgrading.</p>
@@ -115,7 +120,7 @@ upgrading.</p>
 <ul class="link-list"><li><a href="../../topics/gateways/">Gateways, Gateway API and GAMMA</a> — The built-in gateway removal in Kuma 3.0, MeshGateway* to Gateway API, delegated gateways, and why MeshHTTPRoute and MeshTCPRoute stay.</li></ul>
 
 <h2 id="source-files">Source files</h2>
-<ul class="link-list"><li><a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/gatewayroute.go"><code>pkg/migrator/gatewayroute.go</code></a></li><li><a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/gateway.go"><code>pkg/migrator/gateway.go</code></a></li></ul>
+<ul class="link-list"><li><a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/gatewayroute.go"><code>pkg/migrator/gatewayroute.go</code></a></li><li><a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/gateway.go"><code>pkg/migrator/gateway.go</code></a></li><li><a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/gateway_universal.go"><code>pkg/migrator/gateway_universal.go</code></a></li></ul>
 
     </article>
     <nav class="pager" aria-label="Previous and next page">
