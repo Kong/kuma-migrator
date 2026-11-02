@@ -23,7 +23,8 @@ import (
 //
 //   - the 12 legacy policies (kuma UPGRADE.md "Legacy policy resources removed")
 //   - ExternalService ("Legacy ExternalService resource removed")
-//   - the built-in gateway: MeshGateway, MeshGatewayRoute, MeshGatewayInstance
+//   - the built-in gateway: MeshGateway, MeshGatewayRoute, MeshGatewayInstance,
+//     MeshGatewayConfig ("Built-in gateway API and CRDs removed")
 //   - ZoneIngress / ZoneEgress ("ZoneIngress and ZoneEgress resources removed";
 //     zone proxies are Dataplanes with zone proxy listeners)
 //   - Kong Mesh OPAPolicy and MeshGlobalRateLimit (UPGRADE_km.md)
@@ -44,6 +45,7 @@ var removedInV3SourceKinds = map[string]bool{
 	"MeshGateway":         true,
 	"MeshGatewayRoute":    true,
 	"MeshGatewayInstance": true,
+	"MeshGatewayConfig":   true,
 	"ZoneIngress":         true,
 	"ZoneEgress":          true,
 	"OPAPolicy":           true,
@@ -67,6 +69,16 @@ func v3DeleteBeforeUpgradeNote(kind, name string, converted bool) string {
 	}
 	if !isRemovedInV3Kind(kind) {
 		return ""
+	}
+	if kind == "MeshGatewayConfig" {
+		return fmt.Sprintf(
+			"MeshGatewayConfig %q: removed in 3.0 with the rest of the built-in gateway API "+
+				"(MeshGateway, MeshGatewayRoute, MeshGatewayInstance) and its CRD "+
+				"meshgatewayconfigs.kuma.io. The 3.0 Helm upgrade deletes the CRD and every object "+
+				"stored under it. Carry its settings (replicas, service type, pod and container "+
+				"resources) over to the Deployment and Service of the gateway you run, then delete "+
+				"it before upgrading. The original is kept under %s/ and is not part of any apply step.",
+			name, ManualDir)
 	}
 	if converted {
 		return fmt.Sprintf(
@@ -110,8 +122,17 @@ var kumactlDeleteType = map[string]string{
 // globalScopedRemovedKinds are removed kinds that have no mesh association, so
 // `kumactl delete` must not be given --mesh.
 var globalScopedRemovedKinds = map[string]bool{
-	"ZoneIngress": true,
-	"ZoneEgress":  true,
+	"ZoneIngress":       true,
+	"ZoneEgress":        true,
+	"MeshGatewayConfig": true,
+}
+
+// kubernetesOnlyRemovedKinds are removed kinds that exist only as Kubernetes
+// CRDs (no Universal resource type, nothing kumactl can address), so their
+// delete command is always kubectl. MeshGatewayConfig is cluster-scoped.
+var kubernetesOnlyRemovedKinds = map[string]bool{
+	"MeshGatewayInstance": true,
+	"MeshGatewayConfig":   true,
 }
 
 // ---- 3.0 resource type registry (for RBAC type lists) -----------------------

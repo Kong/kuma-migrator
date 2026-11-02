@@ -80,6 +80,7 @@ namespace.
 migrated/
   konnect-global-prod-global-ctx/
     mesh-default/
+      backends/                      ← MeshOpenTelemetryBackend, applied first
       resiliency/
         MeshTimeout-my-timeout.yaml
       routing/
@@ -107,7 +108,7 @@ migrated/
 | Kuma resources from a mesh directory | `<ctx>/mesh-<mesh>/<sub>/` |
 | Kuma resources with no mesh directory | `<ctx>/global-scoped-resources/<sub>/` |
 | Gateway API output (`Gateway`, `HTTPRoute`, `TCPRoute`, `GatewayClass`, `ReferenceGrant`) | `<ctx>/global-scoped-resources/<sub>/`, even when the source came from a mesh directory. `ReferenceGrant` has no kind subfolder of its own and lands in `other/` |
-| Documents a 3.0 control plane cannot accept (`--to-latest v3`) | `<ctx>/_manual/<same relative path>` |
+| Documents a 3.0 control plane cannot accept (`--to-latest v3`), and converted output the target rejects as written (either target) | `<ctx>/_manual/<same relative path>` |
 | Flat input (no context directory) | `<sub>/` |
 
 Gateway API resources are Kubernetes-native objects applied to the clusters that run the
@@ -127,13 +128,15 @@ One input document can produce several output documents:
 | `Mesh*` policy with both `from[]` and `to[]` | the `to[]` half as `<name>-outbound` |
 | `Mesh` with embedded observability or passthrough | `MeshMetric`, `MeshTrace`, `MeshAccessLog`, `MeshPassthrough` |
 | `Mesh` under `--to-latest v3` | `MeshTLS` (permissive backend), `MeshPassthrough` |
-| Inline OpenTelemetry endpoint under `--to-latest v3` | `MeshOpenTelemetryBackend` in `other/` |
+| Inline OpenTelemetry endpoint under `--to-latest v3` | `MeshOpenTelemetryBackend` in `backends/`, which the Apply Checklist applies before the policies that select it |
 | `MeshGatewayRoute` with a cross-namespace backend | `ReferenceGrant` |
 | `MeshGatewayInstance` under `--to-latest v2` | `GatewayClass` + `MeshGatewayConfig` |
 
 Errored documents are copied unchanged. Under `--to-latest v2` the copy stays in the apply
 tree, since applying it back to the 2.x control plane it came from changes nothing. Under
-`--to-latest v3` it goes to `_manual/`, which no apply step uses.
+`--to-latest v3` it goes to `_manual/`, which no apply step uses. When a transform knowingly
+produces output the target rejects, that output (not the original) goes to `_manual/` on
+either target, and the report lists it under **Action Items → Errors** with the reason.
 
 ## Scenarios
 

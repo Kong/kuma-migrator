@@ -3,8 +3,33 @@ package migrator
 import (
 	"strings"
 
+	"github.com/Kong/kuma-migrator/pkg/resource"
 	"sigs.k8s.io/yaml"
 )
+
+// backendsSubfolder holds resources that policies reference by label and that
+// must exist before those policies are applied. The Apply Checklist applies it
+// first in each context.
+const backendsSubfolder = "backends"
+
+// outputSubfolder is the migrate output subdirectory for kind. It follows
+// resource.KindSubfolder (the extract layout) except for kinds that policies
+// reference through backendRef.labels:
+//
+//   - MeshOpenTelemetryBackend: MeshTrace, MeshAccessLog and MeshMetric select it
+//     by labels. The 3.0 validators only check the shape of the reference
+//     (validators.ValidateBackendResourceRef), not that a backend exists, so a
+//     policy applied first is accepted and the control plane skips the dangling
+//     backend ("MeshOpenTelemetryBackend not found, skipping backend") until the
+//     backend is applied. Telemetry is lost in between. resource.KindSubfolder
+//     puts it in other/, which the checklist applies after observability/.
+func outputSubfolder(kind string) string {
+	switch kind {
+	case "MeshOpenTelemetryBackend":
+		return backendsSubfolder
+	}
+	return resource.KindSubfolder(kind)
+}
 
 // outputDocFilename derives a file name for a single marshalled YAML document
 // using its kind, namespace (if any), and name.

@@ -95,9 +95,10 @@ fields that 2.14 still requires, so it is never applied before the upgrade. See
    upgraded. A 2.x zone reads a missing field as `Disabled` and stops serving `MeshService`
    outbounds and DNS
    ([Kuma `UPGRADE.md`](https://github.com/kumahq/kuma/blob/v3.0.1/UPGRADE.md#meshservices-removed-from-the-mesh-schema)).
-   The `Mesh` files in `./migrated-v2` set it; apply them last, as the checklist says, once
-   every workload and policy uses `MeshService` names. See
-   [MeshService](../topics/meshservice.md).
+   The `v3` Apply Checklist prints the command for each mesh (`kubectl patch`, or
+   `kumactl get | yq | kumactl apply`), which changes only `meshServices`. Run it once every
+   workload and policy uses `MeshService` names. Do not apply the `v3` `Mesh` files here: they
+   drop `spec.mtls`. See [MeshService](../topics/meshservice.md).
 7. **Migrate to v3** and review the report.
 
    ```bash
@@ -150,9 +151,10 @@ order are described in [Apply](apply.md). Two points matter for an upgrade plan:
 
 - The checklist always contains the "Upgrade the Global Control Plane" and "Upgrade Zone
   Control Planes" steps. In a `v2` run used to prepare on the current version, skip them.
-- In a `v3` run, the checklist orders the steps as: fix errors, delete the removed kinds,
-  upgrade, apply policies, apply `Mesh` last. The `Mesh` step there comes after the upgrade,
-  but `meshServices.mode: Exclusive` must already be set before it (step 6 above).
+- In a `v3` run, the checklist orders the steps as: fix errors, finish the `MeshIdentity`
+  cutover (when a `Mesh` sets `spec.mtls`), set `meshServices.mode: Exclusive` on every mesh,
+  delete the removed kinds, upgrade, apply backends then policies, apply the `Mesh` files. The
+  first four run on 2.14; the `Mesh` files, which drop `spec.mtls`, are applied only on 3.0.
 
 ## Read Delete Before Upgrading to 3.0
 
@@ -165,8 +167,9 @@ This section is written by `--to-latest v3` runs only. One row per source object
 | Kind, Name, Namespace / mesh | The object to delete |
 | Replacement | `converted (see the apply steps)`, or `none — manual migration` with the path of the `_manual/` copy |
 
-The collapsed block under the table holds the delete commands, `kubectl delete` or
-`kumactl delete` depending on how the context was extracted. 3.0 rejects these kinds and does
+The collapsed block under the table holds the delete commands: `kumactl delete` for a
+context extracted with `kumactl` from a Universal or Konnect control plane, `kubectl delete`
+otherwise (a Kubernetes-backed control plane refuses `kumactl` writes). 3.0 rejects these kinds and does
 not migrate stored objects, so they must be deleted on 2.14. For a row marked `converted`,
 the replacement must come from the `v2` output applied in step 4: the `v3` replacement is
 not valid on 2.14.

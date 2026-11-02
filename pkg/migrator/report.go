@@ -58,18 +58,26 @@ func writeMarkdown(b *strings.Builder, r *MigrationReport) {
 	linef(b, "| Files processed | %d |", r.TotalFiles)
 	linef(b, "| Migrated | %d |", r.MigratedCount)
 	linef(b, "| Already migrated | %d |", r.AlreadyDoneCount)
+	linef(b, "| Scanned (non-policy, rewritten or flagged) | %d |", r.ScannedCount)
+	if r.ManualCount > 0 {
+		linef(b, "| Kept under `%s/` (kind removed) | %d |", ManualDir, r.ManualCount)
+	}
 	linef(b, "| Skipped (non-policy) | %d |", r.SkippedCount)
 	linef(b, "| Errors | %d |", r.ErrorCount)
 	line(b, "")
 
 	// ── Classify files ────────────────────────────────────────────────────────
-	var errFiles, migratedFiles, alreadyFiles, skippedFiles []FileReport
+	var errFiles, migratedFiles, alreadyFiles, scannedFiles, manualFiles, skippedFiles []FileReport
 	for _, fr := range r.Files {
 		switch fr.Label {
 		case labelError, labelPartialError:
 			errFiles = append(errFiles, fr)
 		case labelAlreadyDone:
 			alreadyFiles = append(alreadyFiles, fr)
+		case labelScanned:
+			scannedFiles = append(scannedFiles, fr)
+		case labelManual:
+			manualFiles = append(manualFiles, fr)
 		case labelSkipped, labelSkippedEmpty:
 			skippedFiles = append(skippedFiles, fr)
 		default:
@@ -89,7 +97,7 @@ func writeMarkdown(b *strings.Builder, r *MigrationReport) {
 		line(b, "> enable `spec.meshServices.mode: Exclusive` which disables legacy routing.")
 		line(b, "")
 
-		subfolderOrder := []string{"resiliency", "routing", "zero-trust", "observability", "other", "mesh"}
+		subfolderOrder := []string{backendsSubfolder, "resiliency", "routing", "zero-trust", "observability", "other", "mesh"}
 
 		bySubfolder := map[string][]FileReport{}
 		for _, fr := range migratedFiles {
@@ -168,14 +176,52 @@ func writeMarkdown(b *strings.Builder, r *MigrationReport) {
 		}
 	}
 
+	// ── Scanned non-policy resources ──────────────────────────────────────────
+	// Not policies (Dataplane, workloads, ...), but ScanForDeprecations rewrote
+	// or flagged them. They used to be listed under "Skipped", which read as
+	// "nothing happened" while the output file had changed.
+	if len(scannedFiles) > 0 {
+		line(b, "## Scanned Non-Policy Resources")
+		line(b, "")
+		line(b, "These files hold no policy, but the deprecation scan rewrote or flagged them.")
+		line(b, "They are written to the output tree and applied with the rest.")
+		line(b, "")
+		for _, fr := range scannedFiles {
+			linef(b, "- `%s` — %s%s", fr.FileName, scannedReason(fr), alreadyMigratedSuffix(fr))
+		}
+		line(b, "")
+		for _, fr := range scannedFiles {
+			writeFileNotes(b, fr)
+		}
+	}
+
+	// ── Kept under _manual/ ───────────────────────────────────────────────────
+	if len(manualFiles) > 0 {
+		linef(b, "## Kept Under `%s/`", ManualDir)
+		line(b, "")
+		linef(b, "%s removes the kinds in these files and there is no conversion. They are copied under", targetLine(r.Target))
+		linef(b, "`%s/` for reference and no apply step uses them. See **Delete Before Upgrading to 3.0**.", ManualDir)
+		line(b, "")
+		for _, fr := range manualFiles {
+			for _, p := range fr.ManualRelPaths {
+				linef(b, "- `%s` → `%s`", fr.FileName, p)
+			}
+		}
+		line(b, "")
+		for _, fr := range manualFiles {
+			writeFileNotes(b, fr)
+		}
+	}
+
 	// ── Skipped ───────────────────────────────────────────────────────────────
 	if len(skippedFiles) > 0 {
 		line(b, "## Skipped")
 		line(b, "")
-		line(b, "No recognised Kuma policy documents found in these files.")
+		line(b, "No Kuma policy and nothing to change in these files. Each is either copied unchanged")
+		line(b, "to the output tree or, when its kind is on the skip list, not written.")
 		line(b, "")
 		for _, fr := range skippedFiles {
-			linef(b, "- `%s`%s", fr.FileName, alreadyMigratedSuffix(fr))
+			linef(b, "- `%s` — %s%s", fr.FileName, skippedReason(fr), alreadyMigratedSuffix(fr))
 		}
 		line(b, "")
 		for _, fr := range skippedFiles {
@@ -202,7 +248,10 @@ func writeMarkdown(b *strings.Builder, r *MigrationReport) {
 				for _, dc := range fr.Changes {
 					if dc.ErrMsg != "" {
 						linef(b, "- %s", dc.ErrMsg)
-						if dc.ManualRelPath != "" {
+						switch {
+						case dc.Rejected && dc.ManualRelPath != "":
+							linef(b, "  - Converted output kept at `%s`. The target control plane rejects it as written, so it is not part of any apply step.", dc.ManualRelPath)
+						case dc.ManualRelPath != "":
 							linef(b, "  - Original kept at `%s`. It is not part of any apply step.", dc.ManualRelPath)
 						}
 					}
@@ -576,25 +625,21 @@ func writeV3DeleteBeforeUpgrade(b *strings.Builder, r *MigrationReport, isPlan b
 	}
 	line(b, "")
 
-	// Commands, per extraction tool.
-	metaCache := map[string]*extractor.ContextMeta{}
-	toolFor := func(cpModeDir string) string {
-		m, ok := metaCache[cpModeDir]
-		if !ok {
-			m = extractor.ReadContextMeta(r.InputDir, cpModeDir)
-			metaCache[cpModeDir] = m
-		}
-		if m != nil && m.Tool == "kumactl" {
-			return "kumactl"
-		}
-		return "kubectl"
+	// Commands, per write tool of each context (kubectl for a Kubernetes-backed
+	// CP even when it was extracted with kumactl; see resolveContextTool).
+	toolFor := newContextToolResolver(r)
+	if anyKumactlOnKubernetes(r, entries) {
+		line(b, "> Some contexts were extracted with `kumactl` from a Kubernetes-backed control plane.")
+		line(b, "> `kumactl` cannot delete resources there, so their commands use `kubectl`: run them")
+		line(b, "> against the cluster that hosts that control plane.")
+		line(b, "")
 	}
 	line(b, "<details>")
 	line(b, "<summary>delete commands</summary>")
 	line(b, "")
 	line(b, "```bash")
 	for _, e := range entries {
-		linef(b, "%s", v3DeleteCommand(e, toolFor(e.CPModeDir)))
+		linef(b, "%s", v3DeleteCommand(e, toolFor(e.CPModeDir).Tool))
 	}
 	line(b, "```")
 	line(b, "</details>")
@@ -618,7 +663,7 @@ func hasKind(entries []v3Deletion, kind string) bool {
 
 // v3DeleteCommand renders the delete command for one removed-kind object.
 func v3DeleteCommand(e v3Deletion, tool string) string {
-	if tool == "kumactl" {
+	if tool == "kumactl" && !kubernetesOnlyRemovedKinds[e.Kind] {
 		typ, ok := kumactlDeleteType[e.Kind]
 		if !ok {
 			typ = strings.ToLower(e.Kind)
@@ -678,7 +723,41 @@ func writeApplyChecklist(b *strings.Builder, r *MigrationReport, isPlan bool) {
 		n++
 	}
 
-	if r.Target.IsV3() && len(collectV3Deletions(r)) > 0 {
+	v3 := r.Target.IsV3()
+	toolFor := newContextToolResolver(r)
+	meshes := collectMeshes(r)
+
+	// v3: the MeshIdentity cutover must be finished on 2.x. 3.0 stops producing
+	// mTLS from Mesh.mtls and drops the legacy CA from the trust bundle, with no
+	// rolling path back (UPGRADE.md "Mesh.mtls no longer produces mTLS").
+	if v3 {
+		if names := meshesWithMTLS(meshes); len(names) > 0 {
+			linef(b, "**%d. Finish the `MeshIdentity` cutover on the 2.x control plane** for every mesh that still uses `spec.mtls`: %s.", n, strings.Join(names, ", "))
+			line(b, "   Create a `MeshIdentity` and `MeshTrust` that select every proxy of the mesh and confirm")
+			line(b, "   traffic is mTLS'd by them (see the `Mesh` warnings above). 3.0 ignores `spec.mtls`, so a")
+			line(b, "   mesh without a `MeshIdentity` serves plaintext after the upgrade.")
+			line(b, "   > Do **not** apply the `--to-latest v3` `Mesh` files yet: they drop `spec.mtls`, which turns")
+			line(b, "   > mTLS off on a 2.x control plane. They are applied after the upgrade.")
+			line(b, "")
+			n++
+		}
+	}
+
+	// v3: meshServices.mode must be Exclusive before the Global CP is upgraded
+	// (UPGRADE.md "meshServices removed from the Mesh schema"): a 2.x zone reads
+	// a missing field as Disabled and a 3.0 zone rejects any other mode.
+	if v3 {
+		linef(b, "**%d. Set `meshServices.mode: Exclusive` on every mesh, on the 2.x Global control plane, before upgrading it.**", n)
+		line(b, "   3.0 makes unified naming unconditional and its zones reject a mesh with any other mode; a 2.x")
+		line(b, "   zone reads a missing field as `Disabled` and deletes every generated `MeshService`. `Exclusive`")
+		line(b, "   stops legacy `kuma.io/service` routing, so workloads must already use the new addresses.")
+		line(b, "   These commands change only `meshServices` and keep `spec.mtls`; do not apply the v3 `Mesh` files here.")
+		line(b, "")
+		writeMeshExclusiveCommands(b, meshes, toolFor)
+		n++
+	}
+
+	if v3 && len(collectV3Deletions(r)) > 0 {
 		linef(b, "**%d. Delete the resources 3.0 removes** listed under **Delete Before Upgrading to 3.0** below, on the 2.x control plane.", n)
 		line(b, "   The 3.0 control plane rejects them and does not migrate stored ones. If one still serves")
 		line(b, "   traffic (ExternalService, MeshGateway*, OPAPolicy), first apply its replacement on 2.14 from a")
@@ -728,7 +807,13 @@ func writeApplyChecklist(b *strings.Builder, r *MigrationReport, isPlan bool) {
 	}
 
 	if len(nonMeshDirs) > 0 {
-		linef(b, "**%d. Apply policies** (resiliency, routing, zero-trust, observability) in the order below:", n)
+		if hasSubfolder(nonMeshDirs, backendsSubfolder) {
+			linef(b, "**%d. Apply backends, then policies** in the order below. `%s/` comes first in each context:", n, backendsSubfolder)
+			line(b, "   policies select a `MeshOpenTelemetryBackend` by label, and until it exists the control plane")
+			line(b, "   skips that backend and the telemetry is lost.")
+		} else {
+			linef(b, "**%d. Apply policies** (resiliency, routing, zero-trust, observability) in the order below:", n)
+		}
 		line(b, "")
 		n++
 		var prevCPDir string
@@ -742,10 +827,17 @@ func writeApplyChecklist(b *strings.Builder, r *MigrationReport, isPlan bool) {
 	}
 
 	if len(meshDirs) > 0 {
-		linef(b, "**%d. Apply `Mesh` CRs last:**", n)
-		line(b, "")
-		line(b, "   > These CRs set `spec.meshServices.mode: Exclusive`, which disables legacy `kuma.io/service`")
-		line(b, "   > routing. **Do not apply until all policies and workload env vars are migrated.**")
+		if v3 {
+			linef(b, "**%d. Apply the `Mesh` CRs** once every control plane runs 3.0 and the `MeshIdentity` cutover is done:", n)
+			line(b, "")
+			line(b, "   > These files have `spec.mtls` and the other fields 3.0 removed dropped. 3.0 ignores those")
+			line(b, "   > fields, so applying them now only makes the stored `Mesh` match what 3.0 uses.")
+		} else {
+			linef(b, "**%d. Apply `Mesh` CRs last:**", n)
+			line(b, "")
+			line(b, "   > These CRs set `spec.meshServices.mode: Exclusive`, which disables legacy `kuma.io/service`")
+			line(b, "   > routing. **Do not apply until all policies and workload env vars are migrated.**")
+		}
 		line(b, "")
 		n++
 		var prevCPDir string
@@ -756,11 +848,13 @@ func writeApplyChecklist(b *strings.Builder, r *MigrationReport, isPlan bool) {
 			}
 			writeApplyDirCommands(b, d, r.OutputDir)
 		}
-		line(b, "   > If any `Mesh` CRs were not in the input directory, patch them manually:")
-		line(b, "   > ```bash")
-		line(b, "   > kubectl patch mesh <name> --type merge -p '{\"spec\":{\"meshServices\":{\"mode\":\"Exclusive\"}}}'")
-		line(b, "   > ```")
-		line(b, "")
+		if !v3 {
+			line(b, "   > If any `Mesh` CRs were not in the input directory, set the mode on them directly:")
+			line(b, "   > ```bash")
+			line(b, "   > "+meshExclusiveCommand("<name>", toolFor(meshDirs[0].CPModeDir)))
+			line(b, "   > ```")
+			line(b, "")
+		}
 	}
 
 	linef(b, "**%d. Verify traffic health.** Check service-to-service connectivity across all meshes.", n)
@@ -778,10 +872,199 @@ func writeApplyChecklist(b *strings.Builder, r *MigrationReport, isPlan bool) {
 	line(b, "")
 }
 
+// ── Mesh helpers ──────────────────────────────────────────────────────────────
+
+// meshEntry is one Mesh document of the input.
+type meshEntry struct {
+	Name      string
+	CPModeDir string
+	MTLS      bool // carries spec.mtls
+}
+
+// collectMeshes lists the Mesh documents of the input, in report order.
+func collectMeshes(r *MigrationReport) []meshEntry {
+	var out []meshEntry
+	seen := map[string]bool{}
+	for _, fr := range r.Files {
+		for _, dc := range fr.Changes {
+			if dc.InputKind != "Mesh" || dc.InputName == "" {
+				continue
+			}
+			key := fr.CPModeDir + "/" + dc.InputName
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			out = append(out, meshEntry{Name: dc.InputName, CPModeDir: fr.CPModeDir, MTLS: dc.MeshMTLS})
+		}
+	}
+	return out
+}
+
+// meshesWithMTLS returns the backquoted names of the meshes that set spec.mtls.
+func meshesWithMTLS(meshes []meshEntry) []string {
+	var names []string
+	seen := map[string]bool{}
+	for _, m := range meshes {
+		if m.MTLS && !seen[m.Name] {
+			seen[m.Name] = true
+			names = append(names, "`"+m.Name+"`")
+		}
+	}
+	return names
+}
+
+// meshExclusiveCommand sets meshServices.mode: Exclusive on one Mesh without
+// touching its other fields. kumactl has no patch command, so the kumactl form
+// round-trips the stored Universal resource through yq (v4).
+func meshExclusiveCommand(name string, t contextTool) string {
+	if t.Tool == "kumactl" {
+		return fmt.Sprintf(`kumactl get mesh %s -o yaml | yq '.meshServices.mode = "Exclusive"' | kumactl apply -f -`, name)
+	}
+	return fmt.Sprintf(`kubectl patch mesh %s --type merge -p '{"spec":{"meshServices":{"mode":"Exclusive"}}}'`, name)
+}
+
+// writeMeshExclusiveCommands writes, per context, the command that sets
+// meshServices.mode: Exclusive on each Mesh of the input, plus the command for
+// meshes that are not in the input.
+func writeMeshExclusiveCommands(b *strings.Builder, meshes []meshEntry, toolFor func(string) contextTool) {
+	byCtx := map[string][]meshEntry{}
+	var ctxs []string
+	for _, m := range meshes {
+		if _, ok := byCtx[m.CPModeDir]; !ok {
+			ctxs = append(ctxs, m.CPModeDir)
+		}
+		byCtx[m.CPModeDir] = append(byCtx[m.CPModeDir], m)
+	}
+	sort.SliceStable(ctxs, func(i, j int) bool {
+		ri, rj := applyDirCPRank(ctxs[i]), applyDirCPRank(ctxs[j])
+		if ri != rj {
+			return ri < rj
+		}
+		return ctxs[i] < ctxs[j]
+	})
+	for _, ctx := range ctxs {
+		t := toolFor(ctx)
+		if ctx != "" {
+			writeContextHeader(b, applyDirInfo{CPModeDir: ctx, Tool: t.Tool, IsKonnect: t.IsKonnect,
+				Context: t.Context, KumactlOnKubernetes: t.KumactlOnKubernetes})
+		}
+		line(b, "   ```bash")
+		for _, m := range byCtx[ctx] {
+			linef(b, "   %s", meshExclusiveCommand(m.Name, t))
+		}
+		line(b, "   ```")
+		line(b, "")
+	}
+	other := contextTool{Tool: "kubectl"}
+	if len(ctxs) > 0 {
+		other = toolFor(ctxs[0])
+	}
+	if len(meshes) > 0 {
+		line(b, "   > Meshes that are not in the input need the same change. List them and set the mode on each:")
+	} else {
+		line(b, "   > No `Mesh` was in the input. List the meshes and set the mode on each:")
+	}
+	line(b, "   > ```bash")
+	if other.Tool == "kumactl" {
+		line(b, "   > kumactl get meshes")
+	} else {
+		line(b, "   > kubectl get meshes")
+	}
+	line(b, "   > "+meshExclusiveCommand("<name>", other))
+	line(b, "   > ```")
+	line(b, "")
+}
+
+// ── Write tool per context ────────────────────────────────────────────────────
+
+// contextTool is the CLI the checklist uses to write to one context's control
+// plane.
+type contextTool struct {
+	Tool      string // "kubectl" or "kumactl"
+	IsKonnect bool
+	Context   string // context name recorded by extract
+	// KumactlOnKubernetes: extracted with kumactl, but the CP is Kubernetes-backed,
+	// so writes go through kubectl.
+	KumactlOnKubernetes bool
+}
+
+// resolveContextTool picks the write tool for a context from its extract
+// metadata. kumactl refuses to create, update or delete resources on a
+// Kubernetes-backed control plane (they are CRDs, owned by the Kubernetes API),
+// so a context extracted with kumactl from such a CP is written with kubectl.
+// kumactl stays for Universal CPs and for Konnect, whose hosted Global CP has no
+// Kubernetes API and is written with kumactl (Konnect docs, "apply resources to
+// Konnect"). Without metadata (older or hand-made input) kubectl is assumed.
+func resolveContextTool(meta *extractor.ContextMeta) contextTool {
+	if meta == nil {
+		return contextTool{Tool: "kubectl"}
+	}
+	t := contextTool{Tool: meta.Tool, IsKonnect: meta.IsKonnect, Context: meta.Context}
+	if t.Tool != "kumactl" {
+		t.Tool = "kubectl"
+		return t
+	}
+	if !meta.IsKonnect && meta.Environment == extractor.CPEnvKubernetes {
+		t.Tool = "kubectl"
+		t.KumactlOnKubernetes = true
+	}
+	return t
+}
+
+// newContextToolResolver returns a cached resolveContextTool lookup by context
+// directory.
+func newContextToolResolver(r *MigrationReport) func(cpModeDir string) contextTool {
+	cache := map[string]contextTool{}
+	return func(cpModeDir string) contextTool {
+		if t, ok := cache[cpModeDir]; ok {
+			return t
+		}
+		t := resolveContextTool(extractor.ReadContextMeta(r.InputDir, cpModeDir))
+		cache[cpModeDir] = t
+		return t
+	}
+}
+
+// anyKumactlOnKubernetes reports whether any delete entry belongs to a context
+// extracted with kumactl from a Kubernetes-backed CP.
+func anyKumactlOnKubernetes(r *MigrationReport, entries []v3Deletion) bool {
+	toolFor := newContextToolResolver(r)
+	for _, e := range entries {
+		if toolFor(e.CPModeDir).KumactlOnKubernetes {
+			return true
+		}
+	}
+	return false
+}
+
+// hasSubfolder reports whether any apply dir is the given kind subfolder.
+func hasSubfolder(dirs []applyDirInfo, sub string) bool {
+	for _, d := range dirs {
+		if d.Subfolder == sub {
+			return true
+		}
+	}
+	return false
+}
+
 // writeContextHeader writes the context label line before a group of apply commands.
 // For kumactl contexts it adds a use-context reminder; for kubectl contexts it's plain.
 func writeContextHeader(b *strings.Builder, d applyDirInfo) {
-	if d.Tool == "kumactl" {
+	switch {
+	case d.KumactlOnKubernetes:
+		linef(b, "   **Context `%s`** (kubectl — extracted with kumactl from a Kubernetes-backed control plane):", d.CPModeDir)
+		ctxName := d.Context
+		if ctxName == "" {
+			ctxName = d.CPModeDir
+		}
+		linef(b, "   > `kumactl` cannot create, update or delete resources on a Kubernetes-backed control plane, so use")
+		linef(b, "   > `kubectl` against the cluster that runs the control plane of kumactl context `%s`.", ctxName)
+		if d.UniversalFiles {
+			line(b, "   > These files are in Universal format (`type`/`name`/`mesh`), which `kubectl` cannot apply.")
+			line(b, "   > Re-run `kuma-migrator extract` with `--output-format kubernetes`, then `migrate` again.")
+		}
+	case d.Tool == "kumactl":
 		label := "kumactl"
 		if d.IsKonnect {
 			label = "kumactl — Konnect-hosted CP"
@@ -792,7 +1075,7 @@ func writeContextHeader(b *strings.Builder, d applyDirInfo) {
 			ctxName = d.CPModeDir // fallback
 		}
 		linef(b, "   > Set the active context first: `kumactl config use-context %s`", ctxName)
-	} else {
+	default:
 		linef(b, "   **Context `%s`**:", d.CPModeDir)
 	}
 	line(b, "")
@@ -825,10 +1108,15 @@ type applyDirInfo struct {
 	RelDir    string   // relative to outputDir
 	CPModeDir string   // first path component (context label)
 	Subfolder string   // last path component ("resiliency", "mesh", etc.)
-	Tool      string   // "kubectl", "kumactl", or "" (unknown/legacy — defaults to kubectl)
+	Tool      string   // write tool: "kubectl" or "kumactl" (resolveContextTool)
 	IsKonnect bool     // true when the CP is Konnect-hosted (from extraction metadata)
 	Context   string   // original kumactl/kubectl context name (from extraction metadata)
 	Files     []string // output file paths relative to outputDir, in this dir (for kumactl)
+	// KumactlOnKubernetes: extracted with kumactl from a Kubernetes-backed CP;
+	// Tool is kubectl.
+	KumactlOnKubernetes bool
+	// UniversalFiles: at least one file in the dir is in Universal format.
+	UniversalFiles bool
 }
 
 // collectApplyDirs returns all distinct output directories derived from the
@@ -837,7 +1125,8 @@ type applyDirInfo struct {
 // Tool metadata is read from .kuma-migrator.json files written by kuma-migrator extract.
 func collectApplyDirs(r *MigrationReport) []applyDirInfo {
 	subOrder := map[string]int{
-		"resiliency": 0, "routing": 1, "zero-trust": 2, "observability": 3,
+		backendsSubfolder: -1, // referenced by label from observability policies
+		"resiliency":      0, "routing": 1, "zero-trust": 2, "observability": 3,
 		"gateway": 4, "workload": 4, "other": 4, "mesh": 99,
 	}
 	subRank := func(s string) int {
@@ -847,16 +1136,7 @@ func collectApplyDirs(r *MigrationReport) []applyDirInfo {
 		return 50
 	}
 
-	// Cache metadata per cpModeDir to avoid repeated file reads.
-	metaCache := map[string]*extractor.ContextMeta{}
-	getMeta := func(cpModeDir string) *extractor.ContextMeta {
-		if m, ok := metaCache[cpModeDir]; ok {
-			return m
-		}
-		m := extractor.ReadContextMeta(r.InputDir, cpModeDir)
-		metaCache[cpModeDir] = m
-		return m
-	}
+	toolFor := newContextToolResolver(r)
 
 	// Collect distinct dirs and their files.
 	dirMap := map[string]*applyDirInfo{} // relDir → info
@@ -876,28 +1156,24 @@ func collectApplyDirs(r *MigrationReport) []applyDirInfo {
 				}
 				subfolder := path.Base(relDir)
 
-				tool := ""
-				isKonnect := false
-				contextName := ""
-				if meta := getMeta(cpModeDir); meta != nil {
-					tool = meta.Tool
-					isKonnect = meta.IsKonnect
-					contextName = meta.Context
-				}
-
+				t := toolFor(cpModeDir)
 				info := &applyDirInfo{
-					FullDir:   filepath.Join(r.OutputDir, relDir),
-					RelDir:    relDir,
-					CPModeDir: cpModeDir,
-					Subfolder: subfolder,
-					Tool:      tool,
-					IsKonnect: isKonnect,
-					Context:   contextName,
+					FullDir:             filepath.Join(r.OutputDir, relDir),
+					RelDir:              relDir,
+					CPModeDir:           cpModeDir,
+					Subfolder:           subfolder,
+					Tool:                t.Tool,
+					IsKonnect:           t.IsKonnect,
+					Context:             t.Context,
+					KumactlOnKubernetes: t.KumactlOnKubernetes,
 				}
 				dirMap[relDir] = info
 				dirOrder = append(dirOrder, relDir)
 			}
 			dirMap[relDir].Files = append(dirMap[relDir].Files, relPath)
+			if fr.UniversalOutput {
+				dirMap[relDir].UniversalFiles = true
+			}
 		}
 	}
 

@@ -1,16 +1,17 @@
 package migrator
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 
 	"github.com/Kong/kuma-migrator/pkg/config"
 	"github.com/Kong/kuma-migrator/pkg/extractor"
-	"github.com/Kong/kuma-migrator/pkg/resource"
 	"github.com/Kong/kuma-migrator/pkg/ui"
 	"sigs.k8s.io/yaml"
 )
@@ -26,26 +27,39 @@ type DocChange struct {
 	InputMesh      string   // mesh of the source object (Universal `mesh` or the kuma.io/mesh label); may be empty
 	Warnings       []string // per-document warnings
 	ErrMsg         string   // non-empty if transformation failed
-	// ManualRelPath is set under --to-latest v3 when the document was written to
-	// the ManualDir subtree instead of the apply tree (relative to outputDir).
+	// ManualRelPath is set when the document was written to the ManualDir
+	// subtree instead of the apply tree (relative to outputDir).
 	ManualRelPath string
+	// Rejected is set when the transform returned a *RejectedByTargetError: the
+	// output exists but the target control plane rejects it, so it went to
+	// ManualDir. ErrMsg carries the reason.
+	Rejected bool
+	// Rewritten is set for a non-policy document (ScenarioSkipped) whose output
+	// differs from the input, i.e. the deprecation scan changed it.
+	Rewritten bool
+	// MeshMTLS is set for a Mesh document that carries spec.mtls (top-level
+	// mtls in Universal format). The Apply Checklist uses it under v3.
+	MeshMTLS bool
 }
 
 // FileReport captures the transformation results for a single YAML file.
 type FileReport struct {
 	FileName        string
-	Label           string // e.g. "MIGRATED LEGACY", "ALREADY MIGRATED", "SKIP", "ERROR"
-	Subfolder       string // output subdirectory (e.g. "resiliency", "mesh")
-	CPModeDir       string // CP mode prefix from input path (e.g. "global", "zone", "standalone")
-	OutputCPModeDir string // effective output CP mode dir (may differ from CPModeDir for GW resources from global)
-	MeshDir         string // mesh directory from input path (e.g. "default", "prod"); empty for flat/legacy layout
-	InputRelPath    string // input file path relative to inputDir
+	Label           string   // e.g. "MIGRATED LEGACY", "ALREADY MIGRATED", "SKIP", "ERROR"
+	Subfolder       string   // output subdirectory (e.g. "resiliency", "mesh")
+	CPModeDir       string   // CP mode prefix from input path (e.g. "global", "zone", "standalone")
+	OutputCPModeDir string   // effective output CP mode dir (may differ from CPModeDir for GW resources from global)
+	MeshDir         string   // mesh directory from input path (e.g. "default", "prod"); empty for flat/legacy layout
+	InputRelPath    string   // input file path relative to inputDir
 	OutputRelPath   string   // primary output file path relative to outputDir (first doc, for stdout)
 	OutputRelPaths  []string // all output file paths relative to outputDir (all docs, for report)
 	// ManualRelPaths are the files written under ManualDir (v3 only). They are
 	// not in OutputRelPaths, so no apply step lists them.
 	ManualRelPaths []string
-	HasError       bool
+	// UniversalOutput is set when an apply-tree document is in Universal
+	// format (type/name/mesh), which kubectl cannot apply.
+	UniversalOutput bool
+	HasError        bool
 	Changes         []DocChange
 	EnvVarHits      []EnvVarHit
 	AnnotHits       []AnnotationHit
@@ -63,6 +77,8 @@ type MigrationReport struct {
 	TotalFiles       int
 	MigratedCount    int
 	AlreadyDoneCount int
+	ScannedCount     int // non-policy files the deprecation scan rewrote or flagged
+	ManualCount      int // files whose documents all went to ManualDir without error
 	SkippedCount     int
 	ErrorCount       int
 
@@ -121,7 +137,7 @@ func Migrate(inputDir, outputDir, meshFilter string, target TargetVersion) error
 func isKindSubfolder(s string) bool {
 	switch s {
 	case "resiliency", "routing", "zero-trust", "mesh", "observability", "other",
-		"gateway", "workload":
+		"gateway", "workload", backendsSubfolder:
 		return true
 	}
 	return false
@@ -237,6 +253,10 @@ func runMigration(inputDir, outputDir string, writeFiles bool, meshFilter string
 			report.MigratedCount++
 		case labelAlreadyDone:
 			report.AlreadyDoneCount++
+		case labelScanned:
+			report.ScannedCount++
+		case labelManual:
+			report.ManualCount++
 		case labelSkipped, labelSkippedEmpty:
 			report.SkippedCount++
 		case labelError, labelPartialError:
@@ -276,14 +296,21 @@ func runMigration(inputDir, outputDir string, writeFiles bool, meshFilter string
 // Label constants — used to classify file results consistently across stdout
 // output and the Markdown report.
 const (
-	labelMigratedLegacy    = "MIGRATED LEGACY"
-	labelMigratedSubset    = "MIGRATED SUBSET"
-	labelMigratedRules    = "MIGRATED RULES"
-	labelMigratedMesh = "MIGRATED MESH"
-	labelMigratedES   = "MIGRATED ES"
-	labelMigratedGW   = "MIGRATED GW"
-	labelMigratedOPA  = "MIGRATED OPA"
-	labelAlreadyDone  = "ALREADY MIGRATED"
+	labelMigratedLegacy = "MIGRATED LEGACY"
+	labelMigratedSubset = "MIGRATED SUBSET"
+	labelMigratedRules  = "MIGRATED RULES"
+	labelMigratedMesh   = "MIGRATED MESH"
+	labelMigratedES     = "MIGRATED ES"
+	labelMigratedGW     = "MIGRATED GW"
+	labelMigratedOPA    = "MIGRATED OPA"
+	labelAlreadyDone    = "ALREADY MIGRATED"
+	// labelScanned: not a policy, but the deprecation scan rewrote it or warned
+	// about it. Written to the output tree like any other document.
+	labelScanned = "SCANNED"
+	// labelManual: every document of the file is a kind the target removes and
+	// went to ManualDir without a conversion error (e.g. ZoneIngress,
+	// MeshGatewayConfig, MeshGlobalRateLimit under v3).
+	labelManual       = "MANUAL"
 	labelSkipped      = "SKIP"
 	labelSkippedEmpty = "SKIP (empty)"
 	labelError        = "ERROR"
@@ -379,6 +406,37 @@ func isGatewayAPIOutputKind(kind string) bool {
 	return false
 }
 
+// transformDocument is the per-document transform processFile calls. It is a
+// variable so tests can substitute a fake (e.g. one returning a
+// *RejectedByTargetError) without building an input that triggers it.
+var transformDocument = TransformDocumentWithOptions
+
+// sameYAML reports whether two YAML documents hold the same data, ignoring
+// formatting and key order.
+func sameYAML(a, b []byte) bool {
+	var oa, ob interface{}
+	if err := yaml.Unmarshal(a, &oa); err != nil {
+		return false
+	}
+	if err := yaml.Unmarshal(b, &ob); err != nil {
+		return false
+	}
+	return reflect.DeepEqual(oa, ob)
+}
+
+// meshHasMTLS reports whether a Mesh document sets mtls (spec.mtls on
+// Kubernetes, top-level mtls in Universal format).
+func meshHasMTLS(raw []byte) bool {
+	var obj map[string]interface{}
+	if err := yaml.Unmarshal(raw, &obj); err != nil {
+		return false
+	}
+	if spec, ok := obj["spec"].(map[string]interface{}); ok && spec["mtls"] != nil {
+		return true
+	}
+	return obj["mtls"] != nil
+}
+
 // outputDoc is one document to write, with the DocChange it came from.
 type outputDoc struct {
 	raw    []byte
@@ -407,10 +465,14 @@ func processFile(inputPath, outputDir, cpModeDir, meshDir string, writeFile bool
 	v3 := opts.Target.IsV3()
 	var outputDocs []outputDoc
 	foundA, foundB, foundC, foundD, foundMesh, foundES, foundGW, foundOPA, foundSkipped := false, false, false, false, false, false, false, false, false
+	foundScanned, foundManual := false, false
 
 	for _, doc := range docs {
 		kind, name2 := probeKindName(doc)
 		dc := DocChange{InputKind: kind, InputName: name2, InputNamespace: probeNamespace(doc), InputMesh: probeMesh(doc)}
+		if kind == "Mesh" {
+			dc.MeshMTLS = meshHasMTLS(doc)
+		}
 
 		if skip.skips(kind, isUniversalShape(doc)) {
 			dc.Scenario = ScenarioSkipped
@@ -419,11 +481,28 @@ func processFile(inputPath, outputDir, cpModeDir, meshDir string, writeFile bool
 			continue
 		}
 
-		results, warnings, scenario, tErr := TransformDocumentWithOptions(doc, opts)
+		results, warnings, scenario, tErr := transformDocument(doc, opts)
 		dc.Scenario = scenario
 		dc.Warnings = warnings
 		changeIdx := len(fr.Changes)
-		if tErr != nil {
+		var rejected *RejectedByTargetError
+		manualNoErr := false // a document went to ManualDir without an error
+		switch {
+		case tErr != nil && errors.As(tErr, &rejected):
+			// The transform produced output, but the target control plane rejects
+			// it. Keep it out of the apply tree, like an errored conversion, but
+			// keep the converted output (it is closer to the end state than the
+			// original). Without output, keep the original.
+			dc.ErrMsg = tErr.Error()
+			dc.Rejected = true
+			fr.HasError = true
+			if len(results) == 0 {
+				results = [][]byte{doc}
+			}
+			for _, res := range results {
+				outputDocs = append(outputDocs, outputDoc{raw: res, change: changeIdx, manual: true})
+			}
+		case tErr != nil:
 			dc.ErrMsg = tErr.Error()
 			fr.HasError = true
 			// Preserve the original. Under v3 it goes to ManualDir: it is either a
@@ -432,12 +511,15 @@ func processFile(inputPath, outputDir, cpModeDir, meshDir string, writeFile bool
 			// in the apply tree: it came from the 2.x CP it is applied back to, so
 			// re-applying it unchanged is a no-op.
 			outputDocs = append(outputDocs, outputDoc{raw: doc, change: changeIdx, manual: v3})
-		} else {
+		default:
 			for _, res := range results {
 				// v3: a result that is still a removed kind (MeshGlobalRateLimit,
-				// ZoneIngress, ZoneEgress pass through unconverted) is not applicable.
+				// ZoneIngress, ZoneEgress, MeshGatewayConfig pass through
+				// unconverted) is not applicable.
 				outKind, _ := probeKindName(res)
-				outputDocs = append(outputDocs, outputDoc{raw: res, change: changeIdx, manual: v3 && isRemovedInV3Kind(outKind)})
+				manual := v3 && isRemovedInV3Kind(outKind)
+				manualNoErr = manualNoErr || manual
+				outputDocs = append(outputDocs, outputDoc{raw: res, change: changeIdx, manual: manual})
 			}
 		}
 		if v3 {
@@ -469,7 +551,20 @@ func processFile(inputPath, outputDir, cpModeDir, meshDir string, writeFile bool
 		case ScenarioOPAPolicy:
 			foundOPA = true
 		case ScenarioSkipped:
-			foundSkipped = true
+			// Not a policy, but every document still goes through
+			// ScanForDeprecations, which can rewrite it (e.g. Dataplane inbound
+			// tags under v3) or warn about it (pod-template annotations).
+			if tErr == nil {
+				dc.Rewritten = len(results) != 1 || !sameYAML(doc, results[0])
+			}
+			if dc.Rewritten || len(dc.Warnings) > 0 {
+				foundScanned = true
+			} else {
+				foundSkipped = true
+			}
+		}
+		if manualNoErr {
+			foundManual = true
 		}
 
 		fr.Changes = append(fr.Changes, dc)
@@ -485,13 +580,13 @@ func processFile(inputPath, outputDir, cpModeDir, meshDir string, writeFile bool
 	// Determine the primary subfolder from the first output document.
 	if len(outputDocs) > 0 {
 		kind, _ := probeKindName(outputDocs[0].raw)
-		fr.Subfolder = resource.KindSubfolder(kind)
+		fr.Subfolder = outputSubfolder(kind)
 	}
 
 	for _, od := range outputDocs {
 		doc := od.raw
 		kind, _ := probeKindName(doc)
-		sub := resource.KindSubfolder(kind)
+		sub := outputSubfolder(kind)
 		// Compute output directory (context-first layout, mirrors extract output):
 		//   <outputDir>/<cpModeDir>/<meshDir>/<sub>   when context+mesh present; GW API → global/
 		//   <outputDir>/<cpModeDir>/global/<sub>       when context set but no mesh (or GW API redirect)
@@ -531,6 +626,9 @@ func processFile(inputPath, outputDir, cpModeDir, meshDir string, writeFile bool
 				}
 			} else {
 				fr.OutputRelPaths = append(fr.OutputRelPaths, relSlash)
+				if isUniversalShape(doc) {
+					fr.UniversalOutput = true
+				}
 			}
 		}
 
@@ -565,6 +663,10 @@ func processFile(inputPath, outputDir, cpModeDir, meshDir string, writeFile bool
 		fr.Label = labelMigratedGW
 	case foundOPA:
 		fr.Label = labelMigratedOPA
+	case foundManual && len(fr.OutputRelPaths) == 0:
+		fr.Label = labelManual
+	case foundScanned:
+		fr.Label = labelScanned
 	case foundC:
 		fr.Label = labelAlreadyDone
 	case foundSkipped:
@@ -609,6 +711,34 @@ func probeKindName(raw []byte) (kind, name string) {
 
 // ---- Stdout printer ---------------------------------------------------------
 
+// targetLine names the release line a target describes, for short messages.
+func targetLine(t TargetVersion) string {
+	if t.IsV3() {
+		return "3.0"
+	}
+	return "2.x"
+}
+
+// scannedReason is the stdout detail for a labelScanned file.
+func scannedReason(fr FileReport) string {
+	for _, dc := range fr.Changes {
+		if dc.Rewritten {
+			return "not a policy; rewritten by the deprecation scan"
+		}
+	}
+	return "not a policy; copied unchanged, see warnings"
+}
+
+// skippedReason is the stdout detail for a labelSkipped file: either the skip
+// list kept it out of the output, or it is not a Kuma policy and was copied
+// unchanged.
+func skippedReason(fr FileReport) string {
+	if len(fr.OutputRelPaths) == 0 && len(fr.ManualRelPaths) == 0 {
+		return "on the skip list; not written"
+	}
+	return "not a Kuma policy; copied unchanged"
+}
+
 func printReportToStdout(r *MigrationReport) {
 	for _, fr := range r.Files {
 		mesh := fr.MeshDir
@@ -633,8 +763,12 @@ func printReportToStdout(r *MigrationReport) {
 			ui.FileMigrated("OPA", mesh, fr.FileName)
 		case labelAlreadyDone:
 			ui.FileAlreadyMigrated(mesh, fr.FileName)
+		case labelScanned:
+			ui.FileScanned(mesh, fr.FileName, scannedReason(fr))
+		case labelManual:
+			ui.FileManual(mesh, fr.FileName, fmt.Sprintf("kind removed in %s; kept under %s/, not applied", targetLine(r.Target), ManualDir))
 		case labelSkipped:
-			ui.FileSkipped(mesh, fr.FileName, "no recognised Kuma policy documents")
+			ui.FileSkipped(mesh, fr.FileName, skippedReason(fr))
 		default:
 			ui.FileSkipped(mesh, fr.FileName, "empty after parsing")
 		}
@@ -667,7 +801,15 @@ func printReportToStdout(r *MigrationReport) {
 		}
 	}
 
-	ui.Summary(r.TotalFiles, r.MigratedCount, r.AlreadyDoneCount, r.SkippedCount, r.ErrorCount)
+	ui.Summary(ui.SummaryCounts{
+		Total:       r.TotalFiles,
+		Migrated:    r.MigratedCount,
+		AlreadyDone: r.AlreadyDoneCount,
+		Scanned:     r.ScannedCount,
+		Manual:      r.ManualCount,
+		Skipped:     r.SkippedCount,
+		Errors:      r.ErrorCount,
+	})
 
 	if len(r.AddressMappings) > 0 {
 		ui.SectionHeader("Service address mapping")
