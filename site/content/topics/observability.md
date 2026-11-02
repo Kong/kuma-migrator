@@ -170,7 +170,7 @@ a second mesh-wide `MeshAccessLog` with the same backend (see "What it cannot do
 
 With `--to-latest v2` the `MeshTrace` is copied unchanged, with this warning (shortened):
 
-```
+```text
 ⚠  MeshTrace "otel-trace": an inline openTelemetry.endpoint is deprecated in Kuma 2.14 and removed
    in 3.0 — define a MeshOpenTelemetryBackend resource and reference it via backendRef. … Do NOT
    make this change while any control plane or data plane is still below 2.14 …

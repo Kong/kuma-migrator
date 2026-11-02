@@ -15,8 +15,8 @@
 <meta property="og:image" content="https://kong.github.io/kuma-migrator/assets/migration-overview.svg">
 <meta name="twitter:card" content="summary_large_image">
 
+<link rel="stylesheet" href="../../static/shared.css">
 <link rel="stylesheet" href="../../static/style.css">
-<link rel="stylesheet" href="../../static/chroma.css">
 </head>
 <body data-root="../../">
 <a class="skip" href="#content">Skip to content</a>
@@ -30,6 +30,7 @@
       <a href="../../policies/">Policies</a>
       <a href="https://github.com/Kong/kuma-migrator">GitHub</a>
     </nav>
+    <!-- release-tag --><a class="release-badge" href="https://github.com/Kong/kuma-migrator/releases/latest" title="Latest release: v0.8.0">v0.8.0</a><!-- /release-tag -->
     <div class="search">
       <input id="search-input" type="search" placeholder="Search docs" aria-label="Search docs" autocomplete="off">
       <ul id="search-results" hidden></ul>
@@ -59,34 +60,34 @@ global-scoped files) and the file name. Two faint lines below show the input pat
 the first output path (<code>→</code>), relative to <code>--input-dir</code> and <code>--output-dir</code>. Warnings follow as
 <code>⚠</code>, errors as <code>✗</code>.</p>
 <p>Output of <code>migrate --dry-run</code> on a Global and a Zone context (warnings shortened):</p>
-<pre><code>  kuma-migrator  migrate --dry-run
+<div class="code"><pre class="chroma" data-lang="text"><code>  kuma-migrator  migrate --dry-run
 
-  ✓  MESH              default  default.yaml
-       ←  kind-global-global-ctx/mesh-default/mesh/default.yaml
-       →  kind-global-global-ctx/mesh-default/mesh/Mesh-default.yaml
-       ⚠  Mesh.spec.meshServices.mode set to Exclusive — required for MeshService-based policies to take effect (Kuma 2.9+). …
-       ⚠  Mesh &quot;default&quot;: spec.mtls is the legacy mTLS/identity model and is removed in Kuma 3.0. …
-  ✓  LEGACY            default  timeout-default.yaml
-       ←  kind-global-global-ctx/mesh-default/resiliency/timeout-default.yaml
-       →  kind-global-global-ctx/mesh-default/resiliency/MeshTimeout-backend-timeout.yaml
-  ⚠  PARTIAL ERROR     default  route.yaml
-       ←  kind-global-global-ctx/mesh-default/routing/route.yaml
-       →  kind-global-global-ctx/mesh-default/routing/TrafficRoute-route-all-default.yaml
-       ✗  TrafficRoute requires manual migration to MeshHTTPRoute or MeshTCPRoute
-  ✓  SUBSET            default  meshretry.yaml
-       ←  kind-zone-eu-zone-ctx/mesh-default/resiliency/meshretry.yaml
-       →  kind-zone-eu-zone-ctx/mesh-default/resiliency/MeshRetry-demo-backend-retry.yaml
-  ✓  RULES             default  meshtimeout.yaml
-       ←  kind-zone-eu-zone-ctx/mesh-default/resiliency/meshtimeout.yaml
-       →  kind-zone-eu-zone-ctx/mesh-default/resiliency/MeshTimeout-demo-backend-inbound.yaml
-       ⚠  MeshTimeout &quot;backend-inbound&quot;: from[] migrated to rules[] (Kuma 2.10+). …
+  <span class="o-ok">✓</span>  MESH              default  default.yaml
+       <span class="o-dim">←  kind-global-global-ctx/mesh-default/mesh/default.yaml</span>
+       <span class="o-dim">→  kind-global-global-ctx/mesh-default/mesh/Mesh-default.yaml</span>
+       <span class="o-warn">⚠</span>  Mesh.spec.meshServices.mode set to Exclusive — required for MeshService-based policies to take effect (Kuma 2.9+). …
+       <span class="o-warn">⚠</span>  Mesh "default": spec.mtls is the legacy mTLS/identity model and is removed in Kuma 3.0. …
+  <span class="o-ok">✓</span>  LEGACY            default  timeout-default.yaml
+       <span class="o-dim">←  kind-global-global-ctx/mesh-default/resiliency/timeout-default.yaml</span>
+       <span class="o-dim">→  kind-global-global-ctx/mesh-default/resiliency/MeshTimeout-backend-timeout.yaml</span>
+  <span class="o-warn">⚠</span>  PARTIAL ERROR     default  route.yaml
+       <span class="o-dim">←  kind-global-global-ctx/mesh-default/routing/route.yaml</span>
+       <span class="o-dim">→  kind-global-global-ctx/mesh-default/routing/TrafficRoute-route-all-default.yaml</span>
+       <span class="o-err">✗</span>  TrafficRoute requires manual migration to MeshHTTPRoute or MeshTCPRoute
+  <span class="o-ok">✓</span>  SUBSET            default  meshretry.yaml
+       <span class="o-dim">←  kind-zone-eu-zone-ctx/mesh-default/resiliency/meshretry.yaml</span>
+       <span class="o-dim">→  kind-zone-eu-zone-ctx/mesh-default/resiliency/MeshRetry-demo-backend-retry.yaml</span>
+  <span class="o-ok">✓</span>  RULES             default  meshtimeout.yaml
+       <span class="o-dim">←  kind-zone-eu-zone-ctx/mesh-default/resiliency/meshtimeout.yaml</span>
+       <span class="o-dim">→  kind-zone-eu-zone-ctx/mesh-default/resiliency/MeshTimeout-demo-backend-inbound.yaml</span>
+       <span class="o-warn">⚠</span>  MeshTimeout "backend-inbound": from[] migrated to rules[] (Kuma 2.10+). …
 
   ────────────────────────────────────────────────────────────
   5 file(s) processed  ·  4 migrated  ·  0 already migrated  ·  0 skipped  ·  1 error(s)
 
 
 Report written to: migrated/migration-plan.md
-</code></pre>
+</code></pre></div>
 <div class="table-wrap"><table>
 <thead>
 <tr>
@@ -177,11 +178,12 @@ are written to <code>--output-dir</code> by
 legacy policies, <code>ExternalService</code>, <code>OPAPolicy</code>, <code>MeshGlobalRateLimit</code>, <code>MeshGateway*</code>, and
 <code>ZoneIngress</code>/<code>ZoneEgress</code>. For each it shows whether it was converted, where its <code>_manual/</code>
 copy is if it was not, and the delete command for the tool the context was extracted with.</p>
-<pre class="chroma"><code><span class="line"><span class="cl">| Source file | Kind | Name | Namespace / mesh | Replacement |
-</span></span><span class="line"><span class="cl">|---|---|---|---|---|
-</span></span><span class="line"><span class="cl">| <span class="sb">`kind-global-global-ctx/mesh-default/resiliency/timeout-default.yaml`</span> | <span class="sb">`Timeout`</span> | <span class="sb">`backend-timeout`</span> | mesh <span class="sb">`default`</span> | converted (see the apply steps) |
-</span></span><span class="line"><span class="cl">| <span class="sb">`kind-global-global-ctx/mesh-default/routing/route.yaml`</span> | <span class="sb">`TrafficRoute`</span> | <span class="sb">`route-all-default`</span> | mesh <span class="sb">`default`</span> | none — manual migration, copy at <span class="sb">`kind-global-global-ctx/_manual/mesh-default/routing/TrafficRoute-route-all-default.yaml`</span> |
-</span></span></code></pre><p>The Apply Checklist gets a matching step before the Global control plane upgrade. See
+<div class="code"><pre class="chroma" data-lang="markdown"><code>| Source file | Kind | Name | Namespace / mesh | Replacement |
+|---|---|---|---|---|
+| <span class="sb">`kind-global-global-ctx/mesh-default/resiliency/timeout-default.yaml`</span> | <span class="sb">`Timeout`</span> | <span class="sb">`backend-timeout`</span> | mesh <span class="sb">`default`</span> | converted (see the apply steps) |
+| <span class="sb">`kind-global-global-ctx/mesh-default/routing/route.yaml`</span> | <span class="sb">`TrafficRoute`</span> | <span class="sb">`route-all-default`</span> | mesh <span class="sb">`default`</span> | none — manual migration, copy at <span class="sb">`kind-global-global-ctx/_manual/mesh-default/routing/TrafficRoute-route-all-default.yaml`</span> |
+</code></pre></div>
+<p>The Apply Checklist gets a matching step before the Global control plane upgrade. See
 <a href="../upgrade-plans/">Upgrade plans</a> for where it fits.</p>
 
     </article>
@@ -207,5 +209,6 @@ copy is if it was not, and the delete command for the tool the context was extra
 </footer>
 <script src="../../static/search-index.js"></script>
 <script src="../../static/search.js"></script>
+<script src="../../static/copy.js"></script>
 </body>
 </html>

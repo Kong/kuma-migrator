@@ -157,7 +157,7 @@ tree:
 - documents that pass through as a kind 3.0 removes (`MeshGlobalRateLimit`, Universal
   `ZoneIngress`/`ZoneEgress`).
 
-```
+```text
 migrated/
   <context>-global-ctx/
     mesh-default/resiliency/...          ← apply tree

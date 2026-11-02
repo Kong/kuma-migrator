@@ -15,8 +15,8 @@
 <meta property="og:image" content="https://kong.github.io/kuma-migrator/assets/migration-overview.svg">
 <meta name="twitter:card" content="summary_large_image">
 
+<link rel="stylesheet" href="../../static/shared.css">
 <link rel="stylesheet" href="../../static/style.css">
-<link rel="stylesheet" href="../../static/chroma.css">
 </head>
 <body data-root="../../">
 <a class="skip" href="#content">Skip to content</a>
@@ -30,6 +30,7 @@
       <a href="../../policies/">Policies</a>
       <a href="https://github.com/Kong/kuma-migrator">GitHub</a>
     </nav>
+    <!-- release-tag --><a class="release-badge" href="https://github.com/Kong/kuma-migrator/releases/latest" title="Latest release: v0.8.0">v0.8.0</a><!-- /release-tag -->
     <div class="search">
       <input id="search-input" type="search" placeholder="Search docs" aria-label="Search docs" autocomplete="off">
       <ul id="search-results" hidden></ul>
@@ -197,103 +198,108 @@ trusts, or set the mode to <code>Disabled</code>.</li>
 tooling needs them.</li>
 </ol>
 <p>A <code>MeshIdentity</code> for the whole mesh, using the default templates and a generated CA:</p>
-<pre class="chroma"><code><span class="line"><span class="cl"><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l">kuma.io/v1alpha1</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshIdentity</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">metadata</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">identity</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l">kong-mesh-system</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">labels</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kuma.io/mesh</span><span class="p">:</span><span class="w"> </span><span class="l">default</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">spec</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">selector</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">dataplane</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">matchLabels</span><span class="p">:</span><span class="w"> </span>{}<span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">spiffeID</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">trustDomain</span><span class="p">:</span><span class="w"> </span><span class="s2">&#34;{{ .Mesh }}.{{ .Zone }}.mesh.local&#34;</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">path</span><span class="p">:</span><span class="w"> </span><span class="s2">&#34;/ns/{{ .Namespace }}/sa/{{ .ServiceAccount }}&#34;</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">provider</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l">Bundled</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">bundled</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">meshTrustCreation</span><span class="p">:</span><span class="w"> </span><span class="l">Enabled</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">insecureAllowSelfSigned</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">certificateParameters</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">expiry</span><span class="p">:</span><span class="w"> </span><span class="l">24h</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">autogenerate</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="w">
-</span></span></span></code></pre><p>This is the example from the <a href="https://developer.konghq.com/mesh/policies/meshidentity/">Kong Mesh MeshIdentity docs</a>.
+<div class="code"><pre class="chroma" data-lang="yaml"><code><span class="nt">apiVersion</span><span class="p">:</span> <span class="l">kuma.io/v1alpha1</span>
+<span class="nt">kind</span><span class="p">:</span> <span class="l">MeshIdentity</span>
+<span class="nt">metadata</span><span class="p">:</span>
+  <span class="nt">name</span><span class="p">:</span> <span class="l">identity</span>
+  <span class="nt">namespace</span><span class="p">:</span> <span class="l">kong-mesh-system</span>
+  <span class="nt">labels</span><span class="p">:</span>
+    <span class="nt">kuma.io/mesh</span><span class="p">:</span> <span class="l">default</span>
+<span class="nt">spec</span><span class="p">:</span>
+  <span class="nt">selector</span><span class="p">:</span>
+    <span class="nt">dataplane</span><span class="p">:</span>
+      <span class="nt">matchLabels</span><span class="p">:</span> {}
+  <span class="nt">spiffeID</span><span class="p">:</span>
+    <span class="nt">trustDomain</span><span class="p">:</span> <span class="s2">"{{ .Mesh }}.{{ .Zone }}.mesh.local"</span>
+    <span class="nt">path</span><span class="p">:</span> <span class="s2">"/ns/{{ .Namespace }}/sa/{{ .ServiceAccount }}"</span>
+  <span class="nt">provider</span><span class="p">:</span>
+    <span class="nt">type</span><span class="p">:</span> <span class="l">Bundled</span>
+    <span class="nt">bundled</span><span class="p">:</span>
+      <span class="nt">meshTrustCreation</span><span class="p">:</span> <span class="l">Enabled</span>
+      <span class="nt">insecureAllowSelfSigned</span><span class="p">:</span> <span class="kc">true</span>
+      <span class="nt">certificateParameters</span><span class="p">:</span>
+        <span class="nt">expiry</span><span class="p">:</span> <span class="l">24h</span>
+      <span class="nt">autogenerate</span><span class="p">:</span>
+        <span class="nt">enabled</span><span class="p">:</span> <span class="kc">true</span>
+</code></pre></div>
+<p>This is the example from the <a href="https://developer.konghq.com/mesh/policies/meshidentity/">Kong Mesh MeshIdentity docs</a>.
 To keep your own CA, use <code>bundled.ca.certificate</code> / <code>bundled.ca.privateKey</code> (<code>SecureDataSource</code>)
 instead of <code>autogenerate</code>; for Vault, ACM Private CA or cert-manager see
 <a href="../external-pki/">External PKI</a>.</p>
 <h2 id="example">Example</h2>
 <p>Input:</p>
-<pre class="chroma"><code><span class="line"><span class="cl"><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l">kuma.io/v1alpha1</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">Mesh</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">metadata</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">default</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">spec</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">meshServices</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">mode</span><span class="p">:</span><span class="w"> </span><span class="l">Exclusive</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">networking</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">outbound</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">passthrough</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">mtls</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">enabledBackend</span><span class="p">:</span><span class="w"> </span><span class="l">ca-1</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">backends</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span>- <span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">ca-1</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l">builtin</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">mode</span><span class="p">:</span><span class="w"> </span><span class="l">PERMISSIVE</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">dpCert</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">          </span><span class="nt">rotation</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">            </span><span class="nt">expiration</span><span class="p">:</span><span class="w"> </span><span class="l">1d</span><span class="w">
-</span></span></span></code></pre><p><code>--to-latest v2</code> keeps <code>mtls</code> and extracts the passthrough setting:</p>
-<pre class="chroma"><code><span class="line"><span class="cl"><span class="c"># mesh/Mesh-default.yaml</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l">kuma.io/v1alpha1</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">Mesh</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">metadata</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">default</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">spec</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">meshServices</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">mode</span><span class="p">:</span><span class="w"> </span><span class="l">Exclusive</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">mtls</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">backends</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span>- <span class="nt">dpCert</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">rotation</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">          </span><span class="nt">expiration</span><span class="p">:</span><span class="w"> </span><span class="l">1d</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">mode</span><span class="p">:</span><span class="w"> </span><span class="l">PERMISSIVE</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">ca-1</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l">builtin</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">enabledBackend</span><span class="p">:</span><span class="w"> </span><span class="l">ca-1</span><span class="w">
-</span></span></span></code></pre><p><code>--to-latest v3</code> drops <code>mtls</code> and adds the <code>MeshTLS</code> that keeps inbounds permissive (the
+<div class="code"><pre class="chroma" data-lang="yaml"><code><span class="nt">apiVersion</span><span class="p">:</span> <span class="l">kuma.io/v1alpha1</span>
+<span class="nt">kind</span><span class="p">:</span> <span class="l">Mesh</span>
+<span class="nt">metadata</span><span class="p">:</span>
+  <span class="nt">name</span><span class="p">:</span> <span class="l">default</span>
+<span class="nt">spec</span><span class="p">:</span>
+  <span class="nt">meshServices</span><span class="p">:</span>
+    <span class="nt">mode</span><span class="p">:</span> <span class="l">Exclusive</span>
+  <span class="nt">networking</span><span class="p">:</span>
+    <span class="nt">outbound</span><span class="p">:</span>
+      <span class="nt">passthrough</span><span class="p">:</span> <span class="kc">false</span>
+  <span class="nt">mtls</span><span class="p">:</span>
+    <span class="nt">enabledBackend</span><span class="p">:</span> <span class="l">ca-1</span>
+    <span class="nt">backends</span><span class="p">:</span>
+      - <span class="nt">name</span><span class="p">:</span> <span class="l">ca-1</span>
+        <span class="nt">type</span><span class="p">:</span> <span class="l">builtin</span>
+        <span class="nt">mode</span><span class="p">:</span> <span class="l">PERMISSIVE</span>
+        <span class="nt">dpCert</span><span class="p">:</span>
+          <span class="nt">rotation</span><span class="p">:</span>
+            <span class="nt">expiration</span><span class="p">:</span> <span class="l">1d</span>
+</code></pre></div>
+<p><code>--to-latest v2</code> keeps <code>mtls</code> and extracts the passthrough setting:</p>
+<div class="code"><pre class="chroma" data-lang="yaml"><code><span class="c"># mesh/Mesh-default.yaml</span>
+<span class="nt">apiVersion</span><span class="p">:</span> <span class="l">kuma.io/v1alpha1</span>
+<span class="nt">kind</span><span class="p">:</span> <span class="l">Mesh</span>
+<span class="nt">metadata</span><span class="p">:</span>
+  <span class="nt">name</span><span class="p">:</span> <span class="l">default</span>
+<span class="nt">spec</span><span class="p">:</span>
+  <span class="nt">meshServices</span><span class="p">:</span>
+    <span class="nt">mode</span><span class="p">:</span> <span class="l">Exclusive</span>
+  <span class="nt">mtls</span><span class="p">:</span>
+    <span class="nt">backends</span><span class="p">:</span>
+    - <span class="nt">dpCert</span><span class="p">:</span>
+        <span class="nt">rotation</span><span class="p">:</span>
+          <span class="nt">expiration</span><span class="p">:</span> <span class="l">1d</span>
+      <span class="nt">mode</span><span class="p">:</span> <span class="l">PERMISSIVE</span>
+      <span class="nt">name</span><span class="p">:</span> <span class="l">ca-1</span>
+      <span class="nt">type</span><span class="p">:</span> <span class="l">builtin</span>
+    <span class="nt">enabledBackend</span><span class="p">:</span> <span class="l">ca-1</span>
+</code></pre></div>
+<p><code>--to-latest v3</code> drops <code>mtls</code> and adds the <code>MeshTLS</code> that keeps inbounds permissive (the
 <code>MeshPassthrough</code> <code>None</code> is generated on both targets):</p>
-<pre class="chroma"><code><span class="line"><span class="cl"><span class="c"># mesh/Mesh-default.yaml</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l">kuma.io/v1alpha1</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">Mesh</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">metadata</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">default</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">spec</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">meshServices</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">mode</span><span class="p">:</span><span class="w"> </span><span class="l">Exclusive</span><span class="w">
-</span></span></span></code></pre><pre class="chroma"><code><span class="line"><span class="cl"><span class="c"># zero-trust/MeshTLS-kong-mesh-system-default-tls-permissive.yaml</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l">kuma.io/v1alpha1</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshTLS</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">metadata</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">labels</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kuma.io/mesh</span><span class="p">:</span><span class="w"> </span><span class="l">default</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">default-tls-permissive</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l">kong-mesh-system</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">spec</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">rules</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span>- <span class="nt">default</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">mode</span><span class="p">:</span><span class="w"> </span><span class="l">Permissive</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">targetRef</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">Mesh</span><span class="w">
-</span></span></span></code></pre><p>The <code>v3</code> blocking warning (shortened):</p>
-<pre><code>⚠  Mesh &quot;default&quot;: spec.mtls is REMOVED in 3.0 and has been dropped from the Mesh output.
+<div class="code"><pre class="chroma" data-lang="yaml"><code><span class="c"># mesh/Mesh-default.yaml</span>
+<span class="nt">apiVersion</span><span class="p">:</span> <span class="l">kuma.io/v1alpha1</span>
+<span class="nt">kind</span><span class="p">:</span> <span class="l">Mesh</span>
+<span class="nt">metadata</span><span class="p">:</span>
+  <span class="nt">name</span><span class="p">:</span> <span class="l">default</span>
+<span class="nt">spec</span><span class="p">:</span>
+  <span class="nt">meshServices</span><span class="p">:</span>
+    <span class="nt">mode</span><span class="p">:</span> <span class="l">Exclusive</span>
+</code></pre></div>
+<div class="code"><pre class="chroma" data-lang="yaml"><code><span class="c"># zero-trust/MeshTLS-kong-mesh-system-default-tls-permissive.yaml</span>
+<span class="nt">apiVersion</span><span class="p">:</span> <span class="l">kuma.io/v1alpha1</span>
+<span class="nt">kind</span><span class="p">:</span> <span class="l">MeshTLS</span>
+<span class="nt">metadata</span><span class="p">:</span>
+  <span class="nt">labels</span><span class="p">:</span>
+    <span class="nt">kuma.io/mesh</span><span class="p">:</span> <span class="l">default</span>
+  <span class="nt">name</span><span class="p">:</span> <span class="l">default-tls-permissive</span>
+  <span class="nt">namespace</span><span class="p">:</span> <span class="l">kong-mesh-system</span>
+<span class="nt">spec</span><span class="p">:</span>
+  <span class="nt">rules</span><span class="p">:</span>
+  - <span class="nt">default</span><span class="p">:</span>
+      <span class="nt">mode</span><span class="p">:</span> <span class="l">Permissive</span>
+  <span class="nt">targetRef</span><span class="p">:</span>
+    <span class="nt">kind</span><span class="p">:</span> <span class="l">Mesh</span>
+</code></pre></div>
+<p>The <code>v3</code> blocking warning (shortened):</p>
+<div class="code"><pre class="chroma" data-lang="text"><code><span class="o-warn">⚠</span>  Mesh "default": spec.mtls is REMOVED in 3.0 and has been dropped from the Mesh output.
    BLOCKING: before upgrading, create a MeshIdentity (and MeshTrust) that selects every proxy in
    this mesh, unless one already does. On 3.0 spec.mtls issues no certificates: a mesh whose only
    identity source is spec.mtls serves and accepts plaintext, and MeshTLS and
    MeshTrafficPermission stop applying to its proxies. …
-</code></pre>
+</code></pre></div>
 <blockquote class="callout callout-v3"><p><strong>v3:</strong> Apply the <code>v3</code> <code>Mesh</code> only after the <code>MeshIdentity</code> covers every proxy. Applying it
 earlier on a 2.x control plane turns mTLS off for the mesh.</p>
 </blockquote>
@@ -327,5 +333,6 @@ earlier on a 2.x control plane turns mTLS off for the mesh.</p>
 </footer>
 <script src="../../static/search-index.js"></script>
 <script src="../../static/search.js"></script>
+<script src="../../static/copy.js"></script>
 </body>
 </html>

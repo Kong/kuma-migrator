@@ -47,41 +47,182 @@
 
 <!--
   Everything below is inline or a same-origin SVG. No fonts, stylesheets or
-  scripts are fetched from anywhere else.
+  scripts are fetched from anywhere else. The shared.css and copy.js regions and
+  the release-tag line are rewritten by `make site` (site/gen); edit
+  site/static/shared.css and site/static/copy.js instead.
 -->
 <style>
+/* shared.css: generated from site/static/shared.css by site/gen, do not edit here */
+/* Shared by the /docs/ pages (static/shared.css) and the landing page (inlined into
+   docs/index.html by site/gen): colour tokens, the site header, and code blocks. */
+:root {
+  --bg:        #ffffff;
+  --bg-alt:    #f6f8fa;
+  --ink:       #1f2328;
+  --muted:     #6e7781;
+  --line:      #d0d7de;
+  --code-bg:   rgba(31, 35, 40, .06);
+  --accent:    #6639ba;
+  --accent-d:  #4f2a94;
+  --old:       #b3261e;
+  --new:       #0f6f5c;
+  --manual:    #9a6700;
+  --accent2:   #3d1f75;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+
+  /* Code palette, derived from the tokens above. --muted, --new and --manual are darkened
+     so every text token keeps a contrast of at least 4.5:1 on --code-bg, including a code
+     block nested in a callout (two --code-bg layers). */
+  --c-key:     var(--accent);   /* YAML/JSON keys, Go functions, kuma-migrator */
+  --c-kw:      var(--accent2);  /* keywords, commands, subcommands */
+  --c-str:     #0d6553;         /* strings and plain YAML scalars, flags (--new) */
+  --c-num:     #7d5300;         /* numbers, variables, kubectl/kumactl (--manual) */
+  --c-const:   var(--old);      /* true/false/null */
+  --c-comment: #57606a;         /* comments, punctuation (--muted) */
+  --c-ins-bg:  rgba(15, 111, 92, .12);
+  --c-del-bg:  rgba(179, 38, 30, .10);
+}
+
+@media (prefers-color-scheme: dark) {
   :root {
-    --bg:        #ffffff;
-    --bg-alt:    #f6f8fa;
-    --ink:       #1f2328;
-    --muted:     #6e7781;
-    --line:      #d0d7de;
-    --code-bg:   rgba(31, 35, 40, .06);
-    --accent:    #6639ba;
-    --accent-d:  #4f2a94;
-    --old:       #b3261e;
-    --new:       #0f6f5c;
-    --manual:    #9a6700;
-    --accent2:   #3d1f75;
-  }
+    --bg:       #0d1117;
+    --bg-alt:   #161b22;
+    --ink:      #e6edf3;
+    --muted:    #8b949e;
+    --line:     #30363d;
+    --code-bg:  rgba(230, 237, 243, .08);
+    --accent:   #b083f0;
+    --accent-d: #cba8f7;
+    --old:      #ff7b72;
+    --new:      #56d4a4;
+    --manual:   #e3b341;
+    --accent2:  #e2a6ff;
 
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg:       #0d1117;
-      --bg-alt:   #161b22;
-      --ink:      #e6edf3;
-      --muted:    #8b949e;
-      --line:     #30363d;
-      --code-bg:  rgba(230, 237, 243, .08);
-      --accent:   #b083f0;
-      --accent-d: #cba8f7;
-      --old:      #ff7b72;
-      --new:      #56d4a4;
-      --manual:   #e3b341;
-      --accent2:  #e2a6ff;
-    }
+    --c-key:     #bb94f5;
+    --c-kw:      var(--accent2);
+    --c-str:     var(--new);
+    --c-num:     var(--manual);
+    --c-const:   var(--old);
+    --c-comment: #9ea7b3;
+    --c-ins-bg:  rgba(86, 212, 164, .14);
+    --c-del-bg:  rgba(255, 123, 114, .14);
   }
+}
 
+/* ---- header ---- */
+.site-header {
+  position: sticky; top: 0; z-index: 10;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+}
+.site-header .bar {
+  max-width: 90rem; margin: 0 auto;
+  display: flex; align-items: center; gap: 1.25rem;
+  padding: .6rem 1.25rem;
+  flex-wrap: wrap;
+  min-height: 3.62rem; /* the docs header's height with its search box, so both headers match */
+}
+.brand {
+  display: inline-flex; align-items: center; gap: .5rem;
+  color: var(--ink); text-decoration: none;
+  font-family: var(--mono); font-weight: 700; font-size: 1.05rem;
+}
+.brand:hover { color: var(--ink) }
+.brand img { border-radius: 7px }
+.docs-home {
+  color: var(--muted); text-decoration: none; font-weight: 600; font-size: .9rem;
+  border-left: 1px solid var(--line); padding-left: 1rem;
+}
+.docs-home:hover { color: var(--accent) }
+.top-nav { display: flex; gap: .4rem 1rem; flex-wrap: wrap }
+.top-nav a { color: var(--ink); text-decoration: none; font-weight: 500; font-size: .95rem; padding: .2rem 0 }
+.top-nav a:hover { color: var(--accent) }
+.top-nav a.active { color: var(--accent); box-shadow: inset 0 -2px 0 var(--accent) }
+.release-badge {
+  font-family: var(--mono); font-size: .78rem; font-weight: 600; line-height: 1.4;
+  color: var(--accent); text-decoration: none;
+  border: 1px solid var(--line); border-radius: 999px;
+  padding: .12rem .6rem;
+  white-space: nowrap;
+}
+.release-badge:hover { border-color: var(--accent); color: var(--accent) }
+@media (max-width: 52rem) {
+  .site-header .bar { gap: .5rem 1rem; padding: .55rem 1rem }
+}
+
+/* ---- code ---- */
+code, pre { font-family: var(--mono) }
+code {
+  font-size: .875em;
+  background: var(--code-bg);
+  padding: .15em .4em;
+  border-radius: 4px;
+}
+pre {
+  background: var(--code-bg);
+  border-radius: 8px;
+  padding: 1rem 1.1rem;
+  overflow-x: auto;
+  font-size: .84rem;
+  line-height: 1.6;
+  border: 1px solid var(--line);
+  color: var(--ink);
+}
+pre code { background: none; padding: 0; font-size: inherit; border-radius: 0 }
+
+/* .code wraps a <pre> so the copy button (added by copy.js) stays put while the block scrolls. */
+.code { position: relative; margin: 1rem 0 }
+.code > pre { margin: 0 }
+.code .copy {
+  position: absolute; top: .45rem; right: .45rem;
+  font: 600 .72rem/1.2 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: var(--muted); background: var(--bg);
+  border: 1px solid var(--line); border-radius: 6px;
+  padding: .3rem .55rem;
+  cursor: pointer;
+  opacity: 0; transition: opacity .15s;
+}
+.code:hover .copy, .code .copy:focus-visible, .code .copy.done { opacity: 1 }
+.code .copy:hover { color: var(--accent); border-color: var(--accent) }
+.code .copy.done { color: var(--c-str); border-color: var(--c-str) }
+@media (hover: none) { .code .copy { opacity: 1 } }
+
+/* Token classes are chroma's short names, emitted by site/gen (and hand-written on the
+   landing page). Anything without a class renders in --ink. */
+.chroma .c, .chroma .c1, .chroma .cm, .chroma .cs, .chroma .ch, .chroma .cp, .chroma .cpf { color: var(--c-comment); font-style: italic }
+.chroma .p, .chroma .o, .chroma .se, .chroma .nn, .chroma .gp { color: var(--c-comment) }
+.chroma .gp { user-select: none }
+.chroma .nt, .chroma .na, .chroma .nl, .chroma .nf, .chroma .fm, .chroma .nc { color: var(--c-key) }
+.chroma .k, .chroma .kd, .chroma .kn, .chroma .kp, .chroma .kr, .chroma .kt, .chroma .ow, .chroma .nb { color: var(--c-kw); font-weight: 600 }
+.chroma .s, .chroma .s1, .chroma .s2, .chroma .sa, .chroma .sb, .chroma .sc, .chroma .sd, .chroma .sh,
+.chroma .si, .chroma .sx, .chroma .sr, .chroma .ss, .chroma .dl, .chroma .l, .chroma .ld { color: var(--c-str) }
+.chroma .m, .chroma .mb, .chroma .mf, .chroma .mh, .chroma .mi, .chroma .il, .chroma .mo,
+.chroma .nv, .chroma .vc, .chroma .vg, .chroma .vi { color: var(--c-num) }
+.chroma .kc, .chroma .bp { color: var(--c-const) }
+.chroma .gh, .chroma .gu { color: var(--c-key); font-weight: 700 }
+.chroma .gi { color: var(--c-str); background: var(--c-ins-bg) }
+.chroma .gd { color: var(--c-const); background: var(--c-del-bg) }
+.chroma .ge { font-style: italic }
+.chroma .gs { font-weight: 700 }
+.chroma .err { color: inherit; background: none }
+
+/* Shell: kuma-migrator commands (binary, subcommand, flags, values), other commands, and
+   kubectl/kumactl in amber because applying is the manual step, not a kuma-migrator command. */
+.chroma .k-bin      { color: var(--c-key); font-weight: 700 }
+.chroma .k-sub      { color: var(--c-kw); font-weight: 700 }
+.chroma .k-cmd      { color: var(--c-kw); font-weight: 600 }
+.chroma .k-flag     { color: var(--c-str) }
+.chroma .k-val      { color: var(--ink); font-weight: 600 }
+.chroma .k-manual   { color: var(--c-num); font-weight: 600 }
+.chroma .k-manual-b { color: var(--c-num); font-weight: 700 }
+
+/* CLI output: status glyphs and the dimmed ← input / → output path lines. */
+.chroma .o-warn { color: var(--c-num); font-weight: 700 }
+.chroma .o-err  { color: var(--c-const); font-weight: 700 }
+.chroma .o-ok   { color: var(--c-str); font-weight: 700 }
+.chroma .o-info { color: var(--c-key); font-weight: 700 }
+.chroma .o-dim  { color: var(--c-comment) }
+/* /shared.css */
   * { box-sizing: border-box }
 
   body {
@@ -96,38 +237,6 @@
 
   a { color: var(--accent); text-underline-offset: 2px }
   a:hover { color: var(--accent-d) }
-
-  code, pre {
-    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-  }
-  code {
-    font-size: .875em;
-    background: var(--code-bg);
-    padding: .15em .4em;
-    border-radius: 4px;
-  }
-  pre {
-    background: var(--code-bg);
-    border-radius: 8px;
-    padding: 1rem 1.1rem;
-    overflow-x: auto;
-    font-size: .84rem;
-    line-height: 1.6;
-    border: 1px solid var(--line);
-  }
-  pre code { background: none; padding: 0; font-size: inherit }
-  pre .c { color: var(--muted); font-style: italic }
-  /* kuma-migrator command highlighting: binary/subcommand echo the diagram's
-     purple/dark-purple command boxes; flags are the diagram's teal "new"
-     accent; values stay plain but semibold. The apply line echoes the
-     diagram's amber "manual step" instead, since it isn't a kuma-migrator
-     command at all. */
-  pre .k-bin      { color: var(--accent); font-weight: 700 }
-  pre .k-sub      { color: var(--accent2); font-weight: 700 }
-  pre .k-flag     { color: var(--new) }
-  pre .k-val      { color: var(--ink); font-weight: 600 }
-  pre .k-manual   { color: var(--manual); font-weight: 600 }
-  pre .k-manual-b { color: var(--manual); font-weight: 700 }
 
   /* ---- hero ---- */
   .hero {
@@ -240,7 +349,21 @@
 </head>
 <body>
 
-<header class="hero">
+<header class="site-header">
+  <div class="bar">
+    <a class="brand" href="./"><img src="img/favicon.svg" width="28" height="28" alt=""><span>kuma-migrator</span></a>
+    <a class="docs-home" href="docs/">Docs</a>
+    <nav class="top-nav" aria-label="Sections">
+      <a href="docs/guides/">Guides</a>
+      <a href="docs/topics/">Topics</a>
+      <a href="docs/policies/">Policies</a>
+      <a href="https://github.com/Kong/kuma-migrator">GitHub</a>
+    </nav>
+    <!-- release-tag --><a class="release-badge" href="https://github.com/Kong/kuma-migrator/releases/latest" title="Latest release: v0.8.0">v0.8.0</a><!-- /release-tag -->
+  </div>
+</header>
+
+<div class="hero">
   <div class="wrap">
     <img class="mark" src="img/favicon.svg" width="72" height="72" alt="">
     <h1>kuma-migrator</h1>
@@ -259,7 +382,7 @@
       <span class="badge">🔏 <strong>Attested</strong> release binaries</span>
     </div>
   </div>
-</header>
+</div>
 
 <section>
   <div class="wrap">
@@ -286,7 +409,7 @@
       <img src="img/pipeline.svg" alt="Pipeline diagram: extract pulls resources from a running control plane, migrate writes the migrated manifests and report (add --dry-run to preview with no YAML written), apply — a manual step, not a kuma-migrator command — runs kubectl or kumactl in the report's order.">
     </figure>
 
-<pre><code><span class="c"># 1a. Pull resources via kumactl (self-hosted OR Konnect-hosted, zonal or Global CP)</span>
+<div class="code"><pre class="chroma" data-lang="bash"><code><span class="c"># 1a. Pull resources via kumactl (self-hosted OR Konnect-hosted, zonal or Global CP)</span>
 <span class="k-bin">kuma-migrator</span> <span class="k-sub">extract</span> <span class="k-flag">--kumactl-context</span> <span class="k-val">konnect-global-prod</span> <span class="k-flag">--output-dir</span> <span class="k-val">./raw-policies</span>
 
 <span class="c"># 1b. ...or via kubectl (self-hosted, Kubernetes-backed CP)</span>
@@ -306,7 +429,7 @@
 
 <span class="c"># 3b. ...or via kubectl if you extracted via --kube-context — this step
 #     is manual; kuma-migrator never touches your control plane's state</span>
-<span class="k-manual">kubectl</span> <span class="k-manual-b">apply</span> <span class="k-flag">-f</span> <span class="k-val">./migrated/zone-eu-west1-prod-zone-ctx/mesh-default/resiliency/</span></code></pre>
+<span class="k-manual">kubectl</span> <span class="k-manual-b">apply</span> <span class="k-flag">-f</span> <span class="k-val">./migrated/zone-eu-west1-prod-zone-ctx/mesh-default/resiliency/</span></code></pre></div>
   </div>
 </section>
 
@@ -393,9 +516,9 @@
       cryptographically, via
       <a href="https://github.com/Kong/kuma-migrator/attestations">GitHub build provenance attestation</a>.
     </p>
-<pre><code>VERSION=$(gh release view --repo Kong/kuma-migrator --json tagName --jq '.tagName' | tr -d 'v')
-curl -LO "https://github.com/Kong/kuma-migrator/releases/latest/download/kuma-migrator_${VERSION}_linux_amd64.tar.gz"
-gh attestation verify "kuma-migrator_${VERSION}_linux_amd64.tar.gz" --repo Kong/kuma-migrator</code></pre>
+<div class="code"><pre class="chroma" data-lang="bash"><code><span class="nv">VERSION</span><span class="o">=</span><span class="k">$(</span><span class="k-cmd">gh</span> release view <span class="k-flag">--repo</span> <span class="k-val">Kong/kuma-migrator</span> <span class="k-flag">--json</span> <span class="k-val">tagName</span> <span class="k-flag">--jq</span> <span class="s1">'.tagName'</span> <span class="p">|</span> <span class="k-cmd">tr</span> <span class="k-flag">-d</span> <span class="s1">'v'</span><span class="k">)</span>
+<span class="k-cmd">curl</span> <span class="k-flag">-LO</span> <span class="s2">"https://github.com/Kong/kuma-migrator/releases/latest/download/kuma-migrator_</span><span class="si">${</span><span class="nv">VERSION</span><span class="si">}</span><span class="s2">_linux_amd64.tar.gz"</span>
+<span class="k-cmd">gh</span> attestation verify <span class="s2">"kuma-migrator_</span><span class="si">${</span><span class="nv">VERSION</span><span class="si">}</span><span class="s2">_linux_amd64.tar.gz"</span> <span class="k-flag">--repo</span> <span class="k-val">Kong/kuma-migrator</span></code></pre></div>
     <div class="callout good">
       <p>
         The same digests appear in the release's <code>checksums.txt</code>, in the attestation,
@@ -410,7 +533,7 @@ gh attestation verify "kuma-migrator_${VERSION}_linux_amd64.tar.gz" --repo Kong/
     <h2>Install</h2>
 
     <h3>Homebrew (macOS and Linux)</h3>
-<pre><code>brew install --cask bcollard/kuma-migrator/kuma-migrator</code></pre>
+<div class="code"><pre class="chroma" data-lang="bash"><code><span class="k-cmd">brew</span> install <span class="k-flag">--cask</span> <span class="k-val">bcollard/kuma-migrator/kuma-migrator</span></code></pre></div>
 
     <h3>Pre-built binaries</h3>
     <p>
@@ -420,9 +543,9 @@ gh attestation verify "kuma-migrator_${VERSION}_linux_amd64.tar.gz" --repo Kong/
     </p>
 
     <h3>From source</h3>
-<pre><code>git clone https://github.com/Kong/kuma-migrator.git &amp;&amp; cd kuma-migrator
-make build
-<span class="c"># binary at ./dist/kuma-migrator</span></code></pre>
+<div class="code"><pre class="chroma" data-lang="bash"><code><span class="k-cmd">git</span> clone https://github.com/Kong/kuma-migrator.git <span class="o">&amp;&amp;</span> <span class="k-cmd">cd</span> kuma-migrator
+<span class="k-cmd">make</span> build
+<span class="c1"># binary at ./dist/kuma-migrator</span></code></pre></div>
 
     <p>
       Full options: <a href="docs/guides/installation/">installation guide</a>.
@@ -564,5 +687,72 @@ make build
   </div>
 </footer>
 
+<script>
+/* copy.js: generated from site/static/copy.js by site/gen, do not edit here */
+// Copy-to-clipboard buttons on code blocks. Same file is inlined into docs/index.html.
+// Without JavaScript no button is shown. For a `console` block only the commands are copied
+// (lines starting with "$ ", prompt removed).
+(function () {
+  "use strict";
+  function text(pre) {
+    var t = (pre.querySelector("code") || pre).textContent.replace(/\n$/, "");
+    if (pre.getAttribute("data-lang") === "console") {
+      var cmds = t.split("\n").filter(function (l) { return /^\$ /.test(l); });
+      if (cmds.length) t = cmds.map(function (l) { return l.slice(2); }).join("\n");
+    }
+    return t;
+  }
+  function fallback(t) {
+    var ta = document.createElement("textarea");
+    ta.value = t;
+    ta.setAttribute("readonly", "");
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    var ok = false;
+    try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+    document.body.removeChild(ta);
+    return ok ? Promise.resolve() : Promise.reject();
+  }
+  function copy(t) {
+    if (navigator.clipboard && window.isSecureContext) {
+      return navigator.clipboard.writeText(t).catch(function () { return fallback(t); });
+    }
+    return fallback(t);
+  }
+  Array.prototype.forEach.call(document.querySelectorAll("pre"), function (pre) {
+    var wrap = pre.parentNode;
+    if (!wrap.classList.contains("code")) {
+      wrap = document.createElement("div");
+      wrap.className = "code";
+      pre.parentNode.insertBefore(wrap, pre);
+      wrap.appendChild(pre);
+    }
+    var btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "copy";
+    btn.textContent = "Copy";
+    btn.setAttribute("aria-label", "Copy code to clipboard");
+    var timer;
+    btn.addEventListener("click", function () {
+      copy(text(pre)).then(function () {
+        btn.textContent = "Copied";
+        btn.classList.add("done");
+      }, function () {
+        btn.textContent = "Copy failed";
+      }).then(function () {
+        clearTimeout(timer);
+        timer = setTimeout(function () {
+          btn.textContent = "Copy";
+          btn.classList.remove("done");
+        }, 1600);
+      });
+    });
+    wrap.appendChild(btn);
+  });
+})();
+/* /copy.js */
+</script>
 </body>
 </html>

@@ -207,7 +207,7 @@ spec:
 
 The `v3` blocking warning (shortened):
 
-```
+```text
 ⚠  Mesh "default": spec.mtls is REMOVED in 3.0 and has been dropped from the Mesh output.
    BLOCKING: before upgrading, create a MeshIdentity (and MeshTrust) that selects every proxy in
    this mesh, unless one already does. On 3.0 spec.mtls issues no certificates: a mesh whose only

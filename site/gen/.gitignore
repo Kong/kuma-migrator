@@ -1,0 +1,2 @@
+# go build output of the generator (use `make site`, which runs `go run`)
+/gen

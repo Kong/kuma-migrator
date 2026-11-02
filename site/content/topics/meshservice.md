@@ -212,7 +212,7 @@ destination becomes a label selector:
 
 Warning on both targets:
 
-```
+```text
 ⚠  spec.targetRef Dataplane labels use 'app: web' as a best-guess pod label — verify this
    matches your actual pod labels before applying
 ```
@@ -220,7 +220,7 @@ Warning on both targets:
 A Universal `MeshService` still selecting by `dataplaneTags: {kuma.io/service: backend}` is
 reported but not rewritten under `v3`, because `kuma.io/service` cannot be a `Dataplane` label:
 
-```
+```text
 ⚠  MeshService "backend": spec.selector.dataplaneTags is removed in 3.0 and dropped silently,
    leaving a MeshService that matches no proxies. Not converted: kuma.io/service=backend cannot
    be a Dataplane label (reserved kuma.io/ prefix), and dropping it would widen the selector. …

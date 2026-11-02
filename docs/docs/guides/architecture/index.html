@@ -15,8 +15,8 @@
 <meta property="og:image" content="https://kong.github.io/kuma-migrator/assets/migration-overview.svg">
 <meta name="twitter:card" content="summary_large_image">
 
+<link rel="stylesheet" href="../../static/shared.css">
 <link rel="stylesheet" href="../../static/style.css">
-<link rel="stylesheet" href="../../static/chroma.css">
 </head>
 <body data-root="../../">
 <a class="skip" href="#content">Skip to content</a>
@@ -30,6 +30,7 @@
       <a href="../../policies/">Policies</a>
       <a href="https://github.com/Kong/kuma-migrator">GitHub</a>
     </nav>
+    <!-- release-tag --><a class="release-badge" href="https://github.com/Kong/kuma-migrator/releases/latest" title="Latest release: v0.8.0">v0.8.0</a><!-- /release-tag -->
     <div class="search">
       <input id="search-input" type="search" placeholder="Search docs" aria-label="Search docs" autocomplete="off">
       <ul id="search-results" hidden></ul>
@@ -187,14 +188,14 @@ resource.</p>
 through <code>ReadContextMeta</code> for two decisions: the skip list (<code>environment</code>) and the apply
 command in the report (<code>tool</code>, <code>context</code>, <code>isKonnect</code>).</p>
 <h2 id="on-disk-layout">On-disk layout</h2>
-<pre><code>&lt;dir&gt;/
+<div class="code"><pre class="chroma" data-lang="text"><code>&lt;dir&gt;/
   &lt;context&gt;-&lt;mode&gt;-ctx/
     .kuma-migrator.json
     mesh-&lt;mesh&gt;/&lt;sub&gt;/&lt;Kind&gt;-[&lt;namespace&gt;-]&lt;name&gt;.yaml
     global-scoped-resources/&lt;sub&gt;/...
-    _manual/mesh-&lt;mesh&gt;/&lt;sub&gt;/...          ← migrate --to-latest v3 only
-  migration-report.md                      ← migrate only
-</code></pre>
+    _manual/mesh-&lt;mesh&gt;/&lt;sub&gt;/...          <span class="o-dim">← migrate --to-latest v3 only</span>
+  migration-report.md                      <span class="o-dim">← migrate only</span>
+</code></pre></div>
 <p><code>&lt;sub&gt;</code> comes from <code>resource.KindSubfolder</code>
 (<a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/resource/subfolder.go"><code>subfolder.go</code></a>):
 <code>resiliency</code>, <code>routing</code>, <code>zero-trust</code>, <code>observability</code>, <code>mesh</code>, <code>other</code>. <code>migrate</code> recognises
@@ -452,5 +453,6 @@ add a scenario.</p>
 </footer>
 <script src="../../static/search-index.js"></script>
 <script src="../../static/search.js"></script>
+<script src="../../static/copy.js"></script>
 </body>
 </html>

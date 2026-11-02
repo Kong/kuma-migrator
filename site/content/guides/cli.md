@@ -10,7 +10,7 @@ and [`cmd/migrate.go`](https://github.com/Kong/kuma-migrator/blob/main/cmd/migra
 
 ## Commands
 
-```
+```text
 kuma-migrator extract  --kube-context <ctx> | --kumactl-context <ctx>
                        --output-dir <dir> [--mesh <name>]
                        [--output-format kubernetes|universal] [--tls-skip-verify]
@@ -63,7 +63,7 @@ it writes only `migration-plan.md`. Without it, it writes the migrated YAML and
 
 An invalid `--to-latest` value fails before any file is read:
 
-```
+```text
 Error: invalid --to-latest value "v4": want "v2" or "v3"
 ```
 

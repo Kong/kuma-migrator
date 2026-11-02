@@ -216,7 +216,7 @@ spec:
 
 Warnings on the `v3` run (shortened):
 
-```
+```text
 ⚠  spec.mtls is REMOVED in 3.0 and has been dropped from the Mesh output. BLOCKING: before
    upgrading, create a MeshIdentity (and MeshTrust) that selects every proxy in this mesh …
 ⚠  the enabled mTLS backend used mode: PERMISSIVE … a MeshTLS "default-tls-permissive" with

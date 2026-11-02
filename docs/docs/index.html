@@ -15,8 +15,8 @@
 <meta property="og:image" content="https://kong.github.io/kuma-migrator/assets/migration-overview.svg">
 <meta name="twitter:card" content="summary_large_image">
 
+<link rel="stylesheet" href="static/shared.css">
 <link rel="stylesheet" href="static/style.css">
-<link rel="stylesheet" href="static/chroma.css">
 </head>
 <body data-root="">
 <a class="skip" href="#content">Skip to content</a>
@@ -30,6 +30,7 @@
       <a href="policies/">Policies</a>
       <a href="https://github.com/Kong/kuma-migrator">GitHub</a>
     </nav>
+    <!-- release-tag --><a class="release-badge" href="https://github.com/Kong/kuma-migrator/releases/latest" title="Latest release: v0.8.0">v0.8.0</a><!-- /release-tag -->
     <div class="search">
       <input id="search-input" type="search" placeholder="Search docs" aria-label="Search docs" autocomplete="off">
       <ul id="search-results" hidden></ul>
@@ -48,12 +49,13 @@ them for the latest 2.x line or for 3.0, and writes a report of every change, ev
 and every step left to you. It never writes to a control plane: you review the output and
 apply it yourself.</p>
 <h2 id="quick-start">Quick start</h2>
-<pre class="chroma"><code><span class="line"><span class="cl">brew install --cask bcollard/kuma-migrator/kuma-migrator
-</span></span><span class="line"><span class="cl">kuma-migrator extract --kube-context prod-eks --output-dir ./raw-policies
-</span></span><span class="line"><span class="cl">kuma-migrator migrate --input-dir ./raw-policies --output-dir ./migrated --dry-run
-</span></span><span class="line"><span class="cl">kuma-migrator migrate --input-dir ./raw-policies --output-dir ./migrated
-</span></span><span class="line"><span class="cl">less ./migrated/migration-report.md   <span class="c1"># follow its Apply Checklist</span>
-</span></span></code></pre><p>Add <code>--to-latest v3</code> to <code>migrate</code> to target Kuma / Kong Mesh 3.0. Start with
+<div class="code"><pre class="chroma" data-lang="bash"><code><span class="k-cmd">brew</span> install <span class="k-flag">--cask</span> <span class="k-val">bcollard/kuma-migrator/kuma-migrator</span>
+<span class="k-bin">kuma-migrator</span> <span class="k-sub">extract</span> <span class="k-flag">--kube-context</span> <span class="k-val">prod-eks</span> <span class="k-flag">--output-dir</span> <span class="k-val">./raw-policies</span>
+<span class="k-bin">kuma-migrator</span> <span class="k-sub">migrate</span> <span class="k-flag">--input-dir</span> <span class="k-val">./raw-policies</span> <span class="k-flag">--output-dir</span> <span class="k-val">./migrated</span> <span class="k-flag">--dry-run</span>
+<span class="k-bin">kuma-migrator</span> <span class="k-sub">migrate</span> <span class="k-flag">--input-dir</span> <span class="k-val">./raw-policies</span> <span class="k-flag">--output-dir</span> <span class="k-val">./migrated</span>
+<span class="k-cmd">less</span> ./migrated/migration-report.md   <span class="c1"># follow its Apply Checklist</span>
+</code></pre></div>
+<p>Add <code>--to-latest v3</code> to <code>migrate</code> to target Kuma / Kong Mesh 3.0. Start with
 <a href="guides/usage/">Typical usage</a> for your setup.</p>
 <h2 id="how-the-documentation-is-organised">How the documentation is organised</h2>
 <div class="table-wrap"><table>
@@ -108,5 +110,6 @@ for the areas your plan flags, and the policy pages for the kinds in your report
 </footer>
 <script src="static/search-index.js"></script>
 <script src="static/search.js"></script>
+<script src="static/copy.js"></script>
 </body>
 </html>
