@@ -69,6 +69,19 @@ func TransformDocumentWithOptions(raw []byte, opts TransformOptions) ([][]byte, 
 	var docs [][]byte
 	var warnings []string
 
+	// Universal has no Gateway API: keep the built-in gateway resources on v2,
+	// report them as rejected on v3 (see gateway_universal.go).
+	if kind := universalGatewayKind(raw, scenario); kind != "" {
+		if target.IsV3() {
+			docs, warnings, err := transformUniversalGatewayForV3(raw, kind, target)
+			return docs, warnings, scenario, err
+		}
+		var obj map[string]interface{}
+		_ = yaml.Unmarshal(raw, &obj)
+		warnings = append(warnings, universalGatewayV2Advisory(kind, extractNameFromObj(obj)))
+		scenario = ScenarioPassthrough
+	}
+
 	switch scenario {
 	case ScenarioLegacy:
 		policy, err := parseLegacyPolicy(raw)
