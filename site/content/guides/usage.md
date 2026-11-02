@@ -152,7 +152,7 @@ kuma-migrator migrate --input-dir ./raw-policies --output-dir ./migrated
 control plane stores resources as CRDs:
 
 - re-run with `--output-format kubernetes`, or extract with `--kube-context` instead;
-- apply with `kubectl apply -f <dir>/`. `kumactl` cannot create, update or delete resources
+- apply with `kubectl` (see [Apply](apply.md)). `kumactl` cannot create, update or delete resources
   that Kubernetes manages, so the report prints `kubectl` commands for such a context, says
   why, and names the kumactl context so you can point `kubectl` at the right cluster.
 
@@ -204,7 +204,7 @@ Output of `migrate` on a Konnect tree (warnings shortened):
 The Apply Checklist lists one `kumactl apply` per file:
 
 ```bash
-kumactl config use-context konnect-global-prod
+kumactl config control-planes switch --name konnect-global-prod
 kumactl apply -f migrated/konnect-global-prod-global-ctx/mesh-default/resiliency/MeshRetry-backend-retry.yaml
 kumactl apply -f migrated/konnect-global-prod-global-ctx/mesh-default/routing/MeshExternalService-httpbin.yaml
 kumactl apply -f migrated/konnect-global-prod-global-ctx/mesh-default/observability/MeshTrace-otel.yaml

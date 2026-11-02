@@ -415,8 +415,10 @@ one <code>DocChange</code> per document with its scenario, warnings and error.</
 <li><code>collectApplyDirs</code> groups <code>OutputRelPaths</code> by directory, orders contexts Global/standalone
 first and zones after, and orders subfolders <code>resiliency</code>, <code>routing</code>, <code>zero-trust</code>,
 <code>observability</code>, <code>other</code>, with <code>mesh</code> last.</li>
-<li>For each context, <code>ReadContextMeta</code> decides between <code>kubectl apply -f &lt;dir&gt;/</code> and one
-<code>kumactl apply -f &lt;file&gt;</code> per file, with a <code>kumactl config use-context</code> reminder.</li>
+<li>For each context, <code>ReadContextMeta</code> decides between <code>kubectl</code> and one <code>kumactl apply -f &lt;file&gt;</code>
+per file, with a <code>kumactl config control-planes switch --name &lt;ctx&gt;</code> reminder. A kubectl
+directory holding a file listed in <code>FileReport.ReplaceRelPaths</code> (it rewrites an input object)
+is listed file by file: <code>kubectl replace -f &lt;file&gt; --save-config</code> for those, <code>kubectl apply -f &lt;file&gt;</code> for the rest; other directories get <code>kubectl apply -f &lt;dir&gt;/</code>.</li>
 <li><code>_manual/</code> paths are never in <code>OutputRelPaths</code>, so no step applies them.</li>
 <li>Under v3, <code>collectV3Deletions</code> lists every source object of a kind 3.0 removes, with its
 replacement or <code>_manual/</code> copy and a delete command for the extraction tool. It produces

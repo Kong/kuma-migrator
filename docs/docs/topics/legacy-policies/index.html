@@ -490,14 +490,14 @@ thresholds move to <code>MeshCircuitBreaker</code>.</li>
       <span class="nt">name</span><span class="p">:</span> <span class="l">backend</span>
       <span class="nt">namespace</span><span class="p">:</span> <span class="l">demo</span>
 </code></pre></div>
-<p>The <code>TrafficRoute</code> is copied to <code>routing/TrafficRoute-route-all.yaml</code> unchanged, with an error:</p>
+<p>The <code>TrafficRoute</code> is copied unchanged to <code>_manual/routing/TrafficRoute-route-all.yaml</code>, which no apply step uses, with an error:</p>
 <div class="code"><pre class="chroma" data-lang="text"><code><span class="o-warn">⚠</span>  Retry "web-retry": conf.http.retriableStatusCodes ([503]) has no MeshRetry equivalent and was
    dropped — MeshRetry cannot retry on specific status codes. …
 <span class="o-warn">⚠</span>  spec.targetRef Dataplane labels use 'app: web' as a best-guess pod label — verify this matches
    your actual pod labels before applying
 <span class="o-err">✗</span>  TrafficRoute requires manual migration to MeshHTTPRoute or MeshTCPRoute
 </code></pre></div>
-<p>With <code>--to-latest v3</code> the <code>to[]</code> selectors use labels too, the <code>TrafficRoute</code> goes to <code>_manual/</code>, and every
+<p>With <code>--to-latest v3</code> the <code>to[]</code> selectors use labels too, and every
 converted source gets a delete-before-upgrade advisory:</p>
 <div class="code"><pre class="chroma" data-lang="yaml"><code><span class="c"># resiliency/MeshRetry-web-retry.yaml (v3)</span>
 <span class="nt">apiVersion</span><span class="p">:</span> <span class="l">kuma.io/v1alpha1</span>

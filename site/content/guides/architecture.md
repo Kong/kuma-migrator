@@ -185,8 +185,11 @@ The Apply Checklist is computed from that data:
 - `collectApplyDirs` groups `OutputRelPaths` by directory, orders contexts Global/standalone
   first and zones after, and orders subfolders `resiliency`, `routing`, `zero-trust`,
   `observability`, `other`, with `mesh` last.
-- For each context, `ReadContextMeta` decides between `kubectl apply -f <dir>/` and one
-  `kumactl apply -f <file>` per file, with a `kumactl config use-context` reminder.
+- For each context, `ReadContextMeta` decides between `kubectl` and one `kumactl apply -f <file>`
+  per file, with a `kumactl config control-planes switch --name <ctx>` reminder. A kubectl
+  directory holding a file listed in `FileReport.ReplaceRelPaths` (it rewrites an input object)
+  is listed file by file: `kubectl replace -f <file> --save-config` for those, `kubectl apply -f
+  <file>` for the rest; other directories get `kubectl apply -f <dir>/`.
 - `_manual/` paths are never in `OutputRelPaths`, so no step applies them.
 - Under v3, `collectV3Deletions` lists every source object of a kind 3.0 removes, with its
   replacement or `_manual/` copy and a delete command for the extraction tool. It produces

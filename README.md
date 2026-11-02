@@ -52,8 +52,8 @@ kuma-migrator migrate --input-dir ./raw-policies --output-dir ./migrated
 # setup (Mesh resources go last: they switch on meshServices.mode: Exclusive)
 
 # 3a. Apply them yourself if you used --kumactl-context (self-hosted or
-#     Konnect) — kumactl rejects a directory, so apply one file at a time
-kumactl config use-context konnect-global-prod
+#     Konnect) — kumactl before 2.14 rejects a directory, so apply one file at a time
+kumactl config control-planes switch --name konnect-global-prod
 kumactl apply -f ./migrated/konnect-global-prod-global-ctx/mesh-default/resiliency/MeshTimeout-my-timeout.yaml
 
 # 3b. ...or via kubectl if you extracted via --kube-context — this step

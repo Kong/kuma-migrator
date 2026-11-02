@@ -26,7 +26,7 @@ Output of `migrate --dry-run` on a Global and a Zone context (warnings shortened
        →  kind-global-global-ctx/mesh-default/resiliency/MeshTimeout-backend-timeout.yaml
   ⚠  PARTIAL ERROR     default  route.yaml
        ←  kind-global-global-ctx/mesh-default/routing/route.yaml
-       →  kind-global-global-ctx/mesh-default/routing/TrafficRoute-route-all-default.yaml
+       →  kind-global-global-ctx/_manual/mesh-default/routing/TrafficRoute-route-all-default.yaml
        ✗  TrafficRoute requires manual migration to MeshHTTPRoute or MeshTCPRoute
   ✓  SUBSET            default  meshretry.yaml
        ←  kind-zone-eu-zone-ctx/mesh-default/resiliency/meshretry.yaml
@@ -51,7 +51,7 @@ Report written to: migrated/migration-plan.md
 | `MANUAL` | Every document is a kind the target removes, with no conversion (`MeshGatewayConfig`, `MeshGlobalRateLimit`, Universal `ZoneIngress`/`ZoneEgress` under `v3`). Written to `_manual/` only |
 | `SKIP` | Not a policy and nothing to change: `not a Kuma policy; copied unchanged`, or `on the skip list; not written` |
 | `ERROR` | The file could not be read or written |
-| `PARTIAL ERROR` | At least one document in the file could not be converted; the rest were |
+| `PARTIAL ERROR` | At least one document in the file could not be converted, or its output is rejected by the target; the rest were converted. The original (or the rejected output) is written to `_manual/` |
 
 The deprecation scan runs on every document, whatever its label. A Kubernetes `Deployment`
 with a deprecated `kuma.io/*` annotation is labelled `SCANNED` rather than `SKIP`, and a
@@ -74,10 +74,10 @@ are written to `--output-dir` by
 | Files That Would Be Migrated (`--dry-run`) / Migrated Files | One table per `<context>/<subfolder>/`, for example `kind-global-global-ctx/resiliency/`, with the warnings of each file. Errored files are grouped separately |
 | Already Migrated | Files passed through unchanged, with their warnings |
 | Scanned Non-Policy Resources | Non-policy files the deprecation scan rewrote or flagged, with their warnings |
-| Kept Under `_manual/` | Files whose kind the target removes, with the `_manual/` path of each |
+| Kept Under `_manual/` | Every file written to `_manual/`, one row each: source file, kind, name, `_manual/` path, and the reason (kind removed in 3.0, not converted with the conversion error, or rejected by the target with the rejection reason) |
 | Skipped | Non-policy files with nothing to change, and whether they were copied or skip-listed |
 | Action Items | Errors, workload service address mappings, deprecated annotations. Present only when one of them is non-empty. A document the target rejects as written is listed under Errors with the `_manual/` path of its converted output |
-| Apply Checklist | Ordered steps with the `kubectl` or `kumactl` commands for each context. A three-step version under `--dry-run`. See [Apply](apply.md) |
+| Apply Checklist | Ordered steps with the `kubectl` or `kumactl` commands for each context: `kubectl replace` for files that rewrite an input object, `kubectl apply` for the rest. A three-step version under `--dry-run`. See [Apply](apply.md) |
 | Original Resources to Delete | Resources whose kind changed, with delete commands in a collapsible block. Under `v3`, kinds 3.0 removes are listed in the next section instead |
 | Delete Before Upgrading to 3.0 | `v3` only. See below |
 

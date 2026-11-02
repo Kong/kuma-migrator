@@ -184,7 +184,7 @@ gateway. See <a href="../../topics/multizone/">Multizone</a>.</p>
 control plane stores resources as CRDs:</p>
 <ul>
 <li>re-run with <code>--output-format kubernetes</code>, or extract with <code>--kube-context</code> instead;</li>
-<li>apply with <code>kubectl apply -f &lt;dir&gt;/</code>. <code>kumactl</code> cannot create, update or delete resources
+<li>apply with <code>kubectl</code> (see <a href="../apply/">Apply</a>). <code>kumactl</code> cannot create, update or delete resources
 that Kubernetes manages, so the report prints <code>kubectl</code> commands for such a context, says
 why, and names the kumactl context so you can point <code>kubectl</code> at the right cluster.</li>
 </ul>
@@ -222,7 +222,7 @@ plane, and reads meshes, zones and resources over HTTPS. The files are in Univer
        <span class="o-dim">→  konnect-global-prod-global-ctx/mesh-default/routing/MeshExternalService-httpbin.yaml</span>
 </code></pre></div>
 <p>The Apply Checklist lists one <code>kumactl apply</code> per file:</p>
-<div class="code"><pre class="chroma" data-lang="bash"><code><span class="k-manual">kumactl</span> <span class="k-manual-b">config</span> <span class="k-manual-b">use-context</span> <span class="k-manual-b">konnect-global-prod</span>
+<div class="code"><pre class="chroma" data-lang="bash"><code><span class="k-manual">kumactl</span> <span class="k-manual-b">config</span> <span class="k-manual-b">control-planes</span> <span class="k-manual-b">switch</span> <span class="k-flag">--name</span> <span class="k-val">konnect-global-prod</span>
 <span class="k-manual">kumactl</span> <span class="k-manual-b">apply</span> <span class="k-flag">-f</span> <span class="k-val">migrated/konnect-global-prod-global-ctx/mesh-default/resiliency/MeshRetry-backend-retry.yaml</span>
 <span class="k-manual">kumactl</span> <span class="k-manual-b">apply</span> <span class="k-flag">-f</span> <span class="k-val">migrated/konnect-global-prod-global-ctx/mesh-default/routing/MeshExternalService-httpbin.yaml</span>
 <span class="k-manual">kumactl</span> <span class="k-manual-b">apply</span> <span class="k-flag">-f</span> <span class="k-val">migrated/konnect-global-prod-global-ctx/mesh-default/observability/MeshTrace-otel.yaml</span>
