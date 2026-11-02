@@ -37,11 +37,11 @@ func sectionNameFromTags(tags map[string]string) string {
 // ---- Input structs for MeshGatewayRoute (legacy) ----------------------------
 
 type meshGatewayRoute struct {
-	APIVersion string              `json:"apiVersion"`
-	Kind       string              `json:"kind"`
-	Mesh       string              `json:"mesh,omitempty"` // Universal-style top-level mesh field
-	Metadata   gwRouteMetadata     `json:"metadata"`
-	Spec       gwRouteSpec         `json:"spec"`
+	APIVersion string          `json:"apiVersion"`
+	Kind       string          `json:"kind"`
+	Mesh       string          `json:"mesh,omitempty"` // Universal-style top-level mesh field
+	Metadata   gwRouteMetadata `json:"metadata"`
+	Spec       gwRouteSpec     `json:"spec"`
 }
 
 type gwRouteMetadata struct {
@@ -70,9 +70,9 @@ type gwHTTPConf struct {
 }
 
 type gwHTTPRule struct {
-	Matches  []gwHTTPMatch  `json:"matches"`
-	Filters  []gwFilter     `json:"filters,omitempty"`
-	Backends []gwBackend    `json:"backends,omitempty"`
+	Matches  []gwHTTPMatch `json:"matches"`
+	Filters  []gwFilter    `json:"filters,omitempty"`
+	Backends []gwBackend   `json:"backends,omitempty"`
 }
 
 type gwHTTPMatch struct {
@@ -765,8 +765,8 @@ func convertGWHeaderMatches(headers []gwHeaderMatch, routeName string, rIdx int)
 			continue
 		}
 		out := map[string]interface{}{
-			"type":  convertHeaderMatchType(h.Match),
-			"name":  h.Name,
+			"type": convertHeaderMatchType(h.Match),
+			"name": h.Name,
 		}
 		if h.Value != "" {
 			out["value"] = h.Value
@@ -857,7 +857,7 @@ func convertGWFilters(filters []gwFilter, routeName string, rIdx int) ([]interfa
 					routeName, rIdx))
 			}
 			result = append(result, map[string]interface{}{
-				"type":      "URLRewrite",
+				"type":       "URLRewrite",
 				"urlRewrite": urlRewrite,
 			})
 

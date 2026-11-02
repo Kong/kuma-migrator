@@ -291,9 +291,9 @@ type oldMeshGateway struct {
 }
 
 type oldMGWSpec struct {
-	Selectors []OldSelector       `json:"selectors,omitempty"`
-	Tags      map[string]string   `json:"tags,omitempty"`
-	Conf      oldMGWConf          `json:"conf"`
+	Selectors []OldSelector     `json:"selectors,omitempty"`
+	Tags      map[string]string `json:"tags,omitempty"`
+	Conf      oldMGWConf        `json:"conf"`
 }
 
 type oldMGWConf struct {
@@ -301,13 +301,13 @@ type oldMGWConf struct {
 }
 
 type oldMGWListener struct {
-	Port      uint32            `json:"port"`
-	Protocol  string            `json:"protocol"`
-	Hostname  string            `json:"hostname,omitempty"`
-	Tags      map[string]string `json:"tags,omitempty"`
-	CrossMesh bool              `json:"crossMesh,omitempty"`
+	Port      uint32             `json:"port"`
+	Protocol  string             `json:"protocol"`
+	Hostname  string             `json:"hostname,omitempty"`
+	Tags      map[string]string  `json:"tags,omitempty"`
+	CrossMesh bool               `json:"crossMesh,omitempty"`
 	TLS       *oldMGWListenerTLS `json:"tls,omitempty"`
-	Resources json.RawMessage   `json:"resources,omitempty"`
+	Resources json.RawMessage    `json:"resources,omitempty"`
 }
 
 type oldMGWListenerTLS struct {

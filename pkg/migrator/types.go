@@ -70,9 +70,9 @@ type PolicyEntry struct {
 
 // KubePolicy is a Kubernetes-style policy document (Scenario B/C input; all output).
 type KubePolicy struct {
-	APIVersion string        `json:"apiVersion"`
-	Kind       string        `json:"kind"`
-	Metadata   KubeMetadata  `json:"metadata"`
+	APIVersion string         `json:"apiVersion"`
+	Kind       string         `json:"kind"`
+	Metadata   KubeMetadata   `json:"metadata"`
 	Spec       KubePolicySpec `json:"spec"`
 }
 
@@ -100,14 +100,14 @@ type RuleEntry struct {
 
 // UniversalPolicy is a flat Universal-style policy document (Scenario A input).
 type UniversalPolicy struct {
-	Type         string          `json:"type"`
-	Name         string          `json:"name"`
-	Mesh         string          `json:"mesh,omitempty"`
+	Type string `json:"type"`
+	Name string `json:"name"`
+	Mesh string `json:"mesh,omitempty"`
 	// Labels are the top-level labels of a Universal document. They are carried
 	// over to Universal output; Kubernetes output does not use them.
 	Labels       map[string]string `json:"labels,omitempty"`
-	Sources      []OldSelector   `json:"sources,omitempty"`
-	Destinations []OldSelector   `json:"destinations,omitempty"`
+	Sources      []OldSelector     `json:"sources,omitempty"`
+	Destinations []OldSelector     `json:"destinations,omitempty"`
 	// Selectors is the scoping field of the legacy policies that have no
 	// direction: TrafficTrace, ProxyTemplate and VirtualOutbound. Without it those
 	// policies parse with zero sources and zero destinations, and their conf has

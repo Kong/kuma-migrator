@@ -16,11 +16,11 @@ type oldExternalService struct {
 	APIVersion string `json:"apiVersion"`
 	Kind       string `json:"kind"`
 	// Universal style: flat top-level fields.
-	Type string `json:"type"`
-	Name string `json:"name"`
-	Mesh string `json:"mesh"`
-	Tags map[string]string `json:"tags"`
-	Networking *oldESNetworking `json:"networking"`
+	Type       string            `json:"type"`
+	Name       string            `json:"name"`
+	Mesh       string            `json:"mesh"`
+	Tags       map[string]string `json:"tags"`
+	Networking *oldESNetworking  `json:"networking"`
 	// Kubernetes style: under metadata/spec.
 	Metadata *struct {
 		Name      string            `json:"name"`
