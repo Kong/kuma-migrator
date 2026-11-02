@@ -35,7 +35,7 @@ type oldMeshTracingSection struct {
 
 type oldTracingBackend struct {
 	Name     string          `json:"name"`
-	Type     string          `json:"type"` // "zipkin", "datadog"
+	Type     string          `json:"type"`               // "zipkin", "datadog"
 	Sampling *float64        `json:"sampling,omitempty"` // 0–100
 	Conf     json.RawMessage `json:"conf"`
 }
@@ -53,7 +53,7 @@ type oldDatadogConf struct {
 }
 
 type oldMeshLoggingSection struct {
-	DefaultBackend string             `json:"defaultBackend"`
+	DefaultBackend string              `json:"defaultBackend"`
 	Backends       []oldLoggingBackend `json:"backends"`
 }
 
@@ -155,6 +155,14 @@ func TransformMesh(raw []byte) ([][]byte, []string, error) {
 // also removes the Mesh fields 3.0 drops (mtls, routing.*, skipCreatingInitialPolicies)
 // and emits the companion policies needed to keep their behaviour (see v3_mesh.go).
 func TransformMeshForTarget(raw []byte, target TargetVersion) ([][]byte, []string, error) {
+	return TransformMeshWithOptions(raw, TransformOptions{Target: target})
+}
+
+// TransformMeshWithOptions is TransformMeshForTarget with the cross-document
+// context from the pre-pass: the system namespace the companions go in, and the
+// TrafficLog/TrafficTrace references to the Mesh's logging/tracing backends.
+func TransformMeshWithOptions(raw []byte, opts TransformOptions) ([][]byte, []string, error) {
+	target := opts.Target
 	// Parse as a generic map so all unrecognised fields are preserved.
 	var obj map[string]interface{}
 	if err := yaml.Unmarshal(raw, &obj); err != nil {
@@ -162,6 +170,14 @@ func TransformMeshForTarget(raw []byte, target TargetVersion) ([][]byte, []strin
 	}
 
 	meshName, meshNamespace := extractMeshMeta(obj)
+
+	// Companions follow the format of the Mesh: Universal input gets Universal
+	// companions (type/name/mesh), Kubernetes input gets CRDs in the system namespace.
+	cm := companionMeta{
+		Mesh:      meshName,
+		Namespace: resolveSystemNamespace(opts, meshNamespace),
+		Universal: isUniversalDoc(obj),
+	}
 
 	spec, _ := obj["spec"].(map[string]interface{})
 	if spec == nil {
@@ -174,37 +190,50 @@ func TransformMeshForTarget(raw []byte, target TargetVersion) ([][]byte, []strin
 	var warnings []string
 
 	// ── metrics → MeshMetric ──────────────────────────────────────────────────
+	// metrics.enabledBackend turns Prometheus metrics on for every proxy in the
+	// mesh, so a mesh-wide MeshMetric is the equivalent.
 	if rawMetrics, ok := spec["metrics"]; ok {
 		b, _ := json.Marshal(rawMetrics)
 		var m oldMeshMetricsSection
 		if err := json.Unmarshal(b, &m); err == nil {
-			crds, w := metricsToMeshMetric(m, meshName, meshNamespace)
+			crds, w := metricsToMeshMetric(m, cm)
 			companions = append(companions, crds...)
 			warnings = append(warnings, w...)
 		}
 		delete(spec, "metrics")
 	}
 
-	// ── tracing → MeshTrace ───────────────────────────────────────────────────
+	// ── tracing / logging ─────────────────────────────────────────────────────
+	// On 2.x these sections only declare backends. Nothing is traced or logged
+	// until a TrafficTrace/TrafficLog selects traffic and names a backend (or
+	// falls back to defaultBackend), so no mesh-wide MeshTrace/MeshAccessLog is
+	// generated: that would turn tracing/logging on for every proxy. The backend
+	// is carried into the MeshTrace/MeshAccessLog converted from each
+	// TrafficTrace/TrafficLog (resolveTracingBackendRef / resolveLoggingBackendRef).
 	if rawTracing, ok := spec["tracing"]; ok {
 		b, _ := json.Marshal(rawTracing)
 		var t oldMeshTracingSection
 		if err := json.Unmarshal(b, &t); err == nil {
-			crds, w := tracingToMeshTrace(t, meshName, meshNamespace)
-			companions = append(companions, crds...)
-			warnings = append(warnings, w...)
+			names := make([]string, 0, len(t.Backends))
+			for _, be := range t.Backends {
+				names = append(names, be.Name)
+			}
+			warnings = append(warnings, meshBackendsUsageWarning(meshName, "tracing", "TrafficTrace",
+				"MeshTrace", names, t.DefaultBackend, opts))
 		}
 		delete(spec, "tracing")
 	}
 
-	// ── logging → MeshAccessLog ───────────────────────────────────────────────
 	if rawLogging, ok := spec["logging"]; ok {
 		b, _ := json.Marshal(rawLogging)
 		var l oldMeshLoggingSection
 		if err := json.Unmarshal(b, &l); err == nil {
-			crds, w := loggingToMeshAccessLog(l, meshName, meshNamespace)
-			companions = append(companions, crds...)
-			warnings = append(warnings, w...)
+			names := make([]string, 0, len(l.Backends))
+			for _, be := range l.Backends {
+				names = append(names, be.Name)
+			}
+			warnings = append(warnings, meshBackendsUsageWarning(meshName, "logging", "TrafficLog",
+				"MeshAccessLog", names, l.DefaultBackend, opts))
 		}
 		delete(spec, "logging")
 	}
@@ -217,14 +246,14 @@ func TransformMeshForTarget(raw []byte, target TargetVersion) ([][]byte, []strin
 				passthroughSet = true
 				if ptBool, _ := pt.(bool); !ptBool {
 					// passthrough=false → generate MeshPassthrough with passthroughMode: None
-					if crd, ptWarns, err := buildMeshPassthroughMode(meshName, meshNamespace, "None"); err == nil {
+					if crd, ptWarns, err := buildMeshPassthroughMode(cm, "None"); err == nil {
 						companions = append(companions, crd)
 						warnings = append(warnings, ptWarns...)
 						warnings = append(warnings,
 							"Mesh.spec.networking.outbound.passthrough=false has been extracted to a MeshPassthrough CRD with passthroughMode: None")
 					}
 				} else {
-					crds, w := passthroughTrueCompanion(meshName, meshNamespace, target)
+					crds, w := passthroughTrueCompanion(cm, target)
 					companions = append(companions, crds...)
 					warnings = append(warnings, w...)
 				}
@@ -263,7 +292,7 @@ func TransformMeshForTarget(raw []byte, target TargetVersion) ([][]byte, []strin
 
 	// ── 3.0 schema removals ───────────────────────────────────────────────────
 	if target.IsV3() {
-		crds, w := applyMeshRemovalsForV3(obj, spec, meshName, meshNamespace)
+		crds, w := applyMeshRemovalsForV3(obj, spec, cm)
 		companions = append(companions, crds...)
 		warnings = append(warnings, w...)
 	}
@@ -279,11 +308,43 @@ func TransformMeshForTarget(raw []byte, target TargetVersion) ([][]byte, []strin
 
 // ---- Companion CRD builders --------------------------------------------------
 
-func metricsToMeshMetric(m oldMeshMetricsSection, meshName, ns string) ([][]byte, []string) {
+// metricsToMeshMetric converts the enabled Mesh metrics backend into a mesh-wide
+// MeshMetric. Only metrics.enabledBackend is active on 2.x: the other entries in
+// metrics.backends are declarations, and a Mesh without enabledBackend exposes
+// no metrics, so neither produces a MeshMetric.
+func metricsToMeshMetric(m oldMeshMetricsSection, cm companionMeta) ([][]byte, []string) {
+	meshName := cm.Mesh
 	var warnings []string
 	var backends []map[string]interface{}
 
+	if m.EnabledBackend == "" {
+		if len(m.Backends) == 0 {
+			return nil, nil
+		}
+		return nil, []string{fmt.Sprintf(
+			"Mesh %q: spec.metrics declares backends but sets no enabledBackend, so metrics were not "+
+				"enabled on 2.x. No MeshMetric was generated and nothing is lost. Write a MeshMetric if "+
+				"you want metrics.", meshName)}
+	}
+	var enabled []oldMetricsBackend
 	for _, b := range m.Backends {
+		if b.Name == m.EnabledBackend {
+			enabled = append(enabled, b)
+		}
+	}
+	if len(enabled) == 0 {
+		return nil, []string{fmt.Sprintf(
+			"Mesh %q: spec.metrics.enabledBackend %q is not declared in spec.metrics.backends — no "+
+				"MeshMetric was generated; write one by hand.", meshName, m.EnabledBackend)}
+	}
+	if len(m.Backends) > len(enabled) {
+		warnings = append(warnings, fmt.Sprintf(
+			"Mesh %q: only the enabled metrics backend %q was converted to a MeshMetric; the other "+
+				"spec.metrics.backends entries were not enabled on 2.x and were dropped.",
+			meshName, m.EnabledBackend))
+	}
+
+	for _, b := range enabled {
 		switch strings.ToLower(b.Type) {
 		case "prometheus":
 			var conf oldPrometheusConf
@@ -326,7 +387,7 @@ func metricsToMeshMetric(m oldMeshMetricsSection, meshName, ns string) ([][]byte
 	if w := ValidateResourceName(outName, "MeshMetric"); w != "" {
 		warnings = append(warnings, w)
 	}
-	crd := buildObservabilityCRD("MeshMetric", outName, ns, meshName, map[string]interface{}{
+	crd := buildObservabilityCRD("MeshMetric", outName, cm, map[string]interface{}{
 		"backends": backends,
 	})
 	b, err := yaml.Marshal(crd)
@@ -337,109 +398,134 @@ func metricsToMeshMetric(m oldMeshMetricsSection, meshName, ns string) ([][]byte
 	return [][]byte{b}, warnings
 }
 
-func tracingToMeshTrace(t oldMeshTracingSection, meshName, ns string) ([][]byte, []string) {
-	var warnings []string
-	var backends []map[string]interface{}
-	var sampling map[string]interface{}
+// meshBackendsUsageWarning explains what happened to Mesh spec.logging or
+// spec.tracing. section is "logging"/"tracing", policyKind the legacy policy that
+// activates a backend (TrafficLog/TrafficTrace) and newKind the policy it is
+// converted to (MeshAccessLog/MeshTrace).
+//
+// When the pre-pass indexed the input (opts.LegacyObservability != nil) the
+// warning names the backends some TrafficLog/TrafficTrace references and the
+// ones no policy references (inactive on 2.x, so nothing is lost). Without the
+// index it states the rule.
+func meshBackendsUsageWarning(meshName, section, policyKind, newKind string, backends []string,
+	defaultBackend string, opts TransformOptions) string {
+	head := fmt.Sprintf(
+		"Mesh %q: spec.%s removed from the Mesh output. On 2.x these backends only declare where "+
+			"data goes; a %s activates one for the traffic it selects. No mesh-wide %s was generated, "+
+			"because that would enable %s for every proxy in the mesh.",
+		meshName, section, policyKind, newKind, section)
+	if opts.LegacyObservability == nil {
+		return head + fmt.Sprintf(
+			" The %s converted from each %s carries its backend inline, resolved from this Mesh when it "+
+				"is in the same input. A backend no %s references was inactive, so dropping it loses nothing.",
+			newKind, policyKind, policyKind)
+	}
 
-	for _, b := range t.Backends {
-		converted, w := tracingBackendToNew(b)
-		warnings = append(warnings, w...)
-		if converted != nil {
-			backends = append(backends, converted)
+	used := opts.LegacyObservability.referencedBackends(meshName, policyKind, defaultBackend)
+	var active, inactive []string
+	for _, b := range backends {
+		if used[b] > 0 {
+			active = append(active, fmt.Sprintf("%s (%d %s)", b, used[b], policyKind))
+		} else {
+			inactive = append(inactive, b)
 		}
-
-		// Map old per-backend sampling (float 0–100) to new spec-level sampling.overall (int).
-		if b.Sampling != nil && sampling == nil {
-			overall := int(*b.Sampling)
-			sampling = map[string]interface{}{"overall": overall}
-		}
 	}
-
-	if len(backends) == 0 {
-		return nil, warnings
+	msg := head
+	if len(active) > 0 {
+		msg += fmt.Sprintf(" Referenced backends, carried inline into the %s generated from each %s: %s.",
+			newKind, policyKind, strings.Join(active, ", "))
 	}
-
-	defaultSection := map[string]interface{}{"backends": backends}
-	if sampling != nil {
-		defaultSection["sampling"] = sampling
+	if len(inactive) > 0 {
+		msg += fmt.Sprintf(" No %s in the input references %s, so %s inactive on 2.x and nothing is lost "+
+			"(if %s resources exist on the control plane but were not extracted, add them to the input).",
+			policyKind, strings.Join(inactive, ", "), pluralIsWas(len(inactive)), policyKind)
 	}
-
-	outName := meshName + "-trace"
-	if w := ValidateResourceName(outName, "MeshTrace"); w != "" {
-		warnings = append(warnings, w)
-	}
-	crd := buildObservabilityCRD("MeshTrace", outName, ns, meshName, defaultSection)
-	b, err := yaml.Marshal(crd)
-	if err != nil {
-		warnings = append(warnings, fmt.Sprintf("MeshTrace marshal error: %v", err))
-		return nil, warnings
-	}
-	return [][]byte{b}, warnings
+	return msg
 }
 
-func loggingToMeshAccessLog(l oldMeshLoggingSection, meshName, ns string) ([][]byte, []string) {
-	var warnings []string
-	var backends []map[string]interface{}
-
-	for _, b := range l.Backends {
-		converted, w := loggingBackendToNew(b)
-		warnings = append(warnings, w...)
-		if converted != nil {
-			backends = append(backends, converted)
-		}
+func pluralIsWas(n int) string {
+	if n == 1 {
+		return "it was"
 	}
-
-	if len(backends) == 0 {
-		return nil, warnings
-	}
-
-	outName := meshName + "-accesslog"
-	if w := ValidateResourceName(outName, "MeshAccessLog"); w != "" {
-		warnings = append(warnings, w)
-	}
-	crd := buildObservabilityCRD("MeshAccessLog", outName, ns, meshName, map[string]interface{}{
-		"backends": backends,
-	})
-	b, err := yaml.Marshal(crd)
-	if err != nil {
-		warnings = append(warnings, fmt.Sprintf("MeshAccessLog marshal error: %v", err))
-		return nil, warnings
-	}
-	return [][]byte{b}, warnings
+	return "they were"
 }
 
 // buildMeshPassthroughMode builds a Mesh-wide MeshPassthrough with the given
 // passthroughMode (None or All).
-func buildMeshPassthroughMode(meshName, ns, mode string) ([]byte, []string, error) {
-	outName := meshName + "-passthrough"
+func buildMeshPassthroughMode(cm companionMeta, mode string) ([]byte, []string, error) {
+	outName := cm.Mesh + "-passthrough"
 	var warnings []string
 	if w := ValidateResourceName(outName, "MeshPassthrough"); w != "" {
 		warnings = append(warnings, w)
 	}
-	crd := buildObservabilityCRD("MeshPassthrough", outName, ns, meshName, map[string]interface{}{
+	crd := buildObservabilityCRD("MeshPassthrough", outName, cm, map[string]interface{}{
 		"passthroughMode": mode,
 	})
 	b, err := yaml.Marshal(crd)
 	return b, warnings, err
 }
 
-// ---- Generic CRD constructor -------------------------------------------------
+// ---- Generic companion constructor --------------------------------------------
 
-// buildObservabilityCRD constructs a map representing any of the observability
-// companion CRDs (MeshMetric, MeshTrace, MeshAccessLog, MeshPassthrough).
-// defaultSection is the content of spec.default.
-func buildObservabilityCRD(kind, name, namespace, meshName string, defaultSection map[string]interface{}) map[string]interface{} {
+// defaultSystemNamespace is the Kuma OSS control plane namespace. Kong Mesh
+// installs into kong-mesh-system; resolveSystemNamespace picks between them.
+const defaultSystemNamespace = "kuma-system"
+
+// companionMeta describes where a generated companion resource goes: its mesh,
+// the Kubernetes system namespace, and whether it is written in Universal format.
+type companionMeta struct {
+	Mesh      string
+	Namespace string
+	Universal bool
+}
+
+// resolveSystemNamespace returns the namespace generated mesh-scoped companions
+// (MeshMetric, MeshPassthrough, MeshTLS, MeshOpenTelemetryBackend,
+// MeshExternalService) go in on Kubernetes: the config-file override or the value
+// inferred by the pre-pass (opts.SystemNamespace), else the namespace the source
+// document itself carries, else kuma-system.
+func resolveSystemNamespace(opts TransformOptions, docNamespace string) string {
+	if opts.SystemNamespace != "" {
+		return opts.SystemNamespace
+	}
+	if docNamespace != "" {
+		return docNamespace
+	}
+	return defaultSystemNamespace
+}
+
+// isUniversalDoc reports whether a decoded document uses the Universal layout
+// (type instead of kind).
+func isUniversalDoc(obj map[string]interface{}) bool {
+	if k, _ := obj["kind"].(string); k != "" {
+		return false
+	}
+	t, _ := obj["type"].(string)
+	return t != ""
+}
+
+// buildCompanion builds a generated resource in the format cm asks for:
+// Universal (type/name/mesh/spec) or Kubernetes (apiVersion/kind/metadata/spec,
+// in the system namespace, mesh as the kuma.io/mesh label). An empty cm.Mesh
+// leaves the mesh out.
+func buildCompanion(kind, name string, cm companionMeta, spec map[string]interface{}) map[string]interface{} {
+	if cm.Universal {
+		out := map[string]interface{}{
+			"type": kind,
+			"name": name,
+			"spec": spec,
+		}
+		if cm.Mesh != "" {
+			out["mesh"] = cm.Mesh
+		}
+		return out
+	}
 	meta := map[string]interface{}{
 		"name":      name,
-		"namespace": namespace,
-		"labels": map[string]interface{}{
-			"kuma.io/mesh": meshName,
-		},
+		"namespace": cm.Namespace,
 	}
-	spec := map[string]interface{}{
-		"targetRef": map[string]interface{}{"kind": "Mesh"},
-		"default":   defaultSection,
+	if cm.Mesh != "" {
+		meta["labels"] = map[string]interface{}{meshLabel: cm.Mesh}
 	}
 	return map[string]interface{}{
 		"apiVersion": kumaAPIVersion,
@@ -449,18 +535,27 @@ func buildObservabilityCRD(kind, name, namespace, meshName string, defaultSectio
 	}
 }
 
+// buildObservabilityCRD builds a mesh-wide companion policy (MeshMetric,
+// MeshPassthrough) whose spec.default is defaultSection.
+func buildObservabilityCRD(kind, name string, cm companionMeta, defaultSection map[string]interface{}) map[string]interface{} {
+	return buildCompanion(kind, name, cm, map[string]interface{}{
+		"targetRef": map[string]interface{}{"kind": "Mesh"},
+		"default":   defaultSection,
+	})
+}
+
 // ---- Helpers -----------------------------------------------------------------
 
-// extractMeshMeta returns the name and namespace from a Mesh CRD map.
-// Supports both Kubernetes-style (metadata.name/namespace) and
-// Universal-style (top-level name field, no namespace).
+// extractMeshMeta returns the name of a Mesh and the namespace its document
+// carries ("" when none: Mesh is cluster-scoped, so it normally has none).
+// Supports both Kubernetes-style (metadata.name) and Universal-style (top-level
+// name).
 func extractMeshMeta(obj map[string]interface{}) (name, namespace string) {
-	namespace = "kong-mesh-system" // default system namespace
 	if meta, ok := obj["metadata"].(map[string]interface{}); ok {
 		if n, ok := meta["name"].(string); ok {
 			name = n
 		}
-		if ns, ok := meta["namespace"].(string); ok && ns != "" {
+		if ns, ok := meta["namespace"].(string); ok {
 			namespace = ns
 		}
 	}

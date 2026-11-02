@@ -141,45 +141,35 @@ spec:
           traceId128bit: true
           apiVersion: httpProto
 `
-	docs, _, err := TransformMesh([]byte(input))
+	// On 2.x Mesh tracing backends trace nothing until a TrafficTrace selects
+	// traffic, so no mesh-wide MeshTrace is generated: it would enable tracing
+	// for every proxy. The backend is carried by the MeshTrace converted from
+	// each TrafficTrace (TestLegacyConf_TrafficTrace_ResolvesBackend).
+	docs, warnings, err := TransformMesh([]byte(input))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(docs) != 2 {
-		t.Fatalf("expected 2 docs, got %d", len(docs))
+	if len(docs) != 1 {
+		t.Fatalf("expected only the cleaned Mesh, got %d docs", len(docs))
+	}
+	var mesh map[string]interface{}
+	if err := yaml.Unmarshal(docs[0], &mesh); err != nil {
+		t.Fatalf("unmarshal Mesh: %v", err)
+	}
+	if dig(mesh, "spec", "tracing") != nil {
+		t.Error("spec.tracing must be removed from the Mesh")
+	}
+	if warningContaining(warnings, "spec.tracing", "TrafficTrace", "No mesh-wide MeshTrace") == "" {
+		t.Errorf("expected the tracing-backends warning, got: %v", warnings)
 	}
 
-	var mt map[string]interface{}
-	if err := yaml.Unmarshal(docs[1], &mt); err != nil {
-		t.Fatalf("unmarshal MeshTrace: %v", err)
-	}
-	if mt["kind"] != "MeshTrace" {
-		t.Errorf("expected kind MeshTrace, got %v", mt["kind"])
-	}
-	spec := mt["spec"].(map[string]interface{})
-	def := spec["default"].(map[string]interface{})
-
-	// Check sampling.overall.
-	sampling, ok := def["sampling"].(map[string]interface{})
-	if !ok {
-		t.Fatal("expected sampling in MeshTrace default")
-	}
-	if overall := sampling["overall"]; overall != float64(75) {
-		t.Errorf("expected sampling.overall=75, got %v", overall)
-	}
-
-	// Check Zipkin backend.
-	backends := def["backends"].([]interface{})
-	b := backends[0].(map[string]interface{})
-	if b["type"] != "Zipkin" {
-		t.Errorf("expected backend type Zipkin, got %v", b["type"])
-	}
-	zipkin := b["zipkin"].(map[string]interface{})
-	if zipkin["url"] != "http://jaeger-collector:9411/api/v2/spans" {
-		t.Errorf("unexpected zipkin url: %v", zipkin["url"])
-	}
-	if zipkin["traceId128bit"] != true {
-		t.Errorf("expected traceId128bit=true, got %v", zipkin["traceId128bit"])
+	// The shared backend converter still maps every zipkin field.
+	_, b := parseMeshBackends([]byte(input))
+	conv, _ := tracingBackendToNew(b.Tracing["jaeger"])
+	zipkin := conv["zipkin"].(map[string]interface{})
+	if conv["type"] != "Zipkin" || zipkin["url"] != "http://jaeger-collector:9411/api/v2/spans" ||
+		zipkin["traceId128bit"] != true || zipkin["apiVersion"] != "httpProto" {
+		t.Errorf("unexpected zipkin backend: %v", conv)
 	}
 }
 
@@ -203,34 +193,24 @@ spec:
         conf:
           address: logserver.local:5000
 `
-	docs, _, err := TransformMesh([]byte(input))
+	// Mesh logging backends log nothing until a TrafficLog names one: no
+	// mesh-wide MeshAccessLog.
+	docs, warnings, err := TransformMesh([]byte(input))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(docs) != 2 {
-		t.Fatalf("expected 2 docs, got %d", len(docs))
+	if len(docs) != 1 {
+		t.Fatalf("expected only the cleaned Mesh, got %d docs", len(docs))
+	}
+	if warningContaining(warnings, "spec.logging", "TrafficLog", "No mesh-wide MeshAccessLog") == "" {
+		t.Errorf("expected the logging-backends warning, got: %v", warnings)
 	}
 
-	var mal map[string]interface{}
-	if err := yaml.Unmarshal(docs[1], &mal); err != nil {
-		t.Fatalf("unmarshal MeshAccessLog: %v", err)
-	}
-	if mal["kind"] != "MeshAccessLog" {
-		t.Errorf("expected kind MeshAccessLog, got %v", mal["kind"])
-	}
-	spec := mal["spec"].(map[string]interface{})
-	def := spec["default"].(map[string]interface{})
-	backends := def["backends"].([]interface{})
-	if len(backends) != 2 {
-		t.Fatalf("expected 2 backends, got %d", len(backends))
-	}
-	file := backends[0].(map[string]interface{})
-	if file["type"] != "File" {
-		t.Errorf("expected File backend, got %v", file["type"])
-	}
-	tcp := backends[1].(map[string]interface{})
-	if tcp["type"] != "Tcp" {
-		t.Errorf("expected Tcp backend, got %v", tcp["type"])
+	_, b := parseMeshBackends([]byte(input))
+	file, _ := loggingBackendToNew(b.Logging["file-log"])
+	tcp, _ := loggingBackendToNew(b.Logging["tcp-log"])
+	if file["type"] != "File" || tcp["type"] != "Tcp" {
+		t.Errorf("unexpected backends: %v / %v", file, tcp)
 	}
 }
 
@@ -351,9 +331,10 @@ spec:
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	// Cleaned Mesh + MeshMetric + MeshTrace + MeshAccessLog + MeshPassthrough = 5
-	if len(docs) != 5 {
-		t.Fatalf("expected 5 docs, got %d", len(docs))
+	// Cleaned Mesh + MeshMetric + MeshPassthrough = 3. Tracing and logging get no
+	// mesh-wide companion (they were activated per TrafficTrace/TrafficLog).
+	if len(docs) != 3 {
+		t.Fatalf("expected 3 docs, got %d", len(docs))
 	}
 }
 
