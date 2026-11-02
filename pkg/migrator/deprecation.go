@@ -26,7 +26,8 @@ import (
 //   - MeshTrafficPermission action: ALLOW/DENY uppercase casing (Kong Mesh 2.1)
 //   - MeshTrafficPermission spec.*.spiffeId → spiffeID casing (v2.12, auto-fix)
 //   - MeshTrafficPermission/MeshFaultInjection from[] deprecated → rules[] API (v2.13/2.14)
-//   - MeshLoadBalancingStrategy hashPolicies[].type: SourceIP → Connection (v2.10)
+//   - MeshLoadBalancingStrategy hashPolicies[].type: SourceIP → Connection + connection.sourceIP
+//     (auto-fix on both targets; deprecated v2.10, removed 3.0)
 //   - MeshLoadBalancingStrategy to[].default.loadBalancer.{ringHash,maglev}.hashPolicies
 //     → to[].default.hashPolicies (v2.12, auto-fix)
 //   - MeshService spec.ports[].protocol → appProtocol (v2.8, auto-fix)
@@ -114,8 +115,8 @@ func ScanForDeprecations(raw []byte, target TargetVersion) (out []byte, warnings
 	case "MeshProxyPatch":
 		warnings = append(warnings, warnMeshProxyPatchCircuitBreakers(obj, name, target)...)
 	case "MeshLoadBalancingStrategy":
-		warnings = append(warnings, warnSourceIPHashPolicy(obj, name)...)
 		fix(fixHashPoliciesPath(obj, name))
+		fix(fixSourceIPHashPolicy(obj, name))
 		warnings = append(warnings, warnMeshLoadBalancingStrategyCrossZoneTarget(obj, name, target)...)
 	case "MeshService":
 		fix(fixMeshServicePortProtocol(obj, name))
@@ -436,37 +437,72 @@ func fixSpiffeIDCasing(obj map[string]interface{}, name string) (bool, []string)
 
 // ---- MeshLoadBalancingStrategy SourceIP → Connection (v2.10) -----------------
 
-func warnSourceIPHashPolicy(obj map[string]interface{}, name string) []string {
-	for _, lb := range mlbLoadBalancers(obj) {
-		for _, key := range []string{"hashPolicies", ""} {
-			var hashPolicies []interface{}
-			if key == "" {
-				// also check nested ringHash/maglev hashPolicies
-				for _, algo := range []string{"ringHash", "maglev"} {
-					if a, ok := lb[algo].(map[string]interface{}); ok {
-						if hp, ok := a["hashPolicies"].([]interface{}); ok {
-							hashPolicies = append(hashPolicies, hp...)
-						}
-					}
-				}
-			} else if hp, ok := lb[key].([]interface{}); ok {
-				hashPolicies = hp
-			}
-			for _, hp := range hashPolicies {
-				h, ok := hp.(map[string]interface{})
-				if !ok {
-					continue
-				}
-				if h["type"] == "SourceIP" {
-					return []string{fmt.Sprintf(
-						"MeshLoadBalancingStrategy %q: hashPolicies[].type SourceIP is deprecated in Kuma 2.10+ — "+
-							"use Connection instead.",
-						name)}
+// fixSourceIPHashPolicy rewrites every hashPolicies[] entry of type SourceIP to
+// type Connection with connection.sourceIP: true, on both targets:
+//   - 3.0 drops SourceIP from the enum, so the policy is rejected
+//     ("Unsupported value: \"SourceIP\"").
+//   - 2.14 still accepts it (deprecated since 2.10) but its xds hashPolicy builder
+//     only handles Connection, so a SourceIP entry produces no Envoy hash policy
+//     at all. The rewrite makes the source-IP hashing the manifest asks for take
+//     effect, which is a behaviour change worth stating.
+//
+// Both validators require connection to be set for Connection (and SourceIP);
+// the rewrite sets connection.sourceIP: true whatever the input carried there.
+// Covers spec.to[].default.hashPolicies and the deprecated
+// loadBalancer.{ringHash,maglev}.hashPolicies location.
+func fixSourceIPHashPolicy(obj map[string]interface{}, name string) (bool, []string) {
+	spec, ok := obj["spec"].(map[string]interface{})
+	if !ok {
+		return false, nil
+	}
+	to, _ := spec["to"].([]interface{})
+	var fixed []string
+	for i, entry := range to {
+		e, ok := entry.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		def, ok := e["default"].(map[string]interface{})
+		if !ok {
+			continue
+		}
+		lists := map[string]interface{}{
+			fmt.Sprintf("spec.to[%d].default.hashPolicies", i): def["hashPolicies"],
+		}
+		if lb, ok := def["loadBalancer"].(map[string]interface{}); ok {
+			for _, algo := range []string{"ringHash", "maglev"} {
+				if a, ok := lb[algo].(map[string]interface{}); ok {
+					lists[fmt.Sprintf("spec.to[%d].default.loadBalancer.%s.hashPolicies", i, algo)] = a["hashPolicies"]
 				}
 			}
 		}
+		for _, path := range sortedMapKeys(lists) {
+			hps, _ := lists[path].([]interface{})
+			for j, hp := range hps {
+				h, ok := hp.(map[string]interface{})
+				if !ok || h["type"] != "SourceIP" {
+					continue
+				}
+				h["type"] = "Connection"
+				conn, _ := h["connection"].(map[string]interface{})
+				if conn == nil {
+					conn = map[string]interface{}{}
+					h["connection"] = conn
+				}
+				conn["sourceIP"] = true
+				fixed = append(fixed, fmt.Sprintf("%s[%d]", path, j))
+			}
+		}
 	}
-	return nil
+	if len(fixed) == 0 {
+		return false, nil
+	}
+	return true, []string{fmt.Sprintf(
+		"MeshLoadBalancingStrategy %q: %s type SourceIP rewritten as type: Connection with "+
+			"connection.sourceIP: true — SourceIP is deprecated since Kuma 2.10 and removed in 3.0 (rejected). "+
+			"Kuma 2.14 accepts SourceIP but builds no Envoy hash policy from it, so source-IP hashing starts "+
+			"to take effect once this is applied.",
+		name, strings.Join(fixed, ", "))}
 }
 
 // ---- MeshLoadBalancingStrategy hashPolicies path move (v2.12) -----------------
