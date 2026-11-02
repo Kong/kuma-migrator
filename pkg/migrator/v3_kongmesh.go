@@ -94,15 +94,26 @@ func v3DeleteBeforeUpgradeNote(kind, name string, converted bool) string {
 		kind, name, kind, ManualDir)
 }
 
-// kumactlDeleteType is the `kumactl delete <type>` spelling for the removed kinds.
-// Legacy (proto) resources use kebab-case; the Mesh* resources use the lower-cased
-// kind. Anything missing falls back to the lower-cased kind.
+// kumactlDeleteType is the `kumactl delete <type>` argument for each removed
+// kind: the KumactlArg of its ResourceTypeDescriptor, which is what
+// app/kumactl/cmd/delete/delete.go looks the TYPE argument up by. Verified
+// against kuma v2.14.5:
+//   - legacy proto resources: pkg/core/resources/apis/mesh/zz_generated.resources.go.
+//     Their spelling is not uniform: "healthcheck", "proxytemplate",
+//     "zoneingress" and "zoneegress" have no dash, the rest are kebab-case.
+//     ZoneIngress also has the alias "zone-ingress"; ZoneEgress has none.
+//   - policy-gen resources (MeshGlobalRateLimit): KumactlArg is the lower-cased
+//     kind (tools/policy-gen/generator/cmd/core_resource.go: "{{.NameLower}}").
+//
+// OPAPolicy is the exception: it is a Kong Mesh proto resource whose 2.14
+// source is not available to check, so "opa-policy" follows the kebab-case
+// convention of the other proto policies and is not verified.
 var kumactlDeleteType = map[string]string{
 	"TrafficPermission":   "traffic-permission",
 	"TrafficRoute":        "traffic-route",
 	"TrafficLog":          "traffic-log",
 	"TrafficTrace":        "traffic-trace",
-	"HealthCheck":         "health-check",
+	"HealthCheck":         "healthcheck",
 	"CircuitBreaker":      "circuit-breaker",
 	"Retry":               "retry",
 	"Timeout":             "timeout",
@@ -111,8 +122,8 @@ var kumactlDeleteType = map[string]string{
 	"VirtualOutbound":     "virtual-outbound",
 	"ProxyTemplate":       "proxytemplate",
 	"ExternalService":     "external-service",
-	"ZoneIngress":         "zone-ingress",
-	"ZoneEgress":          "zone-egress",
+	"ZoneIngress":         "zoneingress",
+	"ZoneEgress":          "zoneegress",
 	"OPAPolicy":           "opa-policy",
 	"MeshGateway":         "meshgateway",
 	"MeshGatewayRoute":    "meshgatewayroute",

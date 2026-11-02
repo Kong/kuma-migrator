@@ -172,7 +172,9 @@ context extracted with `kumactl` from a Universal or Konnect control plane, `kub
 otherwise (a Kubernetes-backed control plane refuses `kumactl` writes). 3.0 rejects these kinds and does
 not migrate stored objects, so they must be deleted on 2.14. For a row marked `converted`,
 the replacement must come from the `v2` output applied in step 4: the `v3` replacement is
-not valid on 2.14.
+not valid on 2.14. The `kumactl` type argument is the one kumactl 2.14 registers for the kind
+(`traffic-permission`, `healthcheck`, `proxytemplate`, `zoneingress`, `zoneegress`,
+`meshglobalratelimit`, ...), so run the commands with a 2.14 `kumactl`.
 
 ## Rollback
 

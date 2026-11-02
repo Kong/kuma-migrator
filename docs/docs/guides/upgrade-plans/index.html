@@ -313,7 +313,9 @@ context extracted with <code>kumactl</code> from a Universal or Konnect control 
 otherwise (a Kubernetes-backed control plane refuses <code>kumactl</code> writes). 3.0 rejects these kinds and does
 not migrate stored objects, so they must be deleted on 2.14. For a row marked <code>converted</code>,
 the replacement must come from the <code>v2</code> output applied in step 4: the <code>v3</code> replacement is
-not valid on 2.14.</p>
+not valid on 2.14. The <code>kumactl</code> type argument is the one kumactl 2.14 registers for the kind
+(<code>traffic-permission</code>, <code>healthcheck</code>, <code>proxytemplate</code>, <code>zoneingress</code>, <code>zoneegress</code>,
+<code>meshglobalratelimit</code>, ...), so run the commands with a 2.14 <code>kumactl</code>.</p>
 <h2 id="rollback">Rollback</h2>
 <div class="table-wrap"><table>
 <thead>

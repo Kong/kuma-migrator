@@ -397,12 +397,56 @@ func TestV3DeleteBeforeUpgradeNote(t *testing.T) {
 	}
 }
 
+// TestKumactlDeleteTypePinned pins every kumactl TYPE argument to the KumactlArg
+// of the kind's ResourceTypeDescriptor at kuma v2.14.5
+// (pkg/core/resources/apis/mesh/zz_generated.resources.go; policy-gen kinds use
+// the lower-cased kind). A wrong value makes `kumactl delete` fail with
+// "unknown TYPE".
+func TestKumactlDeleteTypePinned(t *testing.T) {
+	want := map[string]string{
+		"TrafficPermission":   "traffic-permission",
+		"TrafficRoute":        "traffic-route",
+		"TrafficLog":          "traffic-log",
+		"TrafficTrace":        "traffic-trace",
+		"HealthCheck":         "healthcheck",
+		"CircuitBreaker":      "circuit-breaker",
+		"Retry":               "retry",
+		"Timeout":             "timeout",
+		"RateLimit":           "rate-limit",
+		"FaultInjection":      "fault-injection",
+		"VirtualOutbound":     "virtual-outbound",
+		"ProxyTemplate":       "proxytemplate",
+		"ExternalService":     "external-service",
+		"ZoneIngress":         "zoneingress",
+		"ZoneEgress":          "zoneegress",
+		"MeshGateway":         "meshgateway",
+		"MeshGatewayRoute":    "meshgatewayroute",
+		"MeshGlobalRateLimit": "meshglobalratelimit",
+		"OPAPolicy":           "opa-policy", // Kong Mesh; not verifiable from the KB
+	}
+	for kind, arg := range want {
+		if got := kumactlDeleteType[kind]; got != arg {
+			t.Errorf("kumactlDeleteType[%s] = %q, want %q", kind, got, arg)
+		}
+	}
+	// Every removed kind kumactl can address has an explicit entry, so none
+	// relies on the lower-cased-kind fallback.
+	for kind := range removedInV3SourceKinds {
+		if kubernetesOnlyRemovedKinds[kind] {
+			continue
+		}
+		if _, ok := kumactlDeleteType[kind]; !ok {
+			t.Errorf("removed kind %s has no kumactlDeleteType entry", kind)
+		}
+	}
+}
+
 func TestV3DeleteCommand(t *testing.T) {
 	e := v3Deletion{Kind: "TrafficPermission", Name: "tp", Mesh: "default"}
 	if got := v3DeleteCommand(e, "kumactl"); got != "kumactl delete traffic-permission tp --mesh default" {
 		t.Errorf("kumactl: %q", got)
 	}
-	if got := v3DeleteCommand(v3Deletion{Kind: "ZoneIngress", Name: "zi", Mesh: "default"}, "kumactl"); got != "kumactl delete zone-ingress zi" {
+	if got := v3DeleteCommand(v3Deletion{Kind: "ZoneIngress", Name: "zi", Mesh: "default"}, "kumactl"); got != "kumactl delete zoneingress zi" {
 		t.Errorf("global-scoped kind must not get --mesh: %q", got)
 	}
 	if got := v3DeleteCommand(v3Deletion{Kind: "MeshGlobalRateLimit", Name: "m", Namespace: "kuma-system"}, "kubectl"); got != "kubectl delete MeshGlobalRateLimit m -n kuma-system" {
