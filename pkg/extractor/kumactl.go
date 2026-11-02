@@ -71,7 +71,7 @@ func ExtractViaKumactl(contextName, outputDir, meshFilter, outputFormat string) 
 
 	skipSet := loadSkipSet(cpEnv)
 	dirLabel := cpModeDirectoryLabel(resolvedCtx, cpMode)
-	if err := WriteContextMeta(outputDir, dirLabel, "kumactl", resolvedCtx, cpMode, isKonnectURL(cpURL)); err != nil {
+	if err := WriteContextMeta(outputDir, dirLabel, "kumactl", resolvedCtx, cpMode, cpEnv, isKonnectURL(cpURL)); err != nil {
 		ui.Warn(fmt.Sprintf("could not write context metadata: %v", err))
 	}
 	var zones []string
@@ -262,6 +262,8 @@ func detectKumactlCPMode(cpURL, bearerToken string) (mode, zoneName, environment
 	url := strings.TrimRight(cpURL, "/") + "/config"
 	body, status, err := authenticatedGet(url, bearerToken, 10*time.Second)
 	if err != nil || status != http.StatusOK {
+		ui.Warn(cpConfigUnavailableWarning(url, status, err))
+		fmt.Println()
 		return "", "", ""
 	}
 	var cfg struct {
@@ -277,6 +279,34 @@ func detectKumactlCPMode(cpURL, bearerToken string) (mode, zoneName, environment
 		return "", "", ""
 	}
 	return strings.ToLower(cfg.Mode), cfg.Multizone.Zone.Name, strings.ToLower(cfg.Environment)
+}
+
+// cpConfigUnavailableWarning explains what extract loses when GET /config
+// fails: the CP mode drives the origin filter and the environment drives the
+// skip list, so both fall back to their defaults.
+//
+// 401/403 get a specific message. Kong Mesh 3.0 gates /config behind the
+// VIEW_CONTROL_PLANE_METADATA access type (it used to check
+// GENERATE_DATAPLANE_TOKEN), and two kinds of role lack it: roles narrowed by
+// hand, and an `admin` role created before 2.7.0, which never gains access
+// types added after it was written (UPGRADE_km.md).
+func cpConfigUnavailableWarning(url string, status int, err error) string {
+	const consequences = "Extraction continues with the CP mode and environment unknown: " +
+		"no origin filter is applied (on a Global CP, zone-origin copies are extracted too), " +
+		"and the Kubernetes skip list is used, so Universal Dataplane, ZoneIngress and " +
+		"ZoneEgress resources are not extracted."
+	switch {
+	case err != nil:
+		return fmt.Sprintf("GET %s failed: %v. %s", url, err, consequences)
+	case status == http.StatusUnauthorized || status == http.StatusForbidden:
+		return fmt.Sprintf("GET %s returned %d: the token is not allowed to read control plane "+
+			"metadata. Kong Mesh 3.0 requires the VIEW_CONTROL_PLANE_METADATA access type for /config "+
+			"(earlier versions checked GENERATE_DATAPLANE_TOKEN). Roles narrowed by hand and an admin "+
+			"role created before 2.7.0 lack it. Add it to the AccessRole bound to this token "+
+			"(kumactl get access-roles -o yaml). %s", url, status, consequences)
+	default:
+		return fmt.Sprintf("GET %s returned %d. %s", url, status, consequences)
+	}
 }
 
 // ---- CP resource-type discovery ---------------------------------------------

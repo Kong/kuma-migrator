@@ -40,9 +40,17 @@ var knownLegacyTypes = map[string]bool{
 // structural migration of its own. Reported as "Already Migrated" like
 // ContainerPatch rather than "Skipped" so a real template warning doesn't end
 // up printed under a "no recognised Kuma policy documents" heading.
+//
+// AccessRole and AccessAudit are Kong Mesh RBAC resources. They need no
+// structural migration on 2.x, but 3.0 rejects type lists naming removed kinds
+// and the legacy sources/destinations/selectors qualifiers, which
+// scanAccessRole/scanAccessAudit (v3_kongmesh.go) check from ScanForDeprecations.
+// Without these entries they would land in ScenarioSkipped.
 var recognisedNonPolicyKinds = map[string]bool{
 	"ContainerPatch":    true,
 	"HostnameGenerator": true,
+	"AccessRole":        true,
+	"AccessAudit":       true,
 }
 
 // probe is a minimal struct used only for scenario detection — never for transformation.

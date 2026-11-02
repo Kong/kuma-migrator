@@ -15,11 +15,17 @@ type ContextMeta struct {
 	Context   string `json:"context"`             // original context name
 	CPMode    string `json:"cpMode"`              // "global", "zone", "standalone", ""
 	IsKonnect bool   `json:"isKonnect,omitempty"` // true when the CP is Kong Konnect hosted
+	// Environment is the CP deployment environment: CPEnvKubernetes or
+	// CPEnvUniversal. Empty when it could not be detected (GET /config failed)
+	// and in metadata written before this field existed. migrate uses it to pick
+	// the default skip list for the context.
+	Environment string `json:"environment,omitempty"`
 }
 
 // WriteContextMeta creates the context directory and writes a .kuma-migrator.json
-// metadata file recording the extraction parameters.
-func WriteContextMeta(outputDir, dirLabel, tool, contextName, cpMode string, isKonnect bool) error {
+// metadata file recording the extraction parameters. environment is
+// CPEnvKubernetes, CPEnvUniversal or "" when unknown.
+func WriteContextMeta(outputDir, dirLabel, tool, contextName, cpMode, environment string, isKonnect bool) error {
 	dir := filepath.Join(outputDir, dirLabel)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return fmt.Errorf("create context directory: %w", err)
@@ -27,8 +33,9 @@ func WriteContextMeta(outputDir, dirLabel, tool, contextName, cpMode string, isK
 	meta := ContextMeta{
 		Tool:      tool,
 		Context:   contextName,
-		CPMode:    cpMode,
-		IsKonnect: isKonnect,
+		CPMode:      cpMode,
+		IsKonnect:   isKonnect,
+		Environment: environment,
 	}
 	data, err := json.Marshal(meta)
 	if err != nil {

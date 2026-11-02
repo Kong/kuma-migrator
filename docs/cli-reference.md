@@ -70,14 +70,17 @@ Optional, at `~/.config/kuma-migrator.yaml` (override with `$KUMA_MIGRATOR_CONFI
 
 ```yaml
 skip:
-  kubernetes: [Dataplane, AccessRole, AccessRoleBinding, ZoneEgress, ZoneIngress, Zone, Workload, Secret, GlobalSecret]
-  universal:  [AccessRole, AccessRoleBinding, Zone, Workload, Secret, GlobalSecret]
+  kubernetes: [Dataplane, AccessRoleBinding, ZoneEgress, ZoneIngress, Zone, Workload, Secret, GlobalSecret]
+  universal:  [AccessRoleBinding, Zone, Workload, Secret, GlobalSecret]
 adminServer:
   tlsSkipVerify: false
 ```
 
 `skip` lists kinds that are never extracted or transformed, per deployment environment. The
 legacy flat-list form (`skip: [Kind1, Kind2]`) still works and applies to both environments.
+`migrate` picks the list per context directory from the `environment` that `extract` records in
+`.kuma-migrator.json`; without it, a Universal-format document (`type`, no `kind`) gets the
+`universal` list and anything else the `kubernetes` list.
 
 > **An explicit `skip` block replaces the built-in defaults — it is not merged with them.** A
 > config file written against an older release will not pick up changes to those defaults. Omit
