@@ -442,12 +442,13 @@
       `<name>_<ns>_svc_<port>` names, is rewritten first (Subset scenario): top level to
       `Dataplane`, `from[]` to `MeshService`.
   v3:
-    status: warned
+    status: error
     output: [MeshTrafficPermission]
     notes: |
-      The v2 checks apply, and the `from[]` warning states that 3.0 rejects the policy as it
-      stands (`spec.from: unknown field`, then "policy must define rules"). The policy is still
-      written to the apply tree, so translate `from[]` to `rules[]` before applying.
+      The v2 checks apply. A policy that keeps `from[]` is rejected by 3.0 as it stands
+      (`spec.from: unknown field`, then "policy must define rules"), so it is written to
+      `_manual/` instead of the apply tree and listed under **Action Items → Errors** with the
+      reason. Translate `from[]` to `rules[]`, then apply it.
 
       Also under v3:
 
@@ -1246,12 +1247,15 @@
       Copied unchanged when found in the input. Also emitted from a
       [MeshGatewayInstance](policy:MeshGatewayInstance) conversion.
   v3:
-    status: passthrough
-    output: [MeshGatewayConfig]
+    status: removed
+    output: []
     notes: |
-      Copied unchanged into the apply tree. 3.0 removes `MeshGatewayConfig` with the rest of
-      the built-in gateway API; the migrator does not report it yet. Delete it before
-      upgrading.
+      Copied to `_manual/` (file labelled `MANUAL`), never to the apply tree, with a warning:
+      3.0 removes `MeshGatewayConfig` with the rest of the built-in gateway API, and the Helm
+      upgrade deletes the `meshgatewayconfigs.kuma.io` CRD and every object stored under it.
+      Carry its settings (replicas, service type, resources) over to the Deployment and Service
+      of the gateway you run. Listed under "Delete Before Upgrading to 3.0" with a
+      `kubectl delete` command (it is a cluster-scoped Kubernetes-only CRD, so never `kumactl`).
   timeline:
     - version: "3.0"
       change: Removed with the built-in gateway API (`meshgatewayconfigs.kuma.io` CRD deleted).
@@ -1325,7 +1329,8 @@
     status: warned
     output: [Dataplane]
     notes: |
-      Skipped on Kubernetes (CP-generated). On Universal it is scanned and copied unchanged:
+      Skipped on Kubernetes (CP-generated). On Universal it is scanned and copied unchanged;
+      a Dataplane with a finding is labelled `SCANNED`, one without `SKIP`:
 
       - `transparentProxying.redirectPortInboundV6` is reported (removed in 2.9).
       - `transparentProxying.reachableServices` is reported: in `Exclusive` mode the names must
@@ -1335,7 +1340,8 @@
     status: rewritten
     output: [Dataplane]
     notes: |
-      Universal only. Rewrites:
+      Universal only. The file is labelled `SCANNED` ("rewritten by the deprecation scan")
+      on stdout and listed under **Scanned Non-Policy Resources** in the report. Rewrites:
 
       - `networking.gateway` (any type) removed; its non-reserved tags move to labels.
       - Inbound `kuma.io/protocol` tag → `inbound[].protocol`.
@@ -1530,8 +1536,8 @@
     status: removed
     output: []
     notes: |
-      Universal input is copied to `_manual/` with a blocking warning: deploy mesh-scoped zone
-      proxies (a regular `Dataplane` with a `ZoneIngress` listener, token reissued without
+      Universal input is copied to `_manual/` (file labelled `MANUAL`, never in the apply tree)
+      with a blocking warning: deploy mesh-scoped zone proxies (a regular `Dataplane` with a `ZoneIngress` listener, token reissued without
       `--proxy-type`) before upgrading the zone control plane. A second warning gives the
       `MeshZoneAddress` to apply with the old `advertisedAddress`/`advertisedPort`; without it
       cross-zone traffic to the zone stops. Listed under "Delete Before Upgrading to 3.0".
@@ -1554,8 +1560,8 @@
     status: removed
     output: []
     notes: |
-      Universal input is copied to `_manual/` with a blocking warning: deploy a mesh-scoped
-      zone proxy (a regular `Dataplane` with a `ZoneEgress` listener) per mesh before upgrading
+      Universal input is copied to `_manual/` (file labelled `MANUAL`, never in the apply tree)
+      with a blocking warning: deploy a mesh-scoped zone proxy (a regular `Dataplane` with a `ZoneEgress` listener) per mesh before upgrading
       the zone control plane. Listed under "Delete Before Upgrading to 3.0".
   timeline:
     - version: "3.0"

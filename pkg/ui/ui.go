@@ -52,7 +52,7 @@ func Header(command string) {
 
 // KV prints a right-aligned label and a value on one line:
 //
-//	  Context        global-cp
+//	Context        global-cp
 func KV(label, value string) {
 	fmt.Printf("  %-16s %s\n", faint.Sprint(label), value)
 }
@@ -61,35 +61,35 @@ func KV(label, value string) {
 
 // Info prints a cyan informational line:
 //
-//	  ℹ  message
+//	ℹ  message
 func Info(msg string) {
 	fmt.Printf("  %s  %s\n", cyan.Sprint(iconInfo), msg)
 }
 
 // InfoIndented prints a continuation line under an Info call:
 //
-//	     message
+//	message
 func InfoIndented(msg string) {
 	fmt.Printf("     %s\n", faint.Sprint(msg))
 }
 
 // Warn prints a yellow warning line:
 //
-//	  ⚠  message
+//	⚠  message
 func Warn(msg string) {
 	fmt.Printf("  %s  %s\n", yellow.Sprint(iconWarn), yellow.Sprint(msg))
 }
 
 // WarnIndented prints a continuation line under a Warn call:
 //
-//	     message
+//	message
 func WarnIndented(msg string) {
 	fmt.Printf("     %s\n", yellow.Sprint(msg))
 }
 
 // Errorf prints a red error line:
 //
-//	  ✗  message
+//	✗  message
 func Errorf(format string, args ...interface{}) {
 	msg := fmt.Sprintf(format, args...)
 	fmt.Printf("  %s  %s\n", red.Sprint(iconError), red.Sprint(msg))
@@ -115,7 +115,7 @@ func MeshNames(names []string) string {
 // StartMesh prints a section separator that marks the start of extraction for
 // a specific mesh:
 //
-//	  ◆  mesh  default
+//	◆  mesh  default
 func StartMesh(meshName string) {
 	fmt.Printf("\n  %s  %s  %s\n", boldMagenta.Sprint("◆"), faint.Sprint("mesh"), boldMagenta.Sprint(meshName))
 }
@@ -129,7 +129,7 @@ func Found(n int, noun string) {
 
 // FileWritten prints the per-resource arrow line:
 //
-//	  →  routing/MeshGateway-my-gw.yaml
+//	→  routing/MeshGateway-my-gw.yaml
 func FileWritten(sub, filename string) {
 	fmt.Printf("  %s  %s/%s\n", cyan.Sprint(iconArrow), faint.Sprint(sub), cyan.Sprint(filename))
 }
@@ -168,7 +168,7 @@ func meshPrefix(meshName string) string {
 
 // FileMigrated prints a green success line for a migrated file.
 //
-//	  ✓  LEGACY             default  timeout-policy.yaml
+//	✓  LEGACY             default  timeout-policy.yaml
 func FileMigrated(scenario, meshName, filename string) {
 	fmt.Printf("  %s  %s%s%s\n",
 		boldGreen.Sprint(iconOK),
@@ -180,7 +180,7 @@ func FileMigrated(scenario, meshName, filename string) {
 
 // FileAlreadyMigrated prints a blue line for a passthrough file.
 //
-//	  ●  ALREADY MIGRATED   default  mesh-retry.yaml
+//	●  ALREADY MIGRATED   default  mesh-retry.yaml
 func FileAlreadyMigrated(meshName, filename string) {
 	fmt.Printf("  %s  %s%s%s\n",
 		blue.Sprint("●"),
@@ -192,7 +192,7 @@ func FileAlreadyMigrated(meshName, filename string) {
 
 // FileSkipped prints a faint line for a skipped file.
 //
-//	  –  SKIP               deployment.yaml
+//	–  SKIP               deployment.yaml
 func FileSkipped(meshName, filename, reason string) {
 	label := "SKIP"
 	line := filename
@@ -207,9 +207,43 @@ func FileSkipped(meshName, filename, reason string) {
 	)
 }
 
+// FileScanned prints a cyan line for a non-policy file that the deprecation
+// scan rewrote or flagged. It is written to the output tree.
+//
+//	◆  SCANNED            default  dp.yaml: not a policy; rewritten by the deprecation scan
+func FileScanned(meshName, filename, reason string) {
+	line := filename
+	if reason != "" {
+		line = filename + faint.Sprintf(": %s", reason)
+	}
+	fmt.Printf("  %s  %s%s%s\n",
+		cyan.Sprint("◆"),
+		cyan.Sprint(padLabel("SCANNED")),
+		meshPrefix(meshName),
+		line,
+	)
+}
+
+// FileManual prints a yellow line for a file whose documents were all moved to
+// the _manual/ subtree because the target removes their kind.
+//
+//	⚠  MANUAL             zone-ingress.yaml: kind removed in 3.0; kept under _manual/, not applied
+func FileManual(meshName, filename, reason string) {
+	line := filename
+	if reason != "" {
+		line = filename + faint.Sprintf(": %s", reason)
+	}
+	fmt.Printf("  %s  %s%s%s\n",
+		yellow.Sprint(iconWarn),
+		yellow.Sprint(padLabel("MANUAL")),
+		meshPrefix(meshName),
+		line,
+	)
+}
+
 // FileError prints a red line for a file that could not be migrated.
 //
-//	  ✗  ERROR              broken.yaml
+//	✗  ERROR              broken.yaml
 func FileError(meshName, filename string) {
 	fmt.Printf("  %s  %s%s%s\n",
 		red.Sprint(iconError),
@@ -272,35 +306,53 @@ func DocAnnotationHit(msg string) {
 
 // ── Migrate / Plan summary ────────────────────────────────────────────────────
 
-// Summary prints the end-of-run summary line.
-func Summary(total, migrated, alreadyDone, skipped, errors int) {
+// SummaryCounts are the per-label file counts shown on the summary line.
+type SummaryCounts struct {
+	Total       int
+	Migrated    int
+	AlreadyDone int
+	Scanned     int // non-policy files rewritten or flagged by the deprecation scan
+	Manual      int // files moved to _manual/ because the target removes their kind
+	Skipped     int
+	Errors      int
+}
+
+// Summary prints the end-of-run summary line. The scanned and manual counts
+// are shown only when non-zero.
+func Summary(c SummaryCounts) {
 	fmt.Println()
 	fmt.Printf("  %s\n", faint.Sprint(strings.Repeat("─", 60)))
-	parts := []string{
-		bold.Sprintf("%d", total) + faint.Sprint(" file(s) processed"),
-	}
-	if migrated > 0 {
-		parts = append(parts, boldGreen.Sprintf("%d migrated", migrated))
-	} else {
-		parts = append(parts, faint.Sprintf("%d migrated", migrated))
-	}
-	if alreadyDone > 0 {
-		parts = append(parts, blue.Sprintf("%d already migrated", alreadyDone))
-	} else {
-		parts = append(parts, faint.Sprintf("%d already migrated", alreadyDone))
-	}
-	if skipped > 0 {
-		parts = append(parts, faint.Sprintf("%d skipped", skipped))
-	} else {
-		parts = append(parts, faint.Sprintf("%d skipped", skipped))
-	}
-	if errors > 0 {
-		parts = append(parts, red.Sprintf("%d error(s)", errors))
-	} else {
-		parts = append(parts, faint.Sprintf("0 errors"))
-	}
-	fmt.Printf("  %s\n", strings.Join(parts, faint.Sprint("  ·  ")))
+	fmt.Printf("  %s\n", strings.Join(summaryParts(c), faint.Sprint("  ·  ")))
 	fmt.Println()
+}
+
+func summaryParts(c SummaryCounts) []string {
+	parts := []string{
+		bold.Sprintf("%d", c.Total) + faint.Sprint(" file(s) processed"),
+	}
+	if c.Migrated > 0 {
+		parts = append(parts, boldGreen.Sprintf("%d migrated", c.Migrated))
+	} else {
+		parts = append(parts, faint.Sprintf("%d migrated", c.Migrated))
+	}
+	if c.AlreadyDone > 0 {
+		parts = append(parts, blue.Sprintf("%d already migrated", c.AlreadyDone))
+	} else {
+		parts = append(parts, faint.Sprintf("%d already migrated", c.AlreadyDone))
+	}
+	if c.Scanned > 0 {
+		parts = append(parts, cyan.Sprintf("%d scanned", c.Scanned))
+	}
+	if c.Manual > 0 {
+		parts = append(parts, yellow.Sprintf("%d manual", c.Manual))
+	}
+	parts = append(parts, faint.Sprintf("%d skipped", c.Skipped))
+	if c.Errors > 0 {
+		parts = append(parts, red.Sprintf("%d error(s)", c.Errors))
+	} else {
+		parts = append(parts, faint.Sprint("0 errors"))
+	}
+	return parts
 }
 
 // SectionHeader prints a bold section label (for env-var / annotation sections).

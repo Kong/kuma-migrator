@@ -46,16 +46,20 @@ Report written to: migrated/migration-plan.md
 | Label | Meaning |
 |---|---|
 | `LEGACY`, `SUBSET`, `RULES`, `MESH`, `EXTERNAL SERVICE`, `GATEWAY`, `OPA` | Migrated, by scenario |
-| `ALREADY MIGRATED` | Passed through unchanged; already uses the current API |
-| `SKIP` | Not a Kuma policy, or a kind in the skip list |
+| `ALREADY MIGRATED` | Passed through; already uses the current API |
+| `SCANNED` | Not a policy (`Dataplane`, `Deployment`, ...), but the deprecation scan rewrote it or warned about it. Written to the output tree. The detail says `rewritten by the deprecation scan` or `copied unchanged, see warnings` |
+| `MANUAL` | Every document is a kind the target removes, with no conversion (`MeshGatewayConfig`, `MeshGlobalRateLimit`, Universal `ZoneIngress`/`ZoneEgress` under `v3`). Written to `_manual/` only |
+| `SKIP` | Not a policy and nothing to change: `not a Kuma policy; copied unchanged`, or `on the skip list; not written` |
 | `ERROR` | The file could not be read or written |
 | `PARTIAL ERROR` | At least one document in the file could not be converted; the rest were |
 
-A file labelled `SKIP` or `ALREADY MIGRATED` can still carry warnings: the label reflects
-scenario detection, while the deprecation scan runs on every document. A Kubernetes
-`Deployment` is not a Kuma policy (`SKIP`), but a deprecated `kuma.io/*` annotation on it is
-still reported. A `HostnameGenerator` passes through (`ALREADY MIGRATED`), but its
-`spec.template` is still checked against the 2.14 validation.
+The deprecation scan runs on every document, whatever its label. A Kubernetes `Deployment`
+with a deprecated `kuma.io/*` annotation is labelled `SCANNED` rather than `SKIP`, and a
+Universal `Dataplane` whose inbound tags `--to-latest v3` rewrites is labelled `SCANNED` with
+`rewritten by the deprecation scan`. A `HostnameGenerator` passes through (`ALREADY MIGRATED`),
+but its `spec.template` is still checked against the 2.14 validation.
+
+The summary line adds `N scanned` and `N manual` when those counts are not zero.
 
 ## Report sections
 
@@ -66,11 +70,13 @@ are written to `--output-dir` by
 | Section | Content |
 |---|---|
 | Header | Input and output directories, the target (`v2` or `v3`). Under `v3`, a banner that the output must not be applied to a 2.x control plane. Under `--dry-run`, a banner that no files were written |
-| Summary | Files processed, migrated, already migrated, skipped, errors |
+| Summary | Files processed, migrated, already migrated, scanned, kept under `_manual/` (when any), skipped, errors |
 | Files That Would Be Migrated (`--dry-run`) / Migrated Files | One table per `<context>/<subfolder>/`, for example `kind-global-global-ctx/resiliency/`, with the warnings of each file. Errored files are grouped separately |
 | Already Migrated | Files passed through unchanged, with their warnings |
-| Skipped | Non-policy files, with their warnings |
-| Action Items | Errors, workload service address mappings, deprecated annotations. Present only when one of them is non-empty |
+| Scanned Non-Policy Resources | Non-policy files the deprecation scan rewrote or flagged, with their warnings |
+| Kept Under `_manual/` | Files whose kind the target removes, with the `_manual/` path of each |
+| Skipped | Non-policy files with nothing to change, and whether they were copied or skip-listed |
+| Action Items | Errors, workload service address mappings, deprecated annotations. Present only when one of them is non-empty. A document the target rejects as written is listed under Errors with the `_manual/` path of its converted output |
 | Apply Checklist | Ordered steps with the `kubectl` or `kumactl` commands for each context. A three-step version under `--dry-run`. See [Apply](apply.md) |
 | Original Resources to Delete | Resources whose kind changed, with delete commands in a collapsible block. Under `v3`, kinds 3.0 removes are listed in the next section instead |
 | Delete Before Upgrading to 3.0 | `v3` only. See below |
@@ -78,9 +84,13 @@ are written to `--output-dir` by
 ### Delete Before Upgrading to 3.0
 
 Under `--to-latest v3` this section lists every source object of a kind 3.0 removes: the
-legacy policies, `ExternalService`, `OPAPolicy`, `MeshGlobalRateLimit`, `MeshGateway*`, and
-`ZoneIngress`/`ZoneEgress`. For each it shows whether it was converted, where its `_manual/`
-copy is if it was not, and the delete command for the tool the context was extracted with.
+legacy policies, `ExternalService`, `OPAPolicy`, `MeshGlobalRateLimit`, `MeshGateway`,
+`MeshGatewayRoute`, `MeshGatewayInstance`, `MeshGatewayConfig`, and `ZoneIngress`/`ZoneEgress`.
+For each it shows whether it was converted, where its `_manual/` copy is if it was not, and
+the delete command. The command uses `kumactl` for contexts extracted with `kumactl` from a
+Universal or Konnect control plane, and `kubectl` otherwise, including `kumactl` extracts of a
+Kubernetes-backed control plane (`kumactl` cannot delete there) and the Kubernetes-only kinds
+`MeshGatewayInstance` and `MeshGatewayConfig`.
 
 ```markdown
 | Source file | Kind | Name | Namespace / mesh | Replacement |
