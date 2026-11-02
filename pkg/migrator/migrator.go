@@ -181,6 +181,9 @@ func runMigration(inputDir, outputDir string, writeFiles bool, meshFilter string
 	// Mesh, and a MeshGateway must name the GatewayClass generated from its
 	// companion MeshGatewayInstance. One walk builds every index.
 	opts := BuildTransformOptions(inputDir, target)
+	if cfg.SystemNamespace != "" {
+		opts.SystemNamespace = cfg.SystemNamespace
+	}
 
 	err = filepath.WalkDir(inputDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {

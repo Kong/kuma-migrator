@@ -78,7 +78,7 @@ applies to every client, so `from[]` entries that all use `kind: Mesh` convert m
 | `from[].targetRef.kind: MeshService` | Warning | Warning |
 | Legacy `FaultInjection` | `MeshFaultInjection` with `from[]` | `rules[]` when every source is `kuma.io/service: '*'`; error otherwise |
 | `MeshFaultInjection` with `from[]` | Warning | `rules[]` when every entry is `kind: Mesh`; warning otherwise |
-| `OPAPolicy` | `MeshOPA`: `conf.policies[]` → `default.appendPolicies[].rego`, `conf.agentConfig` → `default.agentConfig`, `targetRef` kept, with 3.0 advisories | Same, plus the 3.0 rewrites below |
+| `OPAPolicy` | `MeshOPA`: `conf.policies[]` → `default.appendPolicies[].rego`, `conf.agentConfig` → `default.agentConfig`, each keeping its `inlineString`/`inline`/`secret` key; an entry with none of them is left out with a "NOT migrated" warning, never emitted as an empty `rego`. `targetRef` kept, with 3.0 advisories | Same, plus the 3.0 rewrites below |
 | `MeshOPA` `targetRef.kind: MeshService` / `name` | Advisory | `kind: Dataplane`, `name` → `labels.app` (scope kept); refuses to overwrite a conflicting label |
 | `MeshOPA` flat `DataSource` (`inlineString`/`inline`/`secret`) | Advisory | Rewritten to `SecureDataSource`, including base64 `inline` (rego is not credential material) |
 | `AccessRole`/`AccessAudit` `rules[].types` with legacy kinds | Advisory | Renamed to the `Mesh*` successor; types with no successor removed |

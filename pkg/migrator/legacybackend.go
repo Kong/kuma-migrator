@@ -26,7 +26,146 @@ import (
 // indexedDocPattern matches the kind/type line of the resources the pre-pass
 // indexes, in either layout. It is a cheap prefilter: without it the pre-pass
 // unmarshals every YAML file in the tree.
-var indexedDocPattern = regexp.MustCompile(`(?m)^\s*(kind|type)\s*:\s*["']?(Mesh|MeshGateway|MeshGatewayInstance|MeshIdentity)["']?\s*$`)
+var indexedDocPattern = regexp.MustCompile(`(?m)^\s*(kind|type)\s*:\s*["']?(Mesh|MeshGateway|MeshGatewayInstance|MeshIdentity|TrafficLog|TrafficTrace)["']?\s*$`)
+
+// System-namespace evidence for inferSystemNamespace. A resource stored in one of
+// the two control-plane namespaces names it directly; a Kong Mesh-only kind means
+// the default Kong Mesh install namespace.
+var (
+	kongMeshNamespacePattern = regexp.MustCompile(`(?m)^\s*namespace\s*:\s*["']?kong-mesh-system["']?\s*$`)
+	kumaNamespacePattern     = regexp.MustCompile(`(?m)^\s*namespace\s*:\s*["']?kuma-system["']?\s*$`)
+	kongMeshKindPattern      = regexp.MustCompile(`(?m)^\s*(kind|type)\s*:\s*["']?(OPAPolicy|MeshOPA|MeshGlobalRateLimit|AccessRole|AccessRoleBinding|AccessAudit)["']?\s*$`)
+)
+
+// kongMeshSystemNamespace is the namespace the Kong Mesh Helm chart installs into.
+const kongMeshSystemNamespace = "kong-mesh-system"
+
+// systemNamespaceEvidence accumulates what the pre-pass saw.
+type systemNamespaceEvidence struct {
+	kongMeshNS, kumaNS, kongMeshKind bool
+}
+
+func (e *systemNamespaceEvidence) scan(data []byte) {
+	if !e.kongMeshNS && kongMeshNamespacePattern.Match(data) {
+		e.kongMeshNS = true
+	}
+	if !e.kumaNS && kumaNamespacePattern.Match(data) {
+		e.kumaNS = true
+	}
+	if !e.kongMeshKind && kongMeshKindPattern.Match(data) {
+		e.kongMeshKind = true
+	}
+}
+
+// inferSystemNamespace picks the control-plane namespace from the evidence: a
+// document stored in kong-mesh-system, else one stored in kuma-system, else a
+// Kong Mesh-only kind (kong-mesh-system). "" when there is no evidence, which
+// resolveSystemNamespace turns into kuma-system.
+func (e systemNamespaceEvidence) infer() string {
+	switch {
+	case e.kongMeshNS:
+		return kongMeshSystemNamespace
+	case e.kumaNS:
+		return defaultSystemNamespace
+	case e.kongMeshKind:
+		return kongMeshSystemNamespace
+	}
+	return ""
+}
+
+// legacyBackendUse records, for one mesh, the backend each TrafficLog/TrafficTrace
+// names in conf.backend ("" when it relies on the Mesh defaultBackend), counted
+// per backend name.
+type legacyBackendUse struct {
+	TrafficLog   map[string]int
+	TrafficTrace map[string]int
+}
+
+// LegacyObservabilityIndex maps a mesh name to the logging/tracing backend
+// references of its TrafficLog/TrafficTrace resources. The pre-pass always sets
+// it (possibly empty), so a non-nil index means "every input file was seen".
+type LegacyObservabilityIndex map[string]*legacyBackendUse
+
+// referencedBackends returns how many policyKind ("TrafficLog"/"TrafficTrace")
+// resources of meshName reference each backend, with references that omit
+// conf.backend attributed to defaultBackend.
+func (idx LegacyObservabilityIndex) referencedBackends(meshName, policyKind, defaultBackend string) map[string]int {
+	out := map[string]int{}
+	use := idx[meshName]
+	if use == nil {
+		return out
+	}
+	refs := use.TrafficLog
+	if policyKind == "TrafficTrace" {
+		refs = use.TrafficTrace
+	}
+	for name, n := range refs {
+		if name == "" {
+			name = defaultBackend
+		}
+		if name != "" {
+			out[name] += n
+		}
+	}
+	return out
+}
+
+func (idx LegacyObservabilityIndex) add(kind, mesh, backend string) {
+	use := idx[mesh]
+	if use == nil {
+		use = &legacyBackendUse{TrafficLog: map[string]int{}, TrafficTrace: map[string]int{}}
+		idx[mesh] = use
+	}
+	if kind == "TrafficTrace" {
+		use.TrafficTrace[backend]++
+	} else {
+		use.TrafficLog[backend]++
+	}
+}
+
+// parseLegacyBackendUse returns the kind ("TrafficLog"/"TrafficTrace"), mesh and
+// conf.backend of a legacy observability policy, or kind "" for any other document.
+// Kubernetes keeps mesh at the top level (or as the kuma.io/mesh label) and conf
+// under spec; Universal keeps both at the top level.
+func parseLegacyBackendUse(raw []byte) (kind, mesh, backend string) {
+	var probe struct {
+		Kind     string `json:"kind"`
+		Type     string `json:"type"`
+		Mesh     string `json:"mesh"`
+		Metadata struct {
+			Labels map[string]string `json:"labels"`
+		} `json:"metadata"`
+		Spec struct {
+			Conf *legacyBackendRef `json:"conf"`
+		} `json:"spec"`
+		Conf *legacyBackendRef `json:"conf"`
+	}
+	if err := yaml.Unmarshal(raw, &probe); err != nil {
+		return "", "", ""
+	}
+	kind = probe.Kind
+	if kind == "" {
+		kind = probe.Type
+	}
+	if kind != "TrafficLog" && kind != "TrafficTrace" {
+		return "", "", ""
+	}
+	mesh = probe.Mesh
+	if mesh == "" {
+		mesh = probe.Metadata.Labels[meshLabel]
+	}
+	if mesh == "" {
+		mesh = "default"
+	}
+	conf := probe.Spec.Conf
+	if conf == nil {
+		conf = probe.Conf
+	}
+	if conf != nil {
+		backend = conf.Backend
+	}
+	return kind, mesh, backend
+}
 
 // meshBackends holds the observability backends declared by one Mesh resource.
 type meshBackends struct {
@@ -48,6 +187,8 @@ func BuildTransformOptions(inputDir string, target TargetVersion) TransformOptio
 	classes := GatewayClassIndex{}
 	gateways := &GatewayRefIndex{}
 	identities := MeshIdentityIndex{}
+	observability := LegacyObservabilityIndex{}
+	var nsEvidence systemNamespaceEvidence
 
 	_ = filepath.WalkDir(inputDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
@@ -60,6 +201,7 @@ func BuildTransformOptions(inputDir string, target TargetVersion) TransformOptio
 		if readErr != nil {
 			return nil
 		}
+		nsEvidence.scan(data)
 		if !indexedDocPattern.Match(data) {
 			return nil
 		}
@@ -74,11 +216,18 @@ func BuildTransformOptions(inputDir string, target TargetVersion) TransformOptio
 			if mesh := parseMeshIdentityMesh(doc); mesh != "" {
 				identities[mesh] = true
 			}
+			if kind, mesh, backend := parseLegacyBackendUse(doc); kind != "" {
+				observability.add(kind, mesh, backend)
+			}
 		}
 		return nil
 	})
 
-	opts := TransformOptions{Target: target}
+	opts := TransformOptions{
+		Target:              target,
+		SystemNamespace:     nsEvidence.infer(),
+		LegacyObservability: observability,
+	}
 	if len(backends) > 0 {
 		opts.MeshBackends = backends
 	}

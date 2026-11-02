@@ -363,17 +363,26 @@ warning: the source-specific targeting is lost and all inbound traffic will be a
 
 | Mesh section | Output kind |
 |---|---|
-| `spec.metrics` (prometheus) | `MeshMetric` |
-| `spec.tracing` (zipkin/datadog) | `MeshTrace` |
-| `spec.logging` (file/tcp) | `MeshAccessLog` |
+| `spec.metrics` (prometheus) | `MeshMetric` from `enabledBackend` only (no `enabledBackend` → none: metrics were off) |
+| `spec.tracing` (zipkin/datadog) | **none** — removed with a warning; backends only declare destinations on 2.x, a `TrafficTrace` activates them and its conversion inlines the backend |
+| `spec.logging` (file/tcp) | **none** — same, via `TrafficLog` |
 | `spec.networking.outbound.passthrough: false` | `MeshPassthrough` with `passthroughMode: None` |
+
+A mesh-wide `MeshTrace`/`MeshAccessLog` would turn tracing/logging on for every proxy. The
+warning uses `TransformOptions.LegacyObservability` (pre-pass index of TrafficLog/TrafficTrace
+`conf.backend` per mesh) to list referenced vs inactive backends.
+
+Companions keep the Mesh's format (Universal → `type`/`name`/`mesh`). On Kubernetes they go in
+the system namespace (`resolveSystemNamespace`): config `systemNamespace` → pre-pass inference
+(`namespace: kong-mesh-system` seen → that; `namespace: kuma-system` seen → that; Kong Mesh-only
+kind → `kong-mesh-system`) → the document's own namespace → `kuma-system`. Same rule for the
+MES converted from `ExternalService` and the v3 `MeshOpenTelemetryBackend`.
 
 **Always injected:**
 - `spec.meshServices.mode: Exclusive` is set on every processed Mesh CRD (with a warning
   to verify all policies and workloads are migrated first).
 
-Companion CRD naming: `<meshName>-metrics`, `<meshName>-trace`, `<meshName>-accesslog`,
-`<meshName>-passthrough`. Validate names against RFC 1035/1123 and emit a warning if
+Companion CRD naming: `<meshName>-metrics`, `<meshName>-passthrough`, `<meshName>-tls-permissive` (v3). Validate names against RFC 1035/1123 and emit a warning if
 the mesh name would produce an invalid name.
 
 ---
@@ -412,6 +421,10 @@ spec:
     agentConfig:
       inlineString: "<config>"   # if present
 ```
+
+Each `policies[]` entry and `agentConfig` copies whichever of `inlineString` / `inline` (base64) /
+`secret` it has (`convertLegacyOPADataSource`); the 2.x MeshOPA accepts all three. An entry
+with none of them is left out with a "NOT migrated" warning — never an empty `rego: {}`.
 
 `targetRef` is preserved unchanged. `MeshOPA` produces static config; dynamic config
 via `MeshOPAPolicy` requires manual setup.

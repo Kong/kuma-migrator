@@ -118,6 +118,12 @@ type Config struct {
 	// Skip holds per-environment kind skip lists.
 	// See SkipKindsConfig for supported YAML forms.
 	Skip SkipKindsConfig `yaml:"skip"`
+	// SystemNamespace overrides the Kubernetes control-plane namespace that
+	// `migrate` writes generated companion resources into (MeshMetric,
+	// MeshPassthrough, MeshTLS, MeshOpenTelemetryBackend, MeshExternalService).
+	// Empty means infer it from the input: kong-mesh-system when the input lives
+	// there or holds Kong Mesh-only kinds, kuma-system otherwise.
+	SystemNamespace string `json:"systemNamespace,omitempty" yaml:"systemNamespace"`
 }
 
 // SkipSet returns a skip set for the Kubernetes environment. It is the same as

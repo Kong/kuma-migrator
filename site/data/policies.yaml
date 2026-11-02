@@ -166,6 +166,10 @@
       If the Mesh is not in the input set, or the name is not found, the policy is emitted
       without the backend and a warning names the backend you must write by hand. With no
       `conf.backend`, the Mesh `defaultBackend` is used.
+
+      The `TrafficLog` is what turns access logging on. The `Mesh` conversion does not
+      generate a mesh-wide `MeshAccessLog` from `spec.logging`; this conversion is the only
+      place a logging backend ends up in the output. See [Meshes](../topics/meshes.md#logging-and-tracing).
   v3:
     status: converted
     output: [MeshAccessLog]
@@ -191,6 +195,10 @@
       no `to[]`). `conf.backend` is resolved against `Mesh.spec.tracing.backends` in the input
       set and written inline: `zipkin`/`datadog` backends become `spec.default.backends[]`,
       `sampling` becomes `sampling.overall`. An unresolved backend is reported by name.
+
+      The `TrafficTrace` is what turns tracing on. The `Mesh` conversion does not generate a
+      mesh-wide `MeshTrace` from `spec.tracing`; this conversion is the only place a tracing
+      backend ends up in the output. See [Meshes](../topics/meshes.md#logging-and-tracing).
   v3:
     status: converted
     output: [MeshTrace]
@@ -396,6 +404,10 @@
       | `networking.tls.enabled`, `allowRenegotiation` | `spec.tls.*` |
       | `networking.tls.serverName` | `spec.tls.verification.serverName` |
       | `networking.tls.{caCert,clientCert,clientKey}` | `spec.tls.verification.*`, same DataSource shape |
+
+      The output keeps the input format: a Universal `ExternalService` becomes a Universal
+      `MeshExternalService` (`type`/`name`/`mesh`), a Kubernetes one becomes a CRD in the
+      system namespace (see [Meshes](../topics/meshes.md#system-namespace)).
 
       `spec.match.type` is `HostnameGenerator`. Warnings remind you to check the virtual port,
       the generated hostname and `verification.mode` (defaults to `Secured`). The copied TLS
@@ -663,8 +675,9 @@
     notes: |
       v2 rewrites, plus each inline `openTelemetry.endpoint` is replaced by
       `backendRef: {kind: MeshOpenTelemetryBackend, labels: {kuma.io/display-name: <name>-otel}}`
-      and a matching `MeshOpenTelemetryBackend` is generated (`kuma-system` on Kubernetes,
-      protocol `grpc`). Apply the backend before the policy. Allowed `to[].targetRef.kind`:
+      and a matching `MeshOpenTelemetryBackend` is generated (in the system namespace on
+      Kubernetes, see [Meshes](../topics/meshes.md#system-namespace); protocol `grpc`). Apply
+      the backend before the policy. Allowed `to[].targetRef.kind`:
       `Mesh`, `MeshService`, `MeshExternalService`, `MeshMultiZoneService`, `MeshHTTPRoute`.
   timeline:
     - version: "2.10"
@@ -963,20 +976,24 @@
     notes: |
       | `OPAPolicy` | `MeshOPA` |
       |---|---|
-      | `conf.policies[].inlineString` / `.secret` | `spec.default.appendPolicies[].rego.*` |
-      | `conf.agentConfig` | `spec.default.agentConfig` |
+      | `conf.policies[].inlineString` / `.inline` / `.secret` | `spec.default.appendPolicies[].rego.*` (same key) |
+      | `conf.agentConfig.inlineString` / `.inline` / `.secret` | `spec.default.agentConfig.*` (same key) |
       | other `conf` fields | `spec.default.*`, with a warning |
       | `selectors[]` | `spec.targetRef` (`kuma.io/service: '*'` → `Mesh`); several selectors split into one `MeshOPA` each |
       | top-level `mesh` (Kubernetes layout) | `metadata.labels["kuma.io/mesh"]` |
 
-      The output keeps the flat DataSource shape and gets the [MeshOPA](policy:MeshOPA) v2
-      advisories.
+      The output keeps the flat DataSource shape, which the 2.x `MeshOPA` accepts for all three
+      keys (`inline` stays base64). A `policies[]` entry or `agentConfig` with none of the three
+      keys is left out with a "NOT migrated" warning instead of being emitted as an empty
+      `rego: {}`; unrecognised extra keys are reported as dropped. The output then gets the
+      [MeshOPA](policy:MeshOPA) v2 advisories.
   v3:
     status: converted
     output: [MeshOPA]
     notes: |
       Same conversion, then the [MeshOPA](policy:MeshOPA) v3 rewrites: DataSources to
-      `SecureDataSource`, `targetRef.name`/`namespace`/`mesh` to labels. The source object is
+      `SecureDataSource` (a base64 `inline` is decoded into `insecureInline.value`),
+      `targetRef.name`/`namespace`/`mesh` to labels. The source object is
       listed under "Delete Before Upgrading to 3.0".
   timeline:
     - version: "2.13"
@@ -1294,27 +1311,38 @@
   summary: "Mesh-wide settings: mTLS backends, legacy observability backends, routing and networking defaults."
   v2:
     status: rewritten
-    output: [Mesh, MeshMetric, MeshTrace, MeshAccessLog]
+    output: [Mesh, MeshMetric, MeshPassthrough]
     notes: |
       Rewritten when it has observability sections, sets `networking.outbound.passthrough`, or
       does not set `meshServices.mode: Exclusive`:
 
-      - `spec.metrics`, `spec.tracing`, `spec.logging` are removed and turned into companion
-        `MeshMetric`, `MeshTrace` and `MeshAccessLog` policies with `targetRef: Mesh`.
+      - `spec.metrics` is removed. Its `enabledBackend` turns metrics on for every proxy, so
+        that backend becomes a companion `MeshMetric` `<mesh>-metrics` with `targetRef: Mesh`.
+        Backends that are not enabled are dropped; no `enabledBackend` means no `MeshMetric`.
+      - `spec.tracing` and `spec.logging` are removed **without** a companion. On 2.x they only
+        declare backends: a [TrafficTrace](policy:TrafficTrace) or [TrafficLog](policy:TrafficLog)
+        activates one, and its conversion carries the backend inline. A mesh-wide
+        `MeshTrace`/`MeshAccessLog` would turn tracing/logging on for every proxy. The warning
+        lists which backends a `TrafficLog`/`TrafficTrace` in the input references and which
+        none does (those were inactive, nothing is lost).
+      - `networking.outbound.passthrough: false` becomes a `MeshPassthrough` `<mesh>-passthrough`
+        with `passthroughMode: None`.
       - `spec.meshServices.mode: Exclusive` is injected: 3.0 requires it, and a 2.x zone reads
         a missing field as `Disabled`.
       - `networking.outbound.passthrough: true` is removed (it is the 2.x default) with a
         warning to add a `MeshPassthrough` with `passthroughMode: All` before 3.0.
 
       Kept, with advisories: `spec.mtls` (the move to `MeshIdentity` + `MeshTrust` is a CA
-      cutover, not a rewrite; Kong Mesh `vault`/`acmpca`/`cert-manager` backends name their
-      `MeshIdentity` provider), a `PERMISSIVE` mTLS backend,
+      cutover, not a rewrite; the advisory is specific to the backend type: `builtin` names the
+      `ca-builtin-*` Secrets to reuse from a `Bundled` `MeshIdentity`, `provided` names its
+      `conf.cert`/`conf.key` DataSources, and Kong Mesh `vault`/`acmpca`/`cert-manager` name
+      their `Extension` provider), a `PERMISSIVE` mTLS backend,
       `routing.defaultForbidMeshExternalServiceAccess`, `routing.zoneEgress`,
       `routing.localityAwareLoadBalancing`, `skipCreatingInitialPolicies`. Names that are not
       RFC 1035 labels are reported.
   v3:
     status: rewritten
-    output: [Mesh, MeshMetric, MeshTrace, MeshAccessLog, MeshTLS, MeshPassthrough]
+    output: [Mesh, MeshMetric, MeshTLS, MeshPassthrough]
     notes: |
       v2 rewrites, plus:
 
@@ -1331,8 +1359,9 @@
         deleted.
       - The `meshServices` warning adds: drop the field once every zone runs 3.0.
 
-      Companion policies are written as Kubernetes-format documents in the mesh's namespace
-      (default `kong-mesh-system`).
+      Companion policies keep the format of the `Mesh`: Universal input gives Universal
+      documents (`type`/`name`/`mesh`), Kubernetes input gives CRDs in the system namespace
+      (see [Meshes](../topics/meshes.md#system-namespace)).
   timeline:
     - version: "2.10"
       change: Names that are not RFC 1035 labels deprecated.
@@ -1491,8 +1520,9 @@
     output: [MeshOpenTelemetryBackend]
     notes: |
       Copied unchanged. Also generated, one per inline `openTelemetry.endpoint` found in a
-      `MeshMetric`, `MeshTrace` or `MeshAccessLog`: named `<policy>-otel`, in `kuma-system` on
-      Kubernetes, protocol `grpc`, selected from the policy by `kuma.io/display-name`.
+      `MeshMetric`, `MeshTrace` or `MeshAccessLog`: named `<policy>-otel`, in the system
+      namespace on Kubernetes (see [Meshes](../topics/meshes.md#system-namespace)), protocol
+      `grpc`, selected from the policy by `kuma.io/display-name`.
   timeline:
     - version: "2.14"
       change: Introduced.

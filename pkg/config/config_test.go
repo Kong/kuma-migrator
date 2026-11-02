@@ -79,6 +79,19 @@ skip:
 
 // TestLoad_LegacyFlatSkipList verifies backward compatibility with the old
 // flat-list format: the same list is applied to both environments.
+func TestLoad_SystemNamespace(t *testing.T) {
+	f := writeTempConfig(t, "systemNamespace: mesh-cp\n")
+	t.Setenv("KUMA_MIGRATOR_CONFIG", f)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.SystemNamespace != "mesh-cp" {
+		t.Errorf("SystemNamespace = %q, want mesh-cp", cfg.SystemNamespace)
+	}
+}
+
 func TestLoad_LegacyFlatSkipList(t *testing.T) {
 	f := writeTempConfig(t, `
 skip:

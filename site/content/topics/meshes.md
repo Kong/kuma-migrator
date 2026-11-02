@@ -38,14 +38,13 @@ including in Global → Zone sync ([UPGRADE](https://github.com/kumahq/kuma/blob
 A `Mesh` is handled by the Mesh scenario
 ([`mesh.go`](https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/mesh.go),
 [`v3_mesh.go`](https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/v3_mesh.go)).
-Companion policies are named `<mesh>-metrics`, `<mesh>-trace`, `<mesh>-accesslog`,
-`<mesh>-passthrough`, `<mesh>-tls-permissive`.
+Companion policies are named `<mesh>-metrics`, `<mesh>-passthrough`, `<mesh>-tls-permissive`.
 
 | Field | `--to-latest v2` | `--to-latest v3` |
 |---|---|---|
-| `metrics` | Extracted to a mesh-wide `MeshMetric` | Same |
-| `tracing` | Extracted to a mesh-wide `MeshTrace` | Same |
-| `logging` | Extracted to a mesh-wide `MeshAccessLog` | Same |
+| `metrics` | The `enabledBackend` becomes a mesh-wide `MeshMetric`; backends that are not enabled are dropped; no `enabledBackend` means no `MeshMetric` | Same |
+| `tracing` | Removed, no companion. Backends travel with each converted `TrafficTrace` (see below) | Same |
+| `logging` | Removed, no companion. Backends travel with each converted `TrafficLog` (see below) | Same |
 | `networking.outbound.passthrough: false` | `MeshPassthrough` with `passthroughMode: None` | Same |
 | `networking.outbound.passthrough: true` | Removed from the output, with a warning to add a `MeshPassthrough` before 3.0 | `MeshPassthrough` with `passthroughMode: All` |
 | `networking.outbound.passthrough` unset | Nothing | Warning: check that a `MeshPassthrough` covers proxies that reach external destinations |
@@ -56,6 +55,47 @@ Companion policies are named `<mesh>-metrics`, `<mesh>-trace`, `<mesh>-accesslog
 | `meshServices` | `mode: Exclusive` injected | `mode: Exclusive` injected, with the mixed-version note |
 | Name not an RFC 1035 label | Warning | Warning |
 
+### Logging and tracing
+
+On 2.x the `Mesh.logging` and `Mesh.tracing` backends only declare destinations. Nothing is
+logged or traced until a `TrafficLog` or `TrafficTrace` selects traffic and names a backend, or
+falls back to `defaultBackend`
+([traffic log docs](https://kuma.io/docs/latest/policies/traffic-log/)). No default `TrafficLog`
+or `TrafficTrace` is created with a mesh. A mesh-wide `MeshAccessLog` or `MeshTrace` would turn
+logging or tracing on for every proxy, so none is generated.
+
+Each [TrafficLog](policy:TrafficLog) and [TrafficTrace](policy:TrafficTrace) is converted on its
+own, with the backend it references (or the Mesh `defaultBackend`) copied inline from the `Mesh`
+in the same input. The `Mesh` warning lists, per backend, how many `TrafficLog`/`TrafficTrace`
+resources in the input reference it. A backend nothing references was inactive, so dropping it
+loses nothing. If the `TrafficLog`/`TrafficTrace` resources were not extracted with the `Mesh`,
+add them to the input.
+
+`metrics` is different: `metrics.enabledBackend` turns Prometheus metrics on for every proxy in
+the mesh, so the enabled backend becomes a mesh-wide `MeshMetric`.
+
+### System namespace
+
+On Kubernetes the generated mesh-scoped resources (`MeshMetric`, `MeshPassthrough`, `MeshTLS`,
+`MeshOpenTelemetryBackend`, and the `MeshExternalService` converted from an `ExternalService`)
+go in the control-plane namespace. The pre-pass over the input directory picks it:
+
+1. `systemNamespace` in the config file (`~/.config/kuma-migrator.yaml` or
+   `$KUMA_MIGRATOR_CONFIG`), when set.
+2. `kong-mesh-system` when any input document has `namespace: kong-mesh-system`.
+3. `kuma-system` when any input document has `namespace: kuma-system`.
+4. `kong-mesh-system` when the input holds a Kong Mesh-only kind (`OPAPolicy`, `MeshOPA`,
+   `MeshGlobalRateLimit`, `AccessRole`, `AccessRoleBinding`, `AccessAudit`).
+5. `kuma-system` otherwise.
+
+```yaml
+# ~/.config/kuma-migrator.yaml
+systemNamespace: my-mesh-system
+```
+
+A Universal `Mesh` (`type: Mesh`) gets Universal companions: `type`, `name` and `mesh` at the top
+level, no namespace.
+
 ## What it cannot do
 
 - **Write the `MeshIdentity`.** The trust domain, the CA material and the per-workload SPIFFE
@@ -63,17 +103,9 @@ Companion policies are named `<mesh>-metrics`, `<mesh>-trace`, `<mesh>-accesslog
 - **Generate the cross-zone `MeshLoadBalancingStrategy`.** On 3.0 `crossZone` is accepted only on
   a `to[]` entry that targets a `MeshMultiZoneService`, and the manifest does not say which
   services need one. See [Multizone](multizone.md).
-- **Scope the observability companions.** The generated `MeshMetric`, `MeshTrace` and
-  `MeshAccessLog` target `kind: Mesh` and carry every backend the `Mesh` declared.
-
-> **Warning:** On 2.x the `Mesh.logging` and `Mesh.tracing` backends only declare destinations;
-> nothing is logged or traced until a `TrafficLog` or `TrafficTrace` selects traffic
-> ([traffic log docs](https://kuma.io/docs/latest/policies/traffic-log/)). The generated
-> mesh-wide `MeshAccessLog` and `MeshTrace` enable logging and tracing for every proxy and every
-> declared backend. If the mesh also has `TrafficLog`/`TrafficTrace` policies, they are converted
-> separately (see [Observability](observability.md)) and both sets apply. Review the companions
-> before applying them.
-
+- **Resolve a backend whose `Mesh` is not in the input.** A `TrafficLog`/`TrafficTrace` whose
+  `Mesh` was not extracted with it is converted without a backend, and the warning names the
+  backend to write by hand.
 - **Carry `constraints`.** `Mesh.spec.constraints` (Dataplane admission requirements) is a
   `reserved` field in `mesh.proto` on 3.0 and has no successor. The tool copies it through
   unchanged on both targets without a warning.
@@ -83,8 +115,8 @@ Companion policies are named `<mesh>-metrics`, `<mesh>-trace`, `<mesh>-accesslog
 1. Run `migrate --dry-run --to-latest v2` and read the `Mesh` warnings.
 2. Set `meshServices.mode: Exclusive` on every mesh once its policies and workloads are migrated
    (see [MeshService](meshservice.md)). This must be done before the Global CP upgrade.
-3. Apply the `v2` companions (`MeshMetric`, `MeshTrace`, `MeshAccessLog`, `MeshPassthrough`) after
-   reviewing their scope.
+3. Apply the `v2` companions (`MeshMetric`, `MeshPassthrough`) and the `MeshAccessLog`/`MeshTrace`
+   converted from each `TrafficLog`/`TrafficTrace`.
 4. Migrate identity to `MeshIdentity` on 2.14 (see [mTLS and workload identity](mtls-identity.md)).
 5. Add a `MeshTLS` `Permissive` policy for meshes that rely on `PERMISSIVE`, and a
    `MeshPassthrough` for meshes whose transparent-proxy workloads reach external destinations.
@@ -148,14 +180,14 @@ spec:
 ```
 
 ```yaml
-# observability/MeshMetric-kong-mesh-system-default-metrics.yaml
+# observability/MeshMetric-kuma-system-default-metrics.yaml
 apiVersion: kuma.io/v1alpha1
 kind: MeshMetric
 metadata:
   labels:
     kuma.io/mesh: default
   name: default-metrics
-  namespace: kong-mesh-system
+  namespace: kuma-system
 spec:
   default:
     backends:
@@ -182,14 +214,14 @@ spec:
 ```
 
 ```yaml
-# routing/MeshPassthrough-kong-mesh-system-default-passthrough.yaml
+# routing/MeshPassthrough-kuma-system-default-passthrough.yaml
 apiVersion: kuma.io/v1alpha1
 kind: MeshPassthrough
 metadata:
   labels:
     kuma.io/mesh: default
   name: default-passthrough
-  namespace: kong-mesh-system
+  namespace: kuma-system
 spec:
   default:
     passthroughMode: All
@@ -198,14 +230,14 @@ spec:
 ```
 
 ```yaml
-# zero-trust/MeshTLS-kong-mesh-system-default-tls-permissive.yaml
+# zero-trust/MeshTLS-kuma-system-default-tls-permissive.yaml
 apiVersion: kuma.io/v1alpha1
 kind: MeshTLS
 metadata:
   labels:
     kuma.io/mesh: default
   name: default-tls-permissive
-  namespace: kong-mesh-system
+  namespace: kuma-system
 spec:
   rules:
   - default:

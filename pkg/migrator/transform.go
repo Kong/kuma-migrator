@@ -44,6 +44,13 @@ type TransformOptions struct {
 	// MeshIdentities records the meshes that have a MeshIdentity, which every
 	// MeshExternalService needs on 3.0 (see warnMESRequiresMeshIdentity).
 	MeshIdentities MeshIdentityIndex
+	// SystemNamespace is the control-plane namespace generated companions go in
+	// on Kubernetes (config override, else inferred by the pre-pass; "" means
+	// not known — see resolveSystemNamespace).
+	SystemNamespace string
+	// LegacyObservability records which Mesh logging/tracing backends the
+	// TrafficLog/TrafficTrace resources reference. nil when no pre-pass ran.
+	LegacyObservability LegacyObservabilityIndex
 }
 
 // TransformDocumentWithOptions is TransformDocument with the cross-document
@@ -97,14 +104,14 @@ func TransformDocumentWithOptions(raw []byte, opts TransformOptions) ([][]byte, 
 
 	case ScenarioMesh:
 		var err error
-		docs, warnings, err = TransformMeshForTarget(raw, target)
+		docs, warnings, err = TransformMeshWithOptions(raw, opts)
 		if err != nil {
 			return nil, nil, scenario, err
 		}
 
 	case ScenarioExternalService:
 		var err error
-		docs, warnings, err = TransformExternalService(raw)
+		docs, warnings, err = TransformExternalServiceWithOptions(raw, opts)
 		if err != nil {
 			return nil, nil, scenario, err
 		}
@@ -147,7 +154,7 @@ func TransformDocumentWithOptions(raw []byte, opts TransformOptions) ([][]byte, 
 
 	default: // ScenarioPassthrough, ScenarioSkipped, ScenarioUnknown
 		docs = [][]byte{raw}
-		if out, w, ok := transformPassthroughMeshForV3(raw, target); ok {
+		if out, w, ok := transformPassthroughMeshForV3(raw, opts); ok {
 			docs, warnings = out, w
 		}
 	}
@@ -155,7 +162,7 @@ func TransformDocumentWithOptions(raw []byte, opts TransformOptions) ([][]byte, 
 	// 3.0 removes the inline OpenTelemetry endpoint; generate MeshOpenTelemetryBackends.
 	if target.IsV3() {
 		var otelWarns []string
-		docs, otelWarns = convertInlineOtelEndpointsForV3(docs)
+		docs, otelWarns = convertInlineOtelEndpointsForV3(docs, opts)
 		warnings = append(warnings, otelWarns...)
 	}
 
