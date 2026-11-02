@@ -17,6 +17,7 @@ Every Kubernetes CP runs in `controlPlane.mode: zone` with no Global (the chart 
 ```bash
 test/e2e/run.sh up          # clusters, Helm installs, Universal CPs, kumactl downloads
 test/e2e/run.sh test        # migrate + apply; writes test/e2e/results/
+test/e2e/run.sh extract     # 2.14 CPs only: apply the input, check what extract writes
 test/e2e/run.sh questions   # admission probes behind results/questions.md
 test/e2e/run.sh down        # delete clusters and containers
 test/e2e/run.sh all         # up + test + down
@@ -63,7 +64,10 @@ For each environment:
 3. Run `kuma-migrator extract` against that CP and list input objects it did not write
    (`results/extract-<env>.md`).
 4. `migrate --to-latest v2`, then apply every file named by the report's **Apply Checklist**, in
-   checklist order, to the 2.14 CP.
+   checklist order, to the 2.14 CP. Files the checklist lists as `kubectl replace -f <file>
+   --save-config` (documents that rewrite an existing object) are validated with
+   `kubectl replace --dry-run=server`. On the 3.0 CP, seeded with the meshes only, a replace
+   that returns NotFound falls back to `kubectl apply --dry-run=server`.
 5. Seed the 3.0 CP (`fixtures/seed/v3/`, the meshes), `migrate --to-latest v3`, apply the
    checklist files to the 3.0 CP.
 6. Apply every file under `_manual/` to the 3.0 CP. These are expected to be rejected.

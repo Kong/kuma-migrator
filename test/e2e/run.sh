@@ -3,6 +3,7 @@
 #
 #   test/e2e/run.sh up      create clusters + CPs (Kubernetes via Helm, Universal in Docker)
 #   test/e2e/run.sh test    migrate the fixtures and apply the output (default)
+#   test/e2e/run.sh extract apply the input to the 2.14 CPs and check what extract writes (needs `up`)
 #   test/e2e/run.sh questions  admission probes behind results/questions.md (needs `up`)
 #   test/e2e/run.sh down    delete everything `up` created
 #   test/e2e/run.sh all     up + test + down
@@ -141,14 +142,24 @@ cmd_down() {
 # Kubernetes: server-side dry-run, which runs the Kuma validating webhooks
 # (sideEffects: None). Universal: a real apply against the throwaway memory-store CP
 # (kumactl --dry-run is client-side only).
+#
+# APPLY_VERB=replace (Kubernetes only): the report lists the file as
+# `kubectl replace -f <file> --save-config` (a document that rewrites an existing object).
+# Validated with `kubectl replace --dry-run=server`. On v3 the 3.0 CP is seeded with the
+# meshes only, so the object does not exist there: NotFound falls back to apply.
 apply_one() {
   local env=$1 target=$2 file=$3 mode=${4:-dry} out
   if [[ $env == kubernetes ]]; then
     local ctx; ctx=$(kctx "$( [[ $target == v2 ]] && echo $CLUSTER_V2 || echo $CLUSTER_V3)")
-    local args=(--context "$ctx" apply -f "$file")
+    local verb=${APPLY_VERB:-apply}
+    local args=(--context "$ctx" "$verb" -f "$file")
     [[ $mode == dry ]] && args+=(--dry-run=server)
     [[ -n ${APPLY_NS:-} ]] && args+=(-n "$APPLY_NS")
-    out=$(kubectl "${args[@]}" 2>&1) && { echo "$out"; return 0; } || { echo "$out"; return 1; }
+    if out=$(kubectl "${args[@]}" 2>&1); then echo "$out"; return 0; fi
+    if [[ $verb == replace && $target == v3 && ( $out == *NotFound* || $out == *"not found"* ) ]]; then
+      APPLY_VERB=apply apply_one "$env" "$target" "$file" "$mode"; return
+    fi
+    echo "$out"; return 1
   else
     local cp ver; if [[ $target == v2 ]]; then cp=$UCP_V2 ver=$KM_V2; else cp=$UCP_V3 ver=$KM_V3; fi
     out=$("$(kumactl_bin "$ver")" --config-file "$(kumactl_cfg "$cp")" apply -f "$file" 2>&1) &&
@@ -237,10 +248,8 @@ check_extract() { # env
     "$E2E_WORK/kuma-migrator" extract --kube-context "$(kctx $CLUSTER_V2)" --output-dir "$dir" >"$E2E_WORK/extract-$env.log" 2>&1
     skip="Dataplane AccessRoleBinding ZoneEgress ZoneIngress Zone Workload Secret GlobalSecret"
   else
-    # extract resolves the context from $KUMACTL_CONFIG, but the kumactl it spawns only
-    # reads ~/.kumactl/config (kumactl has no env var for it), so give it a private HOME.
-    mkdir -p "$E2E_WORK/home/.kumactl"; cp "$(kumactl_cfg "$UCP_V2")" "$E2E_WORK/home/.kumactl/config"
-    HOME="$E2E_WORK/home" PATH="$(dirname "$(kumactl_bin "$KM_V2")"):$PATH" KUMACTL_CONFIG="$(kumactl_cfg "$UCP_V2")" \
+    # extract passes $KUMACTL_CONFIG to every kumactl it spawns as --config-file.
+    PATH="$(dirname "$(kumactl_bin "$KM_V2")"):$PATH" KUMACTL_CONFIG="$(kumactl_cfg "$UCP_V2")" \
       "$E2E_WORK/kuma-migrator" extract --kumactl-context "$UCP_V2" --output-dir "$dir" >"$E2E_WORK/extract-$env.log" 2>&1
     skip="AccessRoleBinding Zone Workload Secret GlobalSecret"
   fi
@@ -263,14 +272,22 @@ check_extract() { # env
   { echo; echo "Extract log:"; echo; echo '```text'; sed -e 's/\x1b\[[0-9;]*m//g' -e "s|$E2E_WORK|\$E2E_WORK|g" "$E2E_WORK/extract-$env.log" | grep -v '^  →' ; echo '```'; } >>"$res"
 }
 
-# Files in Apply Checklist order: every `kubectl apply -f <dir>/` and `kumactl apply -f <file>`
-# line of the report's "## Apply Checklist" section, directories expanded to their files.
+# Files in Apply Checklist order: every `kubectl apply -f <dir>/`, `kubectl apply|replace -f
+# <file>` and `kumactl apply -f <file>` line of the report's "## Apply Checklist" section,
+# directories expanded to their files.
 checklist_files() { # report
   sed -n '/^## Apply Checklist/,/^## /p' "$1" |
-    grep -oE '^ *(kubectl|kumactl) apply -f [^ ]+' | awk '{print $NF}' | grep -v '^http' |
+    grep -oE '^ *(kubectl|kumactl) (apply|replace) -f [^ ]+' | awk '{print $NF}' | grep -v '^http' |
     while IFS= read -r p; do
       if [[ -d $p ]]; then find "$p" -maxdepth 1 -name '*.yaml' | sort; else echo "$p"; fi
     done
+}
+
+# Files the Apply Checklist lists as `kubectl replace -f <file> --save-config`: documents that
+# rewrite an existing object, validated with `kubectl replace` (see apply_one).
+checklist_replace_files() { # report
+  sed -n '/^## Apply Checklist/,/^## /p' "$1" |
+    grep -oE '^ *kubectl replace -f [^ ]+' | awk '{print $NF}'
 }
 
 run_target() { # env target
@@ -293,8 +310,9 @@ run_target() { # env target
 
   if [[ $target == v2 ]]; then apply_input "$env" "$res"; check_extract "$env"; else seed "$env" v3; fi
 
-  local f rel msg tmp part listed=$E2E_WORK/listed-$target-$env
+  local f rel msg tmp part verb listed=$E2E_WORK/listed-$target-$env replaced=$E2E_WORK/replace-$target-$env
   checklist_files "$out/migration-report.md" >"$listed"
+  checklist_replace_files "$out/migration-report.md" >"$replaced"
   log "applying $(wc -l <"$listed" | tr -d ' ') checklist files to $target $env"
   tmp=$(mktemp -d)
   while IFS= read -r f; do
@@ -307,12 +325,13 @@ run_target() { # env target
       msg=$all
     else
       local ctx; ctx=$(kctx "$( [[ $target == v2 ]] && echo $CLUSTER_V2 || echo $CLUSTER_V3)")
+      verb=apply; grep -qxF "$f" "$replaced" && verb=replace
       if missing_namespace "$ctx" "$f"; then
         record "$res" namespace "$rel" "**NO NAMESPACE**" "namespaced kind without metadata.namespace; validated below with -n kong-mesh-system"
         is_expected "$target-ns" "$env" "$rel" || UNEXPECTED=$((UNEXPECTED + 1))
-        if msg=$(APPLY_NS=kong-mesh-system apply_one "$env" "$target" "$f"); then ok=1; else ok=0; fi
+        if msg=$(APPLY_VERB=$verb APPLY_NS=kong-mesh-system apply_one "$env" "$target" "$f"); then ok=1; else ok=0; fi
       else
-        if msg=$(apply_one "$env" "$target" "$f"); then ok=1; else ok=0; fi
+        if msg=$(APPLY_VERB=$verb apply_one "$env" "$target" "$f"); then ok=1; else ok=0; fi
       fi
     fi
     if ((ok)); then record "$res" apply "$rel" accepted "$(echo "$msg" | grep -i warn || true)"
@@ -367,11 +386,31 @@ cmd_test() {
   log "all rejections match $EXPECTED"
 }
 
+# extract check only: apply the input to the 2.14 CPs and run extract against them
+# (results/extract-<env>.md). Needs `up`.
+cmd_extract() {
+  log "building kuma-migrator"
+  (cd "$ROOT" && go build -o "$E2E_WORK/kuma-migrator" .)
+  download_kumactl "$KM_V2"
+  local env
+  for env in $E2E_ENVS; do
+    [[ $env == universal ]] && start_universal_cp "$UCP_V2" "$KM_V2" "$UCP_V2_PORT"
+    seed "$env" v2
+    apply_input "$env" "$E2E_WORK/input-$env.md"
+    check_extract "$env"
+  done
+  if ((UNEXPECTED > 0)); then
+    log "$UNEXPECTED fixture(s) rejected by $KM_V2 — see $E2E_WORK/input-*.md"
+    exit 1
+  fi
+}
+
 case "${1:-test}" in
   up) cmd_up ;;
+  extract) cmd_extract ;;
   questions) source "$HERE/questions.sh"; cmd_questions ;;
   test) cmd_test ;;
   down) cmd_down ;;
   all) cmd_up; trap cmd_down EXIT; cmd_test ;;
-  *) echo "usage: $0 [up|test|questions|down|all]" >&2; exit 2 ;;
+  *) echo "usage: $0 [up|test|extract|questions|down|all]" >&2; exit 2 ;;
 esac
