@@ -342,7 +342,7 @@ func writeSubfolderTables(b *strings.Builder, order []string, bySubfolder map[st
 				if i == 0 {
 					fname = fr.FileName
 				}
-				linef(b, "| `%s` | `%s` | %s | %s |", fname, dc.InputKind, dc.Scenario, notes)
+				linef(b, "| `%s` | `%s` | %s | %s |", fname, dc.InputKind, scenarioCell(dc), notes)
 			}
 		}
 		line(b, "")
@@ -1218,6 +1218,15 @@ func applyDirCPRank(d string) int {
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
+
+// scenarioCell is the Scenario column of the migrated-files tables. A
+// passthrough document the scan pass changed is not "already migrated".
+func scenarioCell(dc DocChange) string {
+	if dc.Scenario == ScenarioPassthrough && dc.Rewritten {
+		return "Passthrough, rewritten for the target"
+	}
+	return dc.Scenario.String()
+}
 
 // hasLabel reports whether any file in the report carries the given label.
 func hasLabel(r *MigrationReport, label string) bool {

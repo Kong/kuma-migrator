@@ -276,6 +276,13 @@ Files with `meshDir == ""` (no mesh dir detected) are **always** processed regar
 
 **migrate/--dry-run stdout format** — each file line shows: scenario label (fixed 18-char column) · mesh name in bold magenta (omitted for global-scoped) · filename. Two faint gray lines below show `← <inputRelPath>` and `→ <outputRelPath>`. UI helpers: `ui.FileMigrated(scenario, meshName, filename)`, `ui.DocRelPaths(inputRel, outputRel)`.
 
+**`REWRITTEN` label** (`labelRewritten`): a `ScenarioPassthrough` document whose output differs
+from its input (`sameYAML`) or that gained companion documents — e.g. v3 label stripping,
+`name`→labels refs, inline OTel endpoint → generated `MeshOpenTelemetryBackend`. Same
+`DocChange.Rewritten` mechanism as `SCANNED` (which is the non-policy equivalent). Counted in
+`MigratedCount`, listed in the migrated-files tables with Scenario `Passthrough, rewritten for
+the target` (`scenarioCell`), printed via `ui.FileMigrated("REWRITTEN", …)`.
+
 ### Partially-migrated policies (old Kuma-internal MeshService names)
 
 Policies in the wild are sometimes partially migrated: `kind: MeshSubset` was changed to

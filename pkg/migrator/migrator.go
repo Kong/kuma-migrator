@@ -34,8 +34,9 @@ type DocChange struct {
 	// output exists but the target control plane rejects it, so it went to
 	// ManualDir. ErrMsg carries the reason.
 	Rejected bool
-	// Rewritten is set for a non-policy document (ScenarioSkipped) whose output
-	// differs from the input, i.e. the deprecation scan changed it.
+	// Rewritten is set for a passthrough or non-policy document (ScenarioPassthrough,
+	// ScenarioSkipped) whose output differs from the input: the deprecation scan or
+	// a target-specific fix changed it, or added companion documents.
 	Rewritten bool
 	// MeshMTLS is set for a Mesh document that carries spec.mtls (top-level
 	// mtls in Universal format). The Apply Checklist uses it under v3.
@@ -252,7 +253,7 @@ func runMigration(inputDir, outputDir string, writeFiles bool, meshFilter string
 		report.AnnotationHits = append(report.AnnotationHits, fr.AnnotHits...)
 
 		switch fr.Label {
-		case labelMigratedLegacy, labelMigratedSubset, labelMigratedRules, labelMigratedMesh, labelMigratedES, labelMigratedGW, labelMigratedOPA:
+		case labelMigratedLegacy, labelMigratedSubset, labelMigratedRules, labelMigratedMesh, labelMigratedES, labelMigratedGW, labelMigratedOPA, labelRewritten:
 			report.MigratedCount++
 		case labelAlreadyDone:
 			report.AlreadyDoneCount++
@@ -307,6 +308,9 @@ const (
 	labelMigratedGW     = "MIGRATED GW"
 	labelMigratedOPA    = "MIGRATED OPA"
 	labelAlreadyDone    = "ALREADY MIGRATED"
+	// labelRewritten: already on the current API (passthrough), but the scan
+	// pass or a target-specific fix changed the document or added companions.
+	labelRewritten = "REWRITTEN"
 	// labelScanned: not a policy, but the deprecation scan rewrote it or warned
 	// about it. Written to the output tree like any other document.
 	labelScanned = "SCANNED"
@@ -468,7 +472,7 @@ func processFile(inputPath, outputDir, cpModeDir, meshDir string, writeFile bool
 	v3 := opts.Target.IsV3()
 	var outputDocs []outputDoc
 	foundA, foundB, foundC, foundD, foundMesh, foundES, foundGW, foundOPA, foundSkipped := false, false, false, false, false, false, false, false, false
-	foundScanned, foundManual := false, false
+	foundScanned, foundManual, foundRewritten := false, false, false
 
 	for _, doc := range docs {
 		kind, name2 := probeKindName(doc)
@@ -546,7 +550,19 @@ func processFile(inputPath, outputDir, cpModeDir, meshDir string, writeFile bool
 		case ScenarioSubset:
 			foundB = true
 		case ScenarioPassthrough:
-			foundC = true
+			// Already on the current API, but the target-specific fixes in
+			// ScanForDeprecations / TransformDocumentWithOptions can still rewrite
+			// it (v3 label stripping, labels-only refs) or add companions (a
+			// MeshOpenTelemetryBackend for an inline endpoint). Such a file is
+			// not "already migrated": its output differs from its input.
+			if tErr == nil {
+				dc.Rewritten = len(results) != 1 || !sameYAML(doc, results[0])
+			}
+			if dc.Rewritten {
+				foundRewritten = true
+			} else {
+				foundC = true
+			}
 		case ScenarioRules:
 			foundD = true
 		case ScenarioMesh:
@@ -672,6 +688,8 @@ func processFile(inputPath, outputDir, cpModeDir, meshDir string, writeFile bool
 		fr.Label = labelMigratedOPA
 	case foundManual && len(fr.OutputRelPaths) == 0:
 		fr.Label = labelManual
+	case foundRewritten:
+		fr.Label = labelRewritten
 	case foundScanned:
 		fr.Label = labelScanned
 	case foundC:
@@ -768,6 +786,8 @@ func printReportToStdout(r *MigrationReport) {
 			ui.FileMigrated("GATEWAY", mesh, fr.FileName)
 		case labelMigratedOPA:
 			ui.FileMigrated("OPA", mesh, fr.FileName)
+		case labelRewritten:
+			ui.FileMigrated("REWRITTEN", mesh, fr.FileName)
 		case labelAlreadyDone:
 			ui.FileAlreadyMigrated(mesh, fr.FileName)
 		case labelScanned:

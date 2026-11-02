@@ -46,7 +46,8 @@ Report written to: migrated/migration-plan.md
 | Label | Meaning |
 |---|---|
 | `LEGACY`, `SUBSET`, `RULES`, `MESH`, `EXTERNAL SERVICE`, `GATEWAY`, `OPA` | Migrated, by scenario |
-| `ALREADY MIGRATED` | Passed through; already uses the current API |
+| `REWRITTEN` | Already uses the current API, but the output differs from the input: a fix for the target changed it (for example `--to-latest v3` turning `name`/`namespace` refs into labels, stripping control-plane-owned labels, or replacing an inline OpenTelemetry endpoint with a generated `MeshOpenTelemetryBackend`). Counted as migrated; the report's Scenario column says `Passthrough, rewritten for the target` |
+| `ALREADY MIGRATED` | Passed through unchanged; already uses the current API |
 | `SCANNED` | Not a policy (`Dataplane`, `Deployment`, ...), but the deprecation scan rewrote it or warned about it. Written to the output tree. The detail says `rewritten by the deprecation scan` or `copied unchanged, see warnings` |
 | `MANUAL` | Every document is a kind the target removes, with no conversion (`MeshGatewayConfig`, `MeshGlobalRateLimit`, Universal `ZoneIngress`/`ZoneEgress` under `v3`). Written to `_manual/` only |
 | `SKIP` | Not a policy and nothing to change: `not a Kuma policy; copied unchanged`, or `on the skip list; not written` |
@@ -71,7 +72,7 @@ are written to `--output-dir` by
 |---|---|
 | Header | Input and output directories, the target (`v2` or `v3`). Under `v3`, a banner that the output must not be applied to a 2.x control plane. Under `--dry-run`, a banner that no files were written |
 | Summary | Files processed, migrated, already migrated, scanned, kept under `_manual/` (when any), skipped, errors |
-| Files That Would Be Migrated (`--dry-run`) / Migrated Files | One table per `<context>/<subfolder>/`, for example `kind-global-global-ctx/resiliency/`, with the warnings of each file. Errored files are grouped separately |
+| Files That Would Be Migrated (`--dry-run`) / Migrated Files | One table per `<context>/<subfolder>/`, for example `kind-global-global-ctx/resiliency/`, with the warnings of each file. `REWRITTEN` files are listed here too. Errored files are grouped separately |
 | Already Migrated | Files passed through unchanged, with their warnings |
 | Scanned Non-Policy Resources | Non-policy files the deprecation scan rewrote or flagged, with their warnings |
 | Kept Under `_manual/` | Files whose kind the target removes, with the `_manual/` path of each |

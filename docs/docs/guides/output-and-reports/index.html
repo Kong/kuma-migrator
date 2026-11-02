@@ -101,8 +101,12 @@ Report written to: migrated/migration-plan.md
 <td>Migrated, by scenario</td>
 </tr>
 <tr>
+<td><code>REWRITTEN</code></td>
+<td>Already uses the current API, but the output differs from the input: a fix for the target changed it (for example <code>--to-latest v3</code> turning <code>name</code>/<code>namespace</code> refs into labels, stripping control-plane-owned labels, or replacing an inline OpenTelemetry endpoint with a generated <code>MeshOpenTelemetryBackend</code>). Counted as migrated; the report's Scenario column says <code>Passthrough, rewritten for the target</code></td>
+</tr>
+<tr>
 <td><code>ALREADY MIGRATED</code></td>
-<td>Passed through; already uses the current API</td>
+<td>Passed through unchanged; already uses the current API</td>
 </tr>
 <tr>
 <td><code>SCANNED</code></td>
@@ -154,7 +158,7 @@ are written to <code>--output-dir</code> by
 </tr>
 <tr>
 <td>Files That Would Be Migrated (<code>--dry-run</code>) / Migrated Files</td>
-<td>One table per <code>&lt;context&gt;/&lt;subfolder&gt;/</code>, for example <code>kind-global-global-ctx/resiliency/</code>, with the warnings of each file. Errored files are grouped separately</td>
+<td>One table per <code>&lt;context&gt;/&lt;subfolder&gt;/</code>, for example <code>kind-global-global-ctx/resiliency/</code>, with the warnings of each file. <code>REWRITTEN</code> files are listed here too. Errored files are grouped separately</td>
 </tr>
 <tr>
 <td>Already Migrated</td>
