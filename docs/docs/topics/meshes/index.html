@@ -115,6 +115,11 @@ behaviour each field configured has moved to a policy or to the control plane.</
 <td>Removed in 3.0: a new mesh gets no default policies at all, so a mesh without a <code>MeshRetry</code> does not retry (<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#meshes-no-longer-come-with-default-policies">UPGRADE</a>)</td>
 </tr>
 <tr>
+<td><code>constraints.dataplaneProxy</code></td>
+<td>none</td>
+<td>Removed in 3.0 (<code>reserved</code> in <code>mesh.proto</code>). It refused data plane proxies whose tags matched no <code>requirements</code> entry or matched a <code>restrictions</code> entry (<a href="https://developer.konghq.com/mesh/configure-data-plane-proxy-membership/">data plane proxy membership</a>); the 3.0 membership validator checks nothing. The nearest controls are dataplane tokens bound to the mesh and tags (<code>kumactl generate dataplane-token --mesh &lt;mesh&gt; --tag key=value</code>) and <code>MeshTrafficPermission</code></td>
+</tr>
+<tr>
 <td><code>meshServices.mode</code></td>
 <td>none</td>
 <td>Has no effect on 3.0 zones, but must be <code>Exclusive</code> before the Global CP upgrade; 3.0 rejects any other mode (<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#meshservices-removed-from-the-mesh-schema">UPGRADE</a>). See <a href="../meshservice/">MeshService</a></td>
@@ -190,6 +195,11 @@ Companion policies are named <code>&lt;mesh&gt;-metrics</code>, <code>&lt;mesh&g
 <td><code>skipCreatingInitialPolicies</code></td>
 <td>Kept</td>
 <td>Removed, with the retry note</td>
+</tr>
+<tr>
+<td><code>constraints</code></td>
+<td>Kept, advisory: membership enforcement is lost on 3.0</td>
+<td>Removed, with a warning naming what is no longer enforced and the dataplane-token alternative</td>
 </tr>
 <tr>
 <td><code>meshServices</code></td>

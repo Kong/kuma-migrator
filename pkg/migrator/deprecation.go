@@ -34,7 +34,7 @@ import (
 //   - MeshAccessLog openTelemetry.attributes[].key validation tightened (v2.14)
 //   - Mesh spec.routing.defaultForbidMeshExternalServiceAccess removed (3.0)
 //   - Mesh spec.mtls → MeshIdentity + MeshTrust, required before 3.0 (removed in 3.0, guided)
-//   - Mesh routing.zoneEgress / routing.localityAwareLoadBalancing / skipCreatingInitialPolicies /
+//   - Mesh routing.zoneEgress / routing.localityAwareLoadBalancing / skipCreatingInitialPolicies / constraints /
 //     PERMISSIVE mTLS backend → removed in 3.0 (warnMeshFieldsRemovedIn30, v3_mesh.go)
 //   - MeshMetric prometheus.tls.mode: ActiveMTLSBackend requires a client cert on 3.0 (v3 only)
 //   - Dataplane transparentProxying.redirectPortInboundV6 removed (v2.9)

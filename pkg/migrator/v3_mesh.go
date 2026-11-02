@@ -135,6 +135,13 @@ func applyMeshRemovalsForV3(obj, spec map[string]interface{}, cm companionMeta) 
 		}
 	}
 
+	// ── constraints ─────────────────────────────────────────────────────────
+	if _, ok := spec["constraints"]; ok {
+		warnings = append(warnings, constraintsAdvisory(meshName, spec["constraints"], TargetV3))
+		delete(spec, "constraints")
+		dropped = append(dropped, "constraints")
+	}
+
 	// ── skipCreatingInitialPolicies ─────────────────────────────────────────
 	if _, ok := spec["skipCreatingInitialPolicies"]; ok {
 		warnings = append(warnings, skipInitialPoliciesAdvisory(meshName))
@@ -157,6 +164,41 @@ func localityAwareAdvisory(meshName string) string {
 			"to[].default.localityAwareness.crossZone, and 3.0 accepts crossZone only on a to[] entry "+
 			"whose targetRef.kind is MeshMultiZoneService. The migrator does not generate that policy.",
 		meshName)
+}
+
+// constraintsAdvisory covers Mesh.spec.constraints.dataplaneProxy
+// (requirements/restrictions on the tags a data plane proxy needs to join the
+// mesh). 3.0 reserves field 7 ("constraints") in mesh.proto and the membership
+// validator no longer checks anything. Mesh has no generated schema, so 3.0
+// does not reject the field ("Resources with fields that are not in the schema
+// are rejected" exempts Mesh): it is dropped silently, and every proxy can join.
+// No 3.0 resource replaces it.
+func constraintsAdvisory(meshName string, constraints interface{}, target TargetVersion) string {
+	var rules []string
+	if c, ok := constraints.(map[string]interface{}); ok {
+		dp, _ := c["dataplaneProxy"].(map[string]interface{})
+		for _, field := range []string{"requirements", "restrictions"} {
+			if n := len(asSlice(dp[field])); n > 0 {
+				rules = append(rules, fmt.Sprintf("%d %s", n, field))
+			}
+		}
+	}
+	what := "constraints.dataplaneProxy"
+	if len(rules) > 0 {
+		what += " (" + strings.Join(rules, ", ") + ")"
+	}
+	lead := fmt.Sprintf("Mesh %q: %s is removed in 3.0 and has been removed from the output.", meshName, what)
+	if !target.IsV3() {
+		lead = fmt.Sprintf("Mesh %q: %s is removed in 3.0.", meshName, what)
+	}
+	return lead + " It decides which data plane proxies may join the mesh by their tags " +
+		"(requirements: a proxy must match one; restrictions: a proxy matching one is refused). 3.0 " +
+		"no longer has the field or the membership check, and the Mesh resource drops unknown fields " +
+		"without an error, so after the upgrade any proxy with a token for the mesh can join. No 3.0 " +
+		"resource replaces it. To keep control over membership: issue dataplane tokens bound to the " +
+		"mesh and the required tags (kumactl generate dataplane-token --mesh <mesh> --tag key=value), " +
+		"on Kubernetes control which namespaces and workloads carry the kuma.io/mesh label, and " +
+		"restrict which clients reach each service with MeshTrafficPermission."
 }
 
 func skipInitialPoliciesAdvisory(meshName string) string {
@@ -195,6 +237,9 @@ func warnMeshFieldsRemovedIn30(obj map[string]interface{}, name string) []string
 					"Mesh %q: routing.localityAwareLoadBalancing is removed in 3.0. Remove it before upgrading.", name))
 			}
 		}
+	}
+	if c, ok := spec["constraints"]; ok {
+		warnings = append(warnings, constraintsAdvisory(name, c, TargetV2)+" Remove it before upgrading.")
 	}
 	if _, ok := spec["skipCreatingInitialPolicies"]; ok {
 		warnings = append(warnings, skipInitialPoliciesAdvisory(name))

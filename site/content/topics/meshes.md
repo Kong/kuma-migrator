@@ -23,6 +23,7 @@ behaviour each field configured has moved to a policy or to the control plane.
 | `routing.localityAwareLoadBalancing` | [MeshLoadBalancingStrategy](policy:MeshLoadBalancingStrategy) | Removed in 3.0 ([UPGRADE](https://github.com/kumahq/kuma/blob/master/UPGRADE.md#meshspecroutinglocalityawareloadbalancing-removed)). See [Multizone](multizone.md) |
 | `routing.defaultForbidMeshExternalServiceAccess` | [MeshTrafficPermission](policy:MeshTrafficPermission) | Removed in 3.0 ([UPGRADE](https://github.com/kumahq/kuma/blob/master/UPGRADE.md#routingdefaultforbidmeshexternalserviceaccess-removed-from-the-mesh-schema)) |
 | `skipCreatingInitialPolicies` | none | Removed in 3.0: a new mesh gets no default policies at all, so a mesh without a `MeshRetry` does not retry ([UPGRADE](https://github.com/kumahq/kuma/blob/master/UPGRADE.md#meshes-no-longer-come-with-default-policies)) |
+| `constraints.dataplaneProxy` | none | Removed in 3.0 (`reserved` in `mesh.proto`). It refused data plane proxies whose tags matched no `requirements` entry or matched a `restrictions` entry ([data plane proxy membership](https://developer.konghq.com/mesh/configure-data-plane-proxy-membership/)); the 3.0 membership validator checks nothing. The nearest controls are dataplane tokens bound to the mesh and tags (`kumactl generate dataplane-token --mesh <mesh> --tag key=value`) and `MeshTrafficPermission` |
 | `meshServices.mode` | none | Has no effect on 3.0 zones, but must be `Exclusive` before the Global CP upgrade; 3.0 rejects any other mode ([UPGRADE](https://github.com/kumahq/kuma/blob/master/UPGRADE.md#meshservices-removed-from-the-mesh-schema)). See [MeshService](meshservice.md) |
 
 The `Mesh` CRD is `x-kubernetes-preserve-unknown-fields` and the control plane drops unknown
@@ -52,6 +53,7 @@ Companion policies are named `<mesh>-metrics`, `<mesh>-passthrough`, `<mesh>-tls
 | `mtls.backends[].mode: PERMISSIVE` | Kept, warning to add a `MeshTLS` before 3.0 | `MeshTLS` with `rules[].default.mode: Permissive` |
 | `routing.zoneEgress`, `routing.localityAwareLoadBalancing`, `routing.defaultForbidMeshExternalServiceAccess` | Kept, warning per field | Removed, with a note on what replaces each one |
 | `skipCreatingInitialPolicies` | Kept | Removed, with the retry note |
+| `constraints` | Kept, advisory: membership enforcement is lost on 3.0 | Removed, with a warning naming what is no longer enforced and the dataplane-token alternative |
 | `meshServices` | `mode: Exclusive` injected | `mode: Exclusive` injected, with the mixed-version note |
 | Name not an RFC 1035 label | Warning | Warning |
 

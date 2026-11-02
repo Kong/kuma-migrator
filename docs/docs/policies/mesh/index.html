@@ -96,8 +96,9 @@ cutover, not a rewrite; the advisory is specific to the backend type: <code>buil
 <code>conf.cert</code>/<code>conf.key</code> DataSources, and Kong Mesh <code>vault</code>/<code>acmpca</code>/<code>cert-manager</code> name
 their <code>Extension</code> provider), a <code>PERMISSIVE</code> mTLS backend,
 <code>routing.defaultForbidMeshExternalServiceAccess</code>, <code>routing.zoneEgress</code>,
-<code>routing.localityAwareLoadBalancing</code>, <code>skipCreatingInitialPolicies</code>. Names that are not
-RFC 1035 labels are reported.</p>
+<code>routing.localityAwareLoadBalancing</code>, <code>skipCreatingInitialPolicies</code>, <code>constraints</code> (the
+data plane proxy membership rules, not enforced on 3.0). Names that are not RFC 1035
+labels are reported.</p>
 </div>
   </section>
   <section class="target-card">
@@ -114,8 +115,10 @@ RFC 1035 labels are reported.</p>
 <code>passthroughMode: All</code>. When the field is unset, a warning explains that 3.0 defaults
 to <code>None</code>.</li>
 <li><code>routing.zoneEgress</code>, <code>routing.localityAwareLoadBalancing</code>,
-<code>routing.defaultForbidMeshExternalServiceAccess</code> and <code>skipCreatingInitialPolicies</code> are
-deleted.</li>
+<code>routing.defaultForbidMeshExternalServiceAccess</code>, <code>skipCreatingInitialPolicies</code> and
+<code>constraints</code> are deleted. For <code>constraints</code> the warning lists the requirements and
+restrictions that stop being enforced (3.0 has no membership check) and the nearest
+control: dataplane tokens bound to the mesh and tags.</li>
 <li>The <code>meshServices</code> warning adds: drop the field once every zone runs 3.0.</li>
 </ul>
 <p>Companion policies keep the format of the <code>Mesh</code>: Universal input gives Universal
@@ -128,7 +131,7 @@ documents (<code>type</code>/<code>name</code>/<code>mesh</code>), Kubernetes in
 <h2 id="timeline">Timeline</h2>
 <div class="table-wrap"><table>
   <thead><tr><th>Version</th><th>Change</th></tr></thead>
-  <tbody><tr><td class="version">2.10</td><td>Names that are not RFC 1035 labels deprecated.</td></tr><tr><td class="version">2.12</td><td><code>MeshIdentity</code> + <code>MeshTrust</code> introduced as the successor to <code>spec.mtls</code>.</td></tr><tr><td class="version">3.0</td><td><code>mtls</code>, <code>tracing</code>, <code>logging</code>, <code>routing.zoneEgress</code>, <code>routing.localityAwareLoadBalancing</code>, <code>routing.defaultForbidMeshExternalServiceAccess</code>, <code>networking.outbound.passthrough</code> and <code>skipCreatingInitialPolicies</code> removed. <code>meshServices</code> has no effect but must be <code>Exclusive</code>. Non-RFC 1035 names rejected.</td></tr></tbody>
+  <tbody><tr><td class="version">2.10</td><td>Names that are not RFC 1035 labels deprecated.</td></tr><tr><td class="version">2.12</td><td><code>MeshIdentity</code> + <code>MeshTrust</code> introduced as the successor to <code>spec.mtls</code>.</td></tr><tr><td class="version">3.0</td><td><code>mtls</code>, <code>tracing</code>, <code>logging</code>, <code>routing.zoneEgress</code>, <code>routing.localityAwareLoadBalancing</code>, <code>routing.defaultForbidMeshExternalServiceAccess</code>, <code>networking.outbound.passthrough</code>, <code>constraints</code> and <code>skipCreatingInitialPolicies</code> removed. <code>meshServices</code> has no effect but must be <code>Exclusive</code>. Non-RFC 1035 names rejected.</td></tr></tbody>
 </table></div>
 
 <h2 id="related-topics">Related topics</h2>

@@ -1358,8 +1358,9 @@
       `conf.cert`/`conf.key` DataSources, and Kong Mesh `vault`/`acmpca`/`cert-manager` name
       their `Extension` provider), a `PERMISSIVE` mTLS backend,
       `routing.defaultForbidMeshExternalServiceAccess`, `routing.zoneEgress`,
-      `routing.localityAwareLoadBalancing`, `skipCreatingInitialPolicies`. Names that are not
-      RFC 1035 labels are reported.
+      `routing.localityAwareLoadBalancing`, `skipCreatingInitialPolicies`, `constraints` (the
+      data plane proxy membership rules, not enforced on 3.0). Names that are not RFC 1035
+      labels are reported.
   v3:
     status: rewritten
     output: [Mesh, MeshMetric, MeshTLS, MeshPassthrough]
@@ -1375,8 +1376,10 @@
         `passthroughMode: All`. When the field is unset, a warning explains that 3.0 defaults
         to `None`.
       - `routing.zoneEgress`, `routing.localityAwareLoadBalancing`,
-        `routing.defaultForbidMeshExternalServiceAccess` and `skipCreatingInitialPolicies` are
-        deleted.
+        `routing.defaultForbidMeshExternalServiceAccess`, `skipCreatingInitialPolicies` and
+        `constraints` are deleted. For `constraints` the warning lists the requirements and
+        restrictions that stop being enforced (3.0 has no membership check) and the nearest
+        control: dataplane tokens bound to the mesh and tags.
       - The `meshServices` warning adds: drop the field once every zone runs 3.0.
 
       Companion policies keep the format of the `Mesh`: Universal input gives Universal
@@ -1388,7 +1391,7 @@
     - version: "2.12"
       change: "`MeshIdentity` + `MeshTrust` introduced as the successor to `spec.mtls`."
     - version: "3.0"
-      change: "`mtls`, `tracing`, `logging`, `routing.zoneEgress`, `routing.localityAwareLoadBalancing`, `routing.defaultForbidMeshExternalServiceAccess`, `networking.outbound.passthrough` and `skipCreatingInitialPolicies` removed. `meshServices` has no effect but must be `Exclusive`. Non-RFC 1035 names rejected."
+      change: "`mtls`, `tracing`, `logging`, `routing.zoneEgress`, `routing.localityAwareLoadBalancing`, `routing.defaultForbidMeshExternalServiceAccess`, `networking.outbound.passthrough`, `constraints` and `skipCreatingInitialPolicies` removed. `meshServices` has no effect but must be `Exclusive`. Non-RFC 1035 names rejected."
   topics: [meshes, mtls-identity, observability, meshservice]
   code: [pkg/migrator/mesh.go, pkg/migrator/v3_mesh.go, pkg/migrator/deprecation.go]
 
