@@ -1,0 +1,9 @@
+type: TrafficLog
+name: log-backend
+mesh: default
+sources:
+- match:
+    kuma.io/service: frontend
+destinations:
+- match:
+    kuma.io/service: backend

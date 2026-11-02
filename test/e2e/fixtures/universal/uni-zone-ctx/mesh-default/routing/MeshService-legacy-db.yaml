@@ -1,0 +1,13 @@
+type: MeshService
+name: legacy-db
+mesh: default
+labels:
+  kuma.io/origin: zone
+spec:
+  selector:
+    dataplaneTags:
+      kuma.io/service: legacy-db
+  ports:
+  - port: 5432
+    targetPort: 5432
+    appProtocol: tcp

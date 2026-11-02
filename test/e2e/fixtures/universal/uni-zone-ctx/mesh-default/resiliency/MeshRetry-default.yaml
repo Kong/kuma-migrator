@@ -1,0 +1,19 @@
+type: MeshRetry
+name: retry-default
+mesh: default
+labels:
+  kuma.io/origin: zone
+spec:
+  targetRef:
+    kind: Mesh
+  to:
+  - targetRef:
+      kind: Mesh
+    default:
+      tcp:
+        maxConnectAttempt: 5
+      http:
+        numRetries: 3
+        retryOn:
+        - 5xx
+        - Reset

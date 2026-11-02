@@ -1,0 +1,21 @@
+type: MeshRateLimit
+name: backend-rate-limit
+mesh: default
+labels:
+  kuma.io/origin: zone
+spec:
+  targetRef:
+    kind: Dataplane
+    labels:
+      app: backend
+  from:
+  - targetRef:
+      kind: Mesh
+    default:
+      local:
+        http:
+          requestRate:
+            num: 100
+            interval: 10s
+          onRateLimit:
+            status: 429

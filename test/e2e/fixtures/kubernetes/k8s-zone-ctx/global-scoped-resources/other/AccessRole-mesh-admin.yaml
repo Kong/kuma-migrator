@@ -1,0 +1,27 @@
+apiVersion: kuma.io/v1alpha1
+kind: AccessRole
+metadata:
+  name: mesh-operator
+spec:
+  rules:
+  - types:
+    - TrafficPermission
+    - TrafficRoute
+    - MeshGateway
+    - MeshGatewayRoute
+    - OPAPolicy
+    mesh: default
+    access:
+    - CREATE
+    - UPDATE
+    - DELETE
+  - types:
+    - MeshTrafficPermission
+    - MeshTimeout
+    names:
+    - allow-all
+    mesh: default
+    access:
+    - CREATE
+    - UPDATE
+    - DELETE

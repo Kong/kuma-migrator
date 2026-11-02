@@ -1,0 +1,12 @@
+apiVersion: kuma.io/v1alpha1
+kind: TrafficLog
+mesh: default
+metadata:
+  name: log-backend
+spec:
+  sources:
+  - match:
+      kuma.io/service: frontend_kuma-demo_svc_8080
+  destinations:
+  - match:
+      kuma.io/service: backend_kuma-demo_svc_3001

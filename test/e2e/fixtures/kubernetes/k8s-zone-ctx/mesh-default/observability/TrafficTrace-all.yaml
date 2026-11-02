@@ -1,0 +1,11 @@
+apiVersion: kuma.io/v1alpha1
+kind: TrafficTrace
+mesh: default
+metadata:
+  name: trace-all
+spec:
+  selectors:
+  - match:
+      kuma.io/service: '*'
+  conf:
+    backend: zipkin

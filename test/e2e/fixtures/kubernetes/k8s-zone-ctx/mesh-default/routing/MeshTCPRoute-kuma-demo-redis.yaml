@@ -1,0 +1,23 @@
+apiVersion: kuma.io/v1alpha1
+kind: MeshTCPRoute
+metadata:
+  name: redis-route
+  namespace: kuma-demo
+  labels:
+    kuma.io/mesh: default
+    kuma.io/origin: zone
+spec:
+  targetRef:
+    kind: Mesh
+  to:
+  - targetRef:
+      kind: MeshService
+      name: redis
+      namespace: kuma-demo
+    rules:
+    - default:
+        backendRefs:
+        - kind: MeshService
+          name: redis
+          namespace: kuma-demo
+          port: 6379

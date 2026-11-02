@@ -1,0 +1,12 @@
+apiVersion: kuma.io/v1alpha1
+kind: TrafficPermission
+mesh: payments
+metadata:
+  name: payments-all
+spec:
+  sources:
+  - match:
+      kuma.io/service: '*'
+  destinations:
+  - match:
+      kuma.io/service: '*'

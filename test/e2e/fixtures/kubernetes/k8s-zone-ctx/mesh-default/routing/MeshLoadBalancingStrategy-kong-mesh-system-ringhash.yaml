@@ -1,0 +1,30 @@
+apiVersion: kuma.io/v1alpha1
+kind: MeshLoadBalancingStrategy
+metadata:
+  name: ring-hash
+  namespace: kong-mesh-system
+  labels:
+    kuma.io/mesh: default
+    kuma.io/origin: zone
+spec:
+  targetRef:
+    kind: Mesh
+  to:
+  - targetRef:
+      kind: MeshService
+      name: backend
+      namespace: kuma-demo
+    default:
+      loadBalancer:
+        type: RingHash
+        ringHash:
+          hashFunction: MurmurHash2
+          minRingSize: 64
+          maxRingSize: 1024
+          hashPolicies:
+          - type: Header
+            header:
+              name: x-session
+          - type: SourceIP
+            connection:
+              sourceIP: true

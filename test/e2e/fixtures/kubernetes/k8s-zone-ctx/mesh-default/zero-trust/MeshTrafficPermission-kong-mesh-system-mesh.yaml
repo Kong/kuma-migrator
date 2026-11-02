@@ -1,0 +1,16 @@
+apiVersion: kuma.io/v1alpha1
+kind: MeshTrafficPermission
+metadata:
+  name: allow-all
+  namespace: kong-mesh-system
+  labels:
+    kuma.io/mesh: default
+    kuma.io/origin: zone
+spec:
+  targetRef:
+    kind: Mesh
+  from:
+  - targetRef:
+      kind: Mesh
+    default:
+      action: Allow

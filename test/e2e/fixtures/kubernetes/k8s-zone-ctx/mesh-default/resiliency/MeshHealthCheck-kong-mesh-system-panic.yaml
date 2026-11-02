@@ -1,0 +1,24 @@
+apiVersion: kuma.io/v1alpha1
+kind: MeshHealthCheck
+metadata:
+  name: hc-panic
+  namespace: kong-mesh-system
+  labels:
+    kuma.io/mesh: default
+    kuma.io/origin: zone
+spec:
+  targetRef:
+    kind: Mesh
+  to:
+  - targetRef:
+      kind: MeshService
+      name: backend
+      namespace: kuma-demo
+    default:
+      interval: 10s
+      timeout: 2s
+      unhealthyThreshold: 3
+      healthyThreshold: 1
+      healthyPanicThreshold: 60
+      http:
+        path: /health

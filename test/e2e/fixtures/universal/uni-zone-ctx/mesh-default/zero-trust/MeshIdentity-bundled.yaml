@@ -1,0 +1,22 @@
+type: MeshIdentity
+name: identity
+mesh: default
+labels:
+  kuma.io/origin: zone
+spec:
+  selector:
+    dataplane:
+      matchLabels:
+        app: backend
+  spiffeID:
+    trustDomain: '{{ .Mesh }}.{{ .Zone }}.mesh.local'
+    path: /ns/{{ .Namespace }}/sa/{{ .ServiceAccount }}
+  provider:
+    type: Bundled
+    bundled:
+      meshTrustCreation: Enabled
+      insecureAllowSelfSigned: true
+      certificateParameters:
+        expiry: 24h
+      autogenerate:
+        enabled: true

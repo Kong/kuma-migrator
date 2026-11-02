@@ -1,0 +1,22 @@
+apiVersion: kuma.io/v1alpha1
+kind: MeshFaultInjection
+metadata:
+  name: backend-faults
+  namespace: kuma-demo
+  labels:
+    kuma.io/mesh: default
+    kuma.io/origin: zone
+spec:
+  targetRef:
+    kind: Dataplane
+    labels:
+      app: backend
+  from:
+  - targetRef:
+      kind: MeshService
+      name: frontend_kuma-demo_svc_8080
+    default:
+      http:
+      - abort:
+          httpStatus: 500
+          percentage: 10

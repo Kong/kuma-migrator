@@ -1,0 +1,11 @@
+type: TrafficLog
+name: log-all
+mesh: default
+sources:
+- match:
+    kuma.io/service: '*'
+destinations:
+- match:
+    kuma.io/service: '*'
+conf:
+  backend: logstash

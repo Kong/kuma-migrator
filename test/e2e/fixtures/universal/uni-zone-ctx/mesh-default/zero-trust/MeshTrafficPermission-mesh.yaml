@@ -1,0 +1,13 @@
+type: MeshTrafficPermission
+name: allow-all
+mesh: default
+labels:
+  kuma.io/origin: zone
+spec:
+  targetRef:
+    kind: Mesh
+  from:
+  - targetRef:
+      kind: Mesh
+    default:
+      action: Allow

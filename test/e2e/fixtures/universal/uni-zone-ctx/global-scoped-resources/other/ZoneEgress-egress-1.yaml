@@ -1,0 +1,5 @@
+type: ZoneEgress
+name: zone-egress-1
+networking:
+  address: 10.0.0.41
+  port: 10002

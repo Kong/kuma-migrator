@@ -1,0 +1,25 @@
+apiVersion: kuma.io/v1alpha1
+kind: MeshIdentity
+metadata:
+  name: identity
+  namespace: kong-mesh-system
+  labels:
+    kuma.io/mesh: default
+    kuma.io/origin: zone
+spec:
+  selector:
+    dataplane:
+      matchLabels:
+        app: backend
+  spiffeID:
+    trustDomain: '{{ .Mesh }}.{{ .Zone }}.mesh.local'
+    path: '/ns/{{ .Namespace }}/sa/{{ .ServiceAccount }}'
+  provider:
+    type: Bundled
+    bundled:
+      meshTrustCreation: Enabled
+      insecureAllowSelfSigned: true
+      certificateParameters:
+        expiry: 24h
+      autogenerate:
+        enabled: true

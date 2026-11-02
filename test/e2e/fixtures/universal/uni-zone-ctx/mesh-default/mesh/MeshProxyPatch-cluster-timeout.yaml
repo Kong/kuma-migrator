@@ -1,0 +1,19 @@
+type: MeshProxyPatch
+name: cluster-timeout
+mesh: default
+labels:
+  kuma.io/origin: zone
+spec:
+  targetRef:
+    kind: MeshSubset
+    tags:
+      kuma.io/service: backend
+  default:
+    appendModifications:
+    - cluster:
+        operation: Patch
+        match:
+          origin: outbound
+        value: 'connectTimeout: 5s
+
+          '

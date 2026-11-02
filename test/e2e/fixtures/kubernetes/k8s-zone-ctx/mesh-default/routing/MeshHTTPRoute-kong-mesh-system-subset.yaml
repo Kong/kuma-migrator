@@ -1,0 +1,30 @@
+apiVersion: kuma.io/v1alpha1
+kind: MeshHTTPRoute
+metadata:
+  name: frontend-routes
+  namespace: kong-mesh-system
+  labels:
+    kuma.io/mesh: default
+    kuma.io/origin: zone
+spec:
+  targetRef:
+    kind: MeshSubset
+    tags:
+      kuma.io/service: frontend_kuma-demo_svc_8080
+  to:
+  - targetRef:
+      kind: MeshService
+      name: backend
+      namespace: kuma-demo
+    rules:
+    - matches:
+      - path:
+          type: PathPrefix
+          value: /
+      default:
+        filters:
+        - type: RequestHeaderModifier
+          requestHeaderModifier:
+            set:
+            - name: x-route
+              value: frontend

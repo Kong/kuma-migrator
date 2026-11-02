@@ -1,0 +1,9 @@
+type: Dataplane
+name: edge-gateway-1
+mesh: default
+networking:
+  address: 10.0.0.20
+  gateway:
+    type: BUILTIN
+    tags:
+      kuma.io/service: edge-gateway

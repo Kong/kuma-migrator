@@ -1,0 +1,13 @@
+apiVersion: kuma.io/v1alpha1
+kind: MeshOpenTelemetryBackend
+metadata:
+  name: collector
+  namespace: kong-mesh-system
+  labels:
+    kuma.io/mesh: default
+    kuma.io/origin: zone
+spec:
+  endpoint:
+    address: otel-collector.observability
+    port: 4317
+  protocol: grpc

@@ -1,0 +1,20 @@
+type: MeshExternalService
+name: example-api
+mesh: default
+labels:
+  kuma.io/origin: zone
+spec:
+  match:
+    type: HostnameGenerator
+    port: 443
+    protocol: http
+  endpoints:
+  - address: api.example.com
+    port: 443
+  tls:
+    enabled: true
+    verification:
+      mode: Secured
+      serverName: api.example.com
+      caCert:
+        inline: TFMwdExTMUNSVWRKVGlCRFJWSlVTVVpKUTBGVVJTMHRMUzB0Q2c9PQ==

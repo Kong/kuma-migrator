@@ -1,0 +1,23 @@
+type: Mesh
+name: payments
+mtls:
+  enabledBackend: ca-provided
+  backends:
+  - name: ca-provided
+    type: provided
+    dpCert:
+      rotation:
+        expiration: 24h
+    conf:
+      cert:
+        secret: payments-ca-cert
+      key:
+        secret: payments-ca-key
+networking:
+  outbound:
+    passthrough: true
+constraints:
+  dataplaneProxy:
+    requirements:
+    - tags:
+        kuma.io/zone: '*'

@@ -1,0 +1,16 @@
+type: MeshTLS
+name: strict-tls
+mesh: default
+labels:
+  kuma.io/origin: zone
+spec:
+  targetRef:
+    kind: Mesh
+  from:
+  - targetRef:
+      kind: Mesh
+    default:
+      tlsVersion:
+        min: TLS13
+        max: TLS13
+      mode: Strict

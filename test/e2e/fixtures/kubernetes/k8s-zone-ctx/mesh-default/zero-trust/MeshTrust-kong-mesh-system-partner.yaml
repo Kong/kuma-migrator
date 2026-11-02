@@ -1,0 +1,33 @@
+apiVersion: kuma.io/v1alpha1
+kind: MeshTrust
+metadata:
+  name: partner-trust
+  namespace: kong-mesh-system
+  labels:
+    kuma.io/mesh: default
+    kuma.io/origin: zone
+spec:
+  trustDomain: partner.mesh.local
+  caBundles:
+  - type: Pem
+    pem:
+      value: |
+          -----BEGIN CERTIFICATE-----
+          MIIDGjCCAgKgAwIBAgIUM0duqY4Us4Q8aj6EmoVfJJw9QGEwDQYJKoZIhvcNAQEL
+          BQAwFjEUMBIGA1UEAwwLcGF5bWVudHMtY2EwHhcNMjYxMTAyMTM0MDA2WhcNMzYx
+          MDMwMTM0MDA2WjAWMRQwEgYDVQQDDAtwYXltZW50cy1jYTCCASIwDQYJKoZIhvcN
+          AQEBBQADggEPADCCAQoCggEBAIotEBQDIuxA5m4MqKpBRWsLwCf9niNPLjayozV4
+          bGtC5XIAnM7vkCHdFewxTXGGPrLyFIXtMHi9VTrmD5Z2tQ0JWZOInyVwNPDpq/q/
+          REUiY+50DQ06Chq2JpZDZluOIwC858ui7iN1gW0rUJ6lGDca9ZUUatzs4jDVuKT3
+          SR4uGJoG3NLjHhJR3hTz9KT3+NjQMCmLKRzDm4YcDQ3m/xRd+d/HhlgAuRDWZjDD
+          1rgbs7eCeaBtcotoPPP0nf9q1uUo4Dh2GgELHgUB2qCzRpMzWPCBZ+HmzopzHrcs
+          q4rebojRDBp6ItrlIuai1rwCyRKuSe1oNjc7CZb1vsNhemMCAwEAAaNgMF4wHQYD
+          VR0OBBYEFCiVOKgyqJSmoIaJKZc5vgEt61X9MA8GA1UdEwEB/wQFMAMBAf8wDgYD
+          VR0PAQH/BAQDAgEGMBwGA1UdEQQVMBOGEXNwaWZmZTovL3BheW1lbnRzMA0GCSqG
+          SIb3DQEBCwUAA4IBAQBqIUd4Wq98cMP0lPMSPl86Op0+Fqbf2dhaF2HzJb1pLeCb
+          PeTCYoeLZZu2r2XbE3kyuaT7y3ngjnX3zWlcyNndcHthPkLwhpWG5NUBVkjDDIXY
+          F+8/f1E5Hd5ZI/CUX7Hr2S4eW8KZB3P+VZYUqwmbEpO390EGQySsnCRsr90ZI/OE
+          IVfljYkZr5UrbYL6xLabr5vmv9hEi+wofn9MC1VoxIVYsEeFygrpdqGcAe2CSm/2
+          uC8yI0P8ujQ354+odZqhqnSGzx6gkfCgZTNNedx0M8+gmr3SOIZYjOzLA9Uux517
+          QL+FnIL+sTaSLouHXvwz0o7gOKXgF/kLn8SO42m3
+          -----END CERTIFICATE-----

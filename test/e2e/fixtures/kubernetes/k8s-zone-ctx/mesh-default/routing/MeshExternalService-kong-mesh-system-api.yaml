@@ -1,0 +1,23 @@
+apiVersion: kuma.io/v1alpha1
+kind: MeshExternalService
+metadata:
+  name: example-api
+  namespace: kong-mesh-system
+  labels:
+    kuma.io/mesh: default
+    kuma.io/origin: zone
+spec:
+  match:
+    type: HostnameGenerator
+    port: 443
+    protocol: http
+  endpoints:
+  - address: api.example.com
+    port: 443
+  tls:
+    enabled: true
+    verification:
+      mode: Secured
+      serverName: api.example.com
+      caCert:
+        inline: TFMwdExTMUNSVWRKVGlCRFJWSlVTVVpKUTBGVVJTMHRMUzB0Q2c9PQ==

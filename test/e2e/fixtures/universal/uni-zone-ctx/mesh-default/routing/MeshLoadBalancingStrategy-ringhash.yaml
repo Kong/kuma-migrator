@@ -1,0 +1,26 @@
+type: MeshLoadBalancingStrategy
+name: ring-hash
+mesh: default
+labels:
+  kuma.io/origin: zone
+spec:
+  targetRef:
+    kind: Mesh
+  to:
+  - targetRef:
+      kind: MeshService
+      name: backend
+    default:
+      loadBalancer:
+        type: RingHash
+        ringHash:
+          hashFunction: MurmurHash2
+          minRingSize: 64
+          maxRingSize: 1024
+          hashPolicies:
+          - type: Header
+            header:
+              name: x-session
+          - type: SourceIP
+            connection:
+              sourceIP: true

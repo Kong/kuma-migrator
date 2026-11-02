@@ -1,0 +1,24 @@
+type: AccessRole
+name: mesh-operator
+rules:
+- types:
+  - TrafficPermission
+  - TrafficRoute
+  - MeshGateway
+  - MeshGatewayRoute
+  - OPAPolicy
+  mesh: default
+  access:
+  - CREATE
+  - UPDATE
+  - DELETE
+- types:
+  - MeshTrafficPermission
+  - MeshTimeout
+  names:
+  - allow-all
+  mesh: default
+  access:
+  - CREATE
+  - UPDATE
+  - DELETE

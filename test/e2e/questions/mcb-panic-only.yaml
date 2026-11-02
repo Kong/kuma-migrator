@@ -1,0 +1,17 @@
+apiVersion: kuma.io/v1alpha1
+kind: MeshCircuitBreaker
+metadata:
+  name: panic-only
+  namespace: kong-mesh-system
+  labels:
+    kuma.io/mesh: default
+    kuma.io/origin: zone
+spec:
+  targetRef:
+    kind: Mesh
+  to:
+  - targetRef:
+      kind: Mesh
+    default:
+      outlierDetection:
+        healthyPanicThreshold: 50

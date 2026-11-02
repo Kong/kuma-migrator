@@ -1,0 +1,7 @@
+# On the 3.0 cluster the 2.x input is never applied, so the meshes the migrated
+# policies belong to must exist before the dry-run (the default mesh is created by the CP).
+apiVersion: kuma.io/v1alpha1
+kind: Mesh
+metadata:
+  name: payments
+spec: {}

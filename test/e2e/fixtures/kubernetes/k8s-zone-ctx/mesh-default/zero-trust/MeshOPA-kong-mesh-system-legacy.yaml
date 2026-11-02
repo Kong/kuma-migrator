@@ -1,0 +1,24 @@
+apiVersion: kuma.io/v1alpha1
+kind: MeshOPA
+metadata:
+  name: opa-frontend
+  namespace: kong-mesh-system
+  labels:
+    kuma.io/mesh: default
+    kuma.io/origin: zone
+spec:
+  targetRef:
+    kind: MeshService
+    name: frontend_kuma-demo_svc_8080
+  default:
+    agentConfig:
+      inlineString: |
+        decision_logs:
+          console: true
+    appendPolicies:
+    - rego:
+        inline: cGFja2FnZSBlbnZveS5hdXRoegpkZWZhdWx0IGFsbG93ID0gdHJ1ZQo=
+    - rego:
+        inlineString: |
+          package envoy.authz
+          default allow = true

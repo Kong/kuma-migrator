@@ -1,0 +1,11 @@
+apiVersion: kuma.io/v1alpha1
+kind: MeshGatewayConfig
+metadata:
+  name: edge-config
+spec:
+  replicas: 1
+  serviceType: LoadBalancer
+  resources:
+    limits:
+      cpu: "1"
+      memory: 512Mi

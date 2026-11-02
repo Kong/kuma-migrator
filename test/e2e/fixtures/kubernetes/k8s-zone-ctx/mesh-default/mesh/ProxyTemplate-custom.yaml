@@ -1,0 +1,27 @@
+apiVersion: kuma.io/v1alpha1
+kind: ProxyTemplate
+mesh: default
+metadata:
+  name: custom-template
+spec:
+  selectors:
+  - match:
+      kuma.io/service: backend_kuma-demo_svc_3001
+  conf:
+    imports:
+    - default-proxy
+    modifications:
+    - cluster:
+        operation: patch
+        match:
+          name: outbound:127.0.0.1:5432
+        value: |
+          connectTimeout: 5s
+    - httpFilter:
+        operation: addLast
+        match:
+          listenerName: inbound:10.0.0.1:8080
+        value: |
+          name: envoy.filters.http.cors
+          typedConfig:
+            '@type': type.googleapis.com/envoy.extensions.filters.http.cors.v3.Cors

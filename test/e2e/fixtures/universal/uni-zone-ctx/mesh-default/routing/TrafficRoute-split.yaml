@@ -1,0 +1,19 @@
+type: TrafficRoute
+name: backend-split
+mesh: default
+sources:
+- match:
+    kuma.io/service: frontend
+destinations:
+- match:
+    kuma.io/service: backend
+conf:
+  split:
+  - weight: 90
+    destination:
+      kuma.io/service: backend
+      version: v1
+  - weight: 10
+    destination:
+      kuma.io/service: backend
+      version: v2
