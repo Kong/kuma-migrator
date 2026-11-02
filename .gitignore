@@ -25,3 +25,4 @@ PROMPTS.md
 NEXT.md
 
 .claude/worktrees/
+.e2e-work/
