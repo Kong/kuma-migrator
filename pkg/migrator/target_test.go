@@ -648,8 +648,9 @@ spec:
 }
 
 // TestScanForDeprecations_DataplaneGatewayBuiltinType covers the removal of
-// the BUILTIN gateway type (kuma#18058) — reserved in the proto on 3.0, so a
-// Dataplane still using it is rejected at parse time.
+// the BUILTIN gateway type — reserved in the proto on 3.0, so the whole
+// networking.gateway message is ignored. The v3 rewrite (fixDataplaneGatewayForV3)
+// removes networking.gateway of any type; see v3_dataplane_test.go.
 func TestScanForDeprecations_DataplaneGatewayBuiltinType(t *testing.T) {
 	input := `type: Dataplane
 mesh: default
