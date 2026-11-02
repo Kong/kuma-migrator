@@ -42,13 +42,13 @@ to and including 2.14.
 
 | Input | `--to-latest v2` | `--to-latest v3` |
 |---|---|---|
-| `Mesh.metrics` | Mesh-wide `MeshMetric` `<mesh>-metrics` | Same |
-| `Mesh.tracing` | Mesh-wide `MeshTrace` `<mesh>-trace`; backend `sampling` → `default.sampling.overall` | Same |
-| `Mesh.logging` | Mesh-wide `MeshAccessLog` `<mesh>-accesslog` | Same |
-| `TrafficLog` | `MeshAccessLog` (outbound shape). `conf.backend` is resolved against `Mesh.logging.backends` and inlined | Same, plus the delete-before-upgrade advisory |
+| `Mesh.metrics` | The `enabledBackend` becomes a mesh-wide `MeshMetric` `<mesh>-metrics`; no `enabledBackend`, no `MeshMetric` | Same |
+| `Mesh.tracing` | Removed, no mesh-wide `MeshTrace`. Warning lists which backends a `TrafficTrace` references | Same |
+| `Mesh.logging` | Removed, no mesh-wide `MeshAccessLog`. Warning lists which backends a `TrafficLog` references | Same |
+| `TrafficLog` | `MeshAccessLog` (outbound shape). `conf.backend` (or the Mesh `defaultBackend`) is resolved against `Mesh.logging.backends` and inlined | Same, plus the delete-before-upgrade advisory |
 | `TrafficTrace` | `MeshTrace` (selector shape). Backend and its sampling resolved against `Mesh.tracing.backends` | Same |
 | `TrafficLog`/`TrafficTrace` whose `Mesh` is not in the input | Warning naming the backend to write by hand | Same |
-| Inline `openTelemetry.endpoint` | Warning, including the "not before 2.14" constraint | Generated `MeshOpenTelemetryBackend` `<policy>-otel` in `kuma-system`, `protocol: grpc`, and a `backendRef.labels` selecting it by `kuma.io/display-name` |
+| Inline `openTelemetry.endpoint` | Warning, including the "not before 2.14" constraint | Generated `MeshOpenTelemetryBackend` `<policy>-otel` in the system namespace ([how it is picked](meshes.md#system-namespace)), `protocol: grpc`, and a `backendRef.labels` selecting it by `kuma.io/display-name` |
 | `MeshMetric` `sidecar.regex` | Rewritten to `sidecar.profiles.exclude[{type: Regex}]` | Same |
 | `MeshAccessLog` OTel attribute keys that 2.14 rejects | Warning | Warning |
 | `MeshMetric` `ActiveMTLSBackend` | — | Warning |
@@ -60,28 +60,30 @@ Code: [`mesh.go`](https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/m
 [`v3_mesh.go`](https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/v3_mesh.go)
 (`convertInlineOtelEndpointsForV3`).
 
-Keep the `Mesh` document in the input directory. `TrafficLog` and `TrafficTrace` reference a
-backend by name, and the `Mesh` is where its definition lives.
+Keep the `Mesh` document and every `TrafficLog`/`TrafficTrace` in the input directory.
+`TrafficLog` and `TrafficTrace` reference a backend by name, and the `Mesh` is where its
+definition lives.
+
+On 2.x, `Mesh.logging` and `Mesh.tracing` backends only declare destinations: nothing is logged
+or traced until a `TrafficLog`/`TrafficTrace` selects traffic
+([traffic log docs](https://kuma.io/docs/latest/policies/traffic-log/),
+[traffic trace docs](https://kuma.io/docs/latest/policies/traffic-trace/)). The migrator therefore
+generates no mesh-wide `MeshAccessLog`/`MeshTrace` from the `Mesh`: the logging and tracing that
+was active is exactly what the converted `TrafficLog`/`TrafficTrace` policies carry. A backend no
+`TrafficLog`/`TrafficTrace` references was inactive, and the `Mesh` warning says so. See
+[Meshes](meshes.md#logging-and-tracing).
 
 ## What it cannot do
 
-- **Scope the `Mesh`-derived companions.** On 2.x, `Mesh.logging` and `Mesh.tracing` backends
-  only declare destinations: nothing is logged or traced until a `TrafficLog`/`TrafficTrace`
-  selects traffic ([traffic log docs](https://kuma.io/docs/latest/policies/traffic-log/),
-  [traffic trace docs](https://kuma.io/docs/latest/policies/traffic-trace/)). The generated
-  `<mesh>-accesslog` and `<mesh>-trace` policies target `kind: Mesh` and every declared backend,
-  so they turn on logging and tracing for the whole mesh. Combined with converted
-  `TrafficLog`/`TrafficTrace` policies, matching traffic is logged twice. Delete or narrow the
-  companions when the mesh already had `TrafficLog`/`TrafficTrace` policies.
 - **Share backends.** One `MeshOpenTelemetryBackend` is generated per policy. Several policies
   pointing at the same collector can share one; merge them by hand.
-- **Pick the system namespace.** The generated backend is placed in `kuma-system`. Kong Mesh
-  installs use `kong-mesh-system`; change it.
+- **Know the system namespace for certain.** It is inferred from the input, or set with
+  `systemNamespace` in the config file. See [Meshes](meshes.md#system-namespace).
 - **Issue scraper certificates** for `ActiveMTLSBackend`.
 
 ## Manual steps
 
-1. Apply the `v2` companions and converted policies on 2.x after reviewing their scope.
+1. Apply the `v2` companions and converted policies on 2.x.
 2. Delete `TrafficLog`/`TrafficTrace` once their `MeshAccessLog`/`MeshTrace` replacements apply.
 3. Upgrade every control plane and data plane to 2.14.
 4. Create `MeshOpenTelemetryBackend`s in the system namespace and switch policies to
@@ -165,8 +167,14 @@ spec:
       kind: Mesh
 ```
 
-The `Mesh.logging` block also produces `observability/MeshAccessLog-kong-mesh-system-default-accesslog.yaml`,
-a second mesh-wide `MeshAccessLog` with the same backend (see "What it cannot do").
+The `Mesh.logging` block produces no `MeshAccessLog` of its own. The `Mesh` warning confirms the
+backend is carried by the converted `TrafficLog`:
+
+```
+⚠  Mesh "default": spec.logging removed from the Mesh output. … No mesh-wide MeshAccessLog was
+   generated, because that would enable logging for every proxy in the mesh. Referenced backends,
+   carried inline into the MeshAccessLog generated from each TrafficLog: file-log (1 TrafficLog).
+```
 
 With `--to-latest v2` the `MeshTrace` is copied unchanged, with this warning (shortened):
 
@@ -203,14 +211,15 @@ spec:
 ```
 
 ```yaml
-# other/MeshOpenTelemetryBackend-kuma-system-otel-trace-otel.yaml
+# other/MeshOpenTelemetryBackend-kong-mesh-system-otel-trace-otel.yaml
+# (kong-mesh-system: the input MeshTrace lives there)
 apiVersion: kuma.io/v1alpha1
 kind: MeshOpenTelemetryBackend
 metadata:
   labels:
     kuma.io/mesh: default
   name: otel-trace-otel
-  namespace: kuma-system
+  namespace: kong-mesh-system
 spec:
   endpoint:
     address: otel-collector.observability

@@ -46,7 +46,10 @@ The tool detects the backend type on every `Mesh` and names the matching extensi
 
 | Input | `--to-latest v2` | `--to-latest v3` |
 |---|---|---|
-| `Mesh` with a `vault`, `acmpca`/`acm` or `certmanager`/`cert-manager` backend | `mtls` kept. Advisory names `spec.provider.type: Extension` and the `extension.name` to use | `mtls` removed, **blocking** warning with the same mapping |
+| `Mesh` with a `vault`, `acmpca`/`acm` or `certmanager`/`cert-manager` backend | `mtls` kept. Advisory names `spec.provider.type: Extension` and the `extension.name` to use, and says the CA stays in the external system | `mtls` removed, **blocking** warning with the same mapping |
+
+The warning is built per backend type: the `builtin`-only advice (a `Bundled` identity mints a new
+CA, delete the `ca-builtin-*` Secrets) appears only when the `Mesh` has a `builtin` backend.
 
 The mapping is `caBackendExtensionMap` in
 [`deprecation.go`](https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/deprecation.go).
