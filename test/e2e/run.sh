@@ -86,9 +86,21 @@ install_kong_mesh() { # cluster version
     "https://github.com/kubernetes-sigs/gateway-api/releases/download/$GATEWAY_API_VERSION/experimental-install.yaml" >/dev/null
   # Kong Mesh 2.14 and 3.0 charts both default to controlPlane.mode=zone; a zone with no
   # Global is the single-zone deployment (3.0 removed `standalone`).
+  # Name the groups kind's admin kubeconfig carries: kubeadm >= 1.29 issues
+  # kubeadm:cluster-admins, older ones system:masters. 3.0's default already lists both.
   helm upgrade --install kong-mesh kong-mesh/kong-mesh --version "$2" \
-    --kube-context "$ctx" -n kong-mesh-system --create-namespace --wait --timeout 8m >/dev/null
+    --kube-context "$ctx" -n kong-mesh-system --create-namespace --wait --timeout 8m \
+    --set 'kuma.controlPlane.defaults.adminRoleGroups={mesh-system:authenticated,system:masters,kubeadm:cluster-admins,system:authenticated}' >/dev/null
   kubectl --context "$ctx" -n kong-mesh-system rollout status deploy/kong-mesh-control-plane --timeout 5m >/dev/null
+  # The CP creates the default AccessRoleBinding after it starts. Until then the
+  # RBAC webhook denies every write ("access denied: user … cannot access the
+  # resource"), which is what a slow CI runner hits right after rollout.
+  local i
+  for i in $(seq 1 60); do
+    kubectl --context "$ctx" get accessrolebinding default >/dev/null 2>&1 && break
+    sleep 2
+  done
+  kubectl --context "$ctx" get accessrolebinding default >/dev/null
 }
 
 start_universal_cp() { # name version port
