@@ -162,13 +162,17 @@ func TestV3Checklist_MeshExclusiveBeforeGlobalUpgrade_kubectl(t *testing.T) {
 	cl := section(t, md, "## Apply Checklist")
 
 	patch := `kubectl patch mesh default --type merge -p '{"spec":{"meshServices":{"mode":"Exclusive"}}}'`
+	// Exclusive comes first: on 2.14 a MeshIdentity in a mesh that is not
+	// Exclusive stays MeshServicesDisabled and never becomes ready.
 	mustOrder(t, cl,
-		"Finish the `MeshIdentity` cutover",
 		"Set `meshServices.mode: Exclusive` on every mesh",
+		"`MeshServicesDisabled` and never becomes ready",
 		patch,
+		"Finish the `MeshIdentity` cutover",
 		"Upgrade the Global Control Plane",
 		"Apply the `Mesh` CRs",
-		"kubectl apply -f "+filepath.Join(out, "p-global-ctx/mesh-default/mesh")+"/",
+		// The v3 Mesh drops spec.mtls from an object the input holds: replace.
+		"kubectl replace -f "+filepath.Join(out, "p-global-ctx/mesh-default/mesh/Mesh-default.yaml")+" --save-config",
 	)
 	if strings.Contains(cl, "Apply `Mesh` CRs last") {
 		t.Errorf("v3 must not use the v2 Mesh-last step:\n%s", cl)
@@ -294,7 +298,7 @@ func TestChecklist_KumactlOnKubernetesUsesKubectl(t *testing.T) {
 	})
 	_, md := renderApply(t, in, out, TargetV2)
 	cl := section(t, md, "## Apply Checklist")
-	if strings.Contains(cl, "kumactl apply") || strings.Contains(cl, "kumactl config use-context") {
+	if strings.Contains(cl, "kumactl apply") || strings.Contains(cl, "kumactl config control-planes switch") {
 		t.Errorf("kumactl cannot write to a Kubernetes-backed CP:\n%s", cl)
 	}
 	mustOrder(t, cl,
@@ -326,7 +330,10 @@ func TestChecklist_KonnectKeepsKumactl(t *testing.T) {
 	})
 	_, md := renderApply(t, in, out, TargetV2)
 	cl := section(t, md, "## Apply Checklist")
-	mustOrder(t, cl, "Konnect-hosted CP", "kumactl config use-context konnect", "kumactl apply -f ")
+	mustOrder(t, cl, "Konnect-hosted CP", "kumactl config control-planes switch --name konnect", "kumactl apply -f ")
+	if strings.Contains(cl, "use-context") {
+		t.Errorf("kumactl 2.14/3.0 have no `config use-context`:\n%s", cl)
+	}
 }
 
 // ---- non-policy documents the scan rewrites ---------------------------------

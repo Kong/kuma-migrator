@@ -196,16 +196,23 @@ func writeMarkdown(b *strings.Builder, r *MigrationReport) {
 	}
 
 	// ── Kept under _manual/ ───────────────────────────────────────────────────
-	if len(manualFiles) > 0 {
+	// Every file written under ManualDir, whatever put it there, with the
+	// reason. Errored and rejected documents are also detailed under Action
+	// Items → Errors; this is the one place that lists the whole subtree.
+	if entries := collectManualEntries(r); len(entries) > 0 {
 		linef(b, "## Kept Under `%s/`", ManualDir)
 		line(b, "")
-		linef(b, "%s removes the kinds in these files and there is no conversion. They are copied under", targetLine(r.Target))
-		linef(b, "`%s/` for reference and no apply step uses them. See **Delete Before Upgrading to 3.0**.", ManualDir)
+		line(b, "No apply step uses these files. Each needs a decision before the upgrade: see the reason")
+		if r.Target.IsV3() {
+			line(b, "below, **Action Items → Errors**, and **Delete Before Upgrading to 3.0**.")
+		} else {
+			line(b, "below and **Action Items → Errors**.")
+		}
 		line(b, "")
-		for _, fr := range manualFiles {
-			for _, p := range fr.ManualRelPaths {
-				linef(b, "- `%s` → `%s`", fr.FileName, p)
-			}
+		line(b, "| Source file | Kind | Name | Kept at | Reason |")
+		line(b, "|---|---|---|---|---|")
+		for _, e := range entries {
+			linef(b, "| `%s` | `%s` | `%s` | `%s` | %s |", e.File, e.Kind, e.Name, e.Path, mdCell(e.Reason))
 		}
 		line(b, "")
 		for _, fr := range manualFiles {
@@ -305,6 +312,51 @@ func writeMarkdown(b *strings.Builder, r *MigrationReport) {
 	if r.Target.IsV3() {
 		writeV3DeleteBeforeUpgrade(b, r, isPlan)
 	}
+}
+
+// manualEntry is one file written under ManualDir.
+type manualEntry struct {
+	File, Kind, Name, Path, Reason string
+}
+
+// collectManualEntries lists every file under ManualDir with why it is there.
+func collectManualEntries(r *MigrationReport) []manualEntry {
+	var out []manualEntry
+	for _, fr := range r.Files {
+		file := fr.InputRelPath
+		if file == "" {
+			file = fr.FileName
+		}
+		for _, dc := range fr.Changes {
+			paths := dc.ManualRelPaths
+			if len(paths) == 0 && dc.ManualRelPath != "" {
+				paths = []string{dc.ManualRelPath}
+			}
+			for _, p := range paths {
+				out = append(out, manualEntry{File: file, Kind: dc.InputKind, Name: dc.InputName, Path: p, Reason: manualReason(dc, r.Target)})
+			}
+		}
+	}
+	return out
+}
+
+// manualReason says why a document went to ManualDir.
+func manualReason(dc DocChange, target TargetVersion) string {
+	switch {
+	case dc.Rejected:
+		// RejectedByTargetError.Error() already reads "rejected by the <target>
+		// control plane as converted (...): <kind> "<name>": <reasons>".
+		return dc.ErrMsg
+	case dc.ErrMsg != "":
+		return "not converted, original kept: " + dc.ErrMsg
+	default:
+		return "kind removed in " + targetLine(target) + ", no conversion"
+	}
+}
+
+// mdCell makes s safe for one Markdown table cell.
+func mdCell(s string) string {
+	return strings.NewReplacer("|", "\\|", "\n", " ").Replace(s)
 }
 
 // writeSubfolderTables writes one compact table per subfolder key, followed by
@@ -455,8 +507,8 @@ func writeFileNotes(b *strings.Builder, fr FileReport) {
 // requiresKubeDelete returns true for scenarios where the migrated resource has
 // a different kind than the original — meaning the old K8s resource must be
 // explicitly deleted (kubectl delete) after applying the new one.
-// Subset/Rules/Passthrough update the same kind in-place via kubectl apply and
-// are excluded.
+// Subset/Rules/Passthrough rewrite the same object in place (kubectl replace,
+// see FileReport.ReplaceRelPaths) and are excluded.
 func requiresKubeDelete(s Scenario) bool {
 	switch s {
 	case ScenarioLegacy,
@@ -471,7 +523,7 @@ func requiresKubeDelete(s Scenario) bool {
 // writeDeletableOriginals lists original K8s resources that must be deleted
 // after the migrated replacements are applied. Only resources whose kind changes
 // during migration are listed (kind-preserving scenarios like Subset and Rules
-// are updated in-place via kubectl apply and do not need an explicit delete).
+// are rewritten in place and do not need an explicit delete).
 func writeDeletableOriginals(b *strings.Builder, r *MigrationReport, isPlan bool) {
 	type deletableEntry struct {
 		Kind      string
@@ -707,6 +759,8 @@ func writeApplyChecklist(b *strings.Builder, r *MigrationReport, isPlan bool) {
 
 	if r.ErrorCount > 0 {
 		linef(b, "**%d. Fix errors** — %d file(s) in **Action Items → Errors** above could not be automatically migrated.", n, r.ErrorCount)
+		linef(b, "   Their originals, or the converted output the target rejects, are under `<context>/%s/`", ManualDir)
+		linef(b, "   (see **Kept Under `%s/`**). No step of this checklist applies that directory.", ManualDir)
 		line(b, "")
 		n++
 	}
@@ -727,12 +781,33 @@ func writeApplyChecklist(b *strings.Builder, r *MigrationReport, isPlan bool) {
 	toolFor := newContextToolResolver(r)
 	meshes := collectMeshes(r)
 
+	// v3: meshServices.mode must be Exclusive before the Global CP is upgraded
+	// (UPGRADE.md "meshServices removed from the Mesh schema"): a 2.x zone reads
+	// a missing field as Disabled and a 3.0 zone rejects any other mode. It also
+	// comes before the MeshIdentity cutover: on 2.14 a MeshIdentity in a mesh
+	// that is not Exclusive stays DependenciesReady=False (MeshServicesDisabled)
+	// and never becomes ready (observed on Kong Mesh 2.14.7).
+	if v3 {
+		linef(b, "**%d. Set `meshServices.mode: Exclusive` on every mesh, on the 2.x Global control plane, before upgrading it.**", n)
+		line(b, "   3.0 makes unified naming unconditional and its zones reject a mesh with any other mode; a 2.x")
+		line(b, "   zone reads a missing field as `Disabled` and deletes every generated `MeshService`. `Exclusive`")
+		line(b, "   stops legacy `kuma.io/service` routing, so workloads must already use the new addresses.")
+		line(b, "   This comes before the `MeshIdentity` cutover: on 2.14 a `MeshIdentity` in a mesh that is not")
+		line(b, "   `Exclusive` reports `MeshServicesDisabled` and never becomes ready.")
+		line(b, "   These commands change only `meshServices` and keep `spec.mtls`; do not apply the v3 `Mesh` files here.")
+		line(b, "")
+		writeMeshExclusiveCommands(b, meshes, toolFor)
+		n++
+	}
+
 	// v3: the MeshIdentity cutover must be finished on 2.x. 3.0 stops producing
 	// mTLS from Mesh.mtls and drops the legacy CA from the trust bundle, with no
 	// rolling path back (UPGRADE.md "Mesh.mtls no longer produces mTLS").
 	if v3 {
 		if names := meshesWithMTLS(meshes); len(names) > 0 {
 			linef(b, "**%d. Finish the `MeshIdentity` cutover on the 2.x control plane** for every mesh that still uses `spec.mtls`: %s.", n, strings.Join(names, ", "))
+			line(b, "   The mesh must already run `meshServices.mode: Exclusive` (previous step); until then a")
+			line(b, "   `MeshIdentity` stays `DependenciesReady=False` with reason `MeshServicesDisabled`.")
 			line(b, "   Create a `MeshIdentity` and `MeshTrust` that select every proxy of the mesh and confirm")
 			line(b, "   traffic is mTLS'd by them (see the `Mesh` warnings above). 3.0 ignores `spec.mtls`, so a")
 			line(b, "   mesh without a `MeshIdentity` serves plaintext after the upgrade.")
@@ -741,20 +816,6 @@ func writeApplyChecklist(b *strings.Builder, r *MigrationReport, isPlan bool) {
 			line(b, "")
 			n++
 		}
-	}
-
-	// v3: meshServices.mode must be Exclusive before the Global CP is upgraded
-	// (UPGRADE.md "meshServices removed from the Mesh schema"): a 2.x zone reads
-	// a missing field as Disabled and a 3.0 zone rejects any other mode.
-	if v3 {
-		linef(b, "**%d. Set `meshServices.mode: Exclusive` on every mesh, on the 2.x Global control plane, before upgrading it.**", n)
-		line(b, "   3.0 makes unified naming unconditional and its zones reject a mesh with any other mode; a 2.x")
-		line(b, "   zone reads a missing field as `Disabled` and deletes every generated `MeshService`. `Exclusive`")
-		line(b, "   stops legacy `kuma.io/service` routing, so workloads must already use the new addresses.")
-		line(b, "   These commands change only `meshServices` and keep `spec.mtls`; do not apply the v3 `Mesh` files here.")
-		line(b, "")
-		writeMeshExclusiveCommands(b, meshes, toolFor)
-		n++
 	}
 
 	if v3 && len(collectV3Deletions(r)) > 0 {
@@ -815,6 +876,7 @@ func writeApplyChecklist(b *strings.Builder, r *MigrationReport, isPlan bool) {
 			linef(b, "**%d. Apply policies** (resiliency, routing, zero-trust, observability) in the order below:", n)
 		}
 		line(b, "")
+		writeReplaceNote(b, nonMeshDirs)
 		n++
 		var prevCPDir string
 		for _, d := range nonMeshDirs {
@@ -839,6 +901,7 @@ func writeApplyChecklist(b *strings.Builder, r *MigrationReport, isPlan bool) {
 			line(b, "   > routing. **Do not apply until all policies and workload env vars are migrated.**")
 		}
 		line(b, "")
+		writeReplaceNote(b, meshDirs)
 		n++
 		var prevCPDir string
 		for _, d := range meshDirs {
@@ -1049,7 +1112,9 @@ func hasSubfolder(dirs []applyDirInfo, sub string) bool {
 }
 
 // writeContextHeader writes the context label line before a group of apply commands.
-// For kumactl contexts it adds a use-context reminder; for kubectl contexts it's plain.
+// For kumactl contexts it adds the command that selects the context
+// (`kumactl config control-planes switch --name`; kumactl 2.14 and 3.0 have no
+// `config use-context`); for kubectl contexts it's plain.
 func writeContextHeader(b *strings.Builder, d applyDirInfo) {
 	switch {
 	case d.KumactlOnKubernetes:
@@ -1074,7 +1139,7 @@ func writeContextHeader(b *strings.Builder, d applyDirInfo) {
 		if ctxName == "" {
 			ctxName = d.CPModeDir // fallback
 		}
-		linef(b, "   > Set the active context first: `kumactl config use-context %s`", ctxName)
+		linef(b, "   > Set the active context first: `kumactl config control-planes switch --name %s`", ctxName)
 	default:
 		linef(b, "   **Context `%s`**:", d.CPModeDir)
 	}
@@ -1082,21 +1147,62 @@ func writeContextHeader(b *strings.Builder, d applyDirInfo) {
 }
 
 // writeApplyDirCommands writes the apply commands for a single output directory.
-// For kumactl contexts each file is listed individually since kumactl does not
-// accept a directory as the -f argument. For kubectl a single directory apply is used.
-// When the extraction tool is unknown (legacy/flat layout) kubectl is assumed.
+// For kumactl contexts each file is listed individually since kumactl before
+// 2.14 does not accept a directory as the -f argument; `kumactl apply` already replaces the
+// whole spec and label set of an existing resource (its upsert does Get,
+// SetSpec, Update), so it needs no replace form. For kubectl a single directory
+// apply is used, unless the directory holds documents that rewrite an existing
+// object (applyDirInfo.Replace): then those are listed with `kubectl replace`
+// and the rest with `kubectl apply`, one file per line, because a directory
+// apply would also apply the rewritten ones. When the extraction tool is
+// unknown (legacy/flat layout) kubectl is assumed.
 func writeApplyDirCommands(b *strings.Builder, d applyDirInfo, outputDir string) {
-	if d.Tool == "kumactl" {
-		line(b, "   ```bash")
+	line(b, "   ```bash")
+	switch {
+	case d.Tool == "kumactl":
 		for _, f := range d.Files {
 			linef(b, "   kumactl apply -f %s", filepath.Join(outputDir, f))
 		}
-		line(b, "   ```")
-	} else {
-		line(b, "   ```bash")
+	case len(d.Replace) == 0:
 		linef(b, "   kubectl apply -f %s/", d.FullDir)
-		line(b, "   ```")
+	default:
+		for _, f := range d.Files {
+			if d.Replace[f] {
+				linef(b, "   kubectl replace -f %s --save-config", filepath.Join(outputDir, f))
+			}
+		}
+		for _, f := range d.Files {
+			if !d.Replace[f] {
+				linef(b, "   kubectl apply -f %s", filepath.Join(outputDir, f))
+			}
+		}
 	}
+	line(b, "   ```")
+	line(b, "")
+}
+
+// writeReplaceNote explains `kubectl replace` once per apply step, when any of
+// its kubectl directories holds a document that rewrites an existing object.
+func writeReplaceNote(b *strings.Builder, dirs []applyDirInfo) {
+	found := false
+	for _, d := range dirs {
+		if d.Tool != "kumactl" && len(d.Replace) > 0 {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return
+	}
+	line(b, "   > `kubectl replace` is used for files that rewrite an object already on the control plane (same")
+	line(b, "   > kind, namespace and name as an input document). `kubectl apply` merges into the live object and,")
+	line(b, "   > when the object has no `kubectl.kubernetes.io/last-applied-configuration` annotation (made by")
+	line(b, "   > the control plane, Helm or `kubectl create`), keeps every field the new file drops: a converted")
+	line(b, "   > `from[]` policy then carries both `rules[]` and the old `to[]` and is rejected, a converted `Mesh`")
+	line(b, "   > keeps its embedded backends. `kubectl apply --server-side --force-conflicts` does not remove them")
+	line(b, "   > either: fields owned by another field manager stay. `--save-config` records the new content, so a")
+	line(b, "   > later `kubectl apply` of the same file merges correctly. `kubectl replace` fails with `NotFound` if")
+	line(b, "   > the object was deleted since `extract`; use `kubectl create -f <file>` for that file.")
 	line(b, "")
 }
 
@@ -1111,7 +1217,10 @@ type applyDirInfo struct {
 	Tool      string   // write tool: "kubectl" or "kumactl" (resolveContextTool)
 	IsKonnect bool     // true when the CP is Konnect-hosted (from extraction metadata)
 	Context   string   // original kumactl/kubectl context name (from extraction metadata)
-	Files     []string // output file paths relative to outputDir, in this dir (for kumactl)
+	Files     []string // output file paths relative to outputDir, in this dir
+	// Replace holds the Files that rewrite an object present in the input
+	// (FileReport.ReplaceRelPaths); kubectl contexts replace them.
+	Replace map[string]bool
 	// KumactlOnKubernetes: extracted with kumactl from a Kubernetes-backed CP;
 	// Tool is kubectl.
 	KumactlOnKubernetes bool
@@ -1143,6 +1252,10 @@ func collectApplyDirs(r *MigrationReport) []applyDirInfo {
 	var dirOrder []string
 
 	for _, fr := range r.Files {
+		replaced := map[string]bool{}
+		for _, p := range fr.ReplaceRelPaths {
+			replaced[p] = true
+		}
 		for _, relPath := range fr.OutputRelPaths {
 			relDir := filepath.ToSlash(filepath.Dir(relPath))
 			if relDir == "." {
@@ -1171,6 +1284,12 @@ func collectApplyDirs(r *MigrationReport) []applyDirInfo {
 				dirOrder = append(dirOrder, relDir)
 			}
 			dirMap[relDir].Files = append(dirMap[relDir].Files, relPath)
+			if replaced[relPath] {
+				if dirMap[relDir].Replace == nil {
+					dirMap[relDir].Replace = map[string]bool{}
+				}
+				dirMap[relDir].Replace[relPath] = true
+			}
 			if fr.UniversalOutput {
 				dirMap[relDir].UniversalFiles = true
 			}

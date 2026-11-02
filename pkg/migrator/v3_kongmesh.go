@@ -95,14 +95,17 @@ func v3DeleteBeforeUpgradeNote(kind, name string, converted bool) string {
 }
 
 // kumactlDeleteType is the `kumactl delete <type>` spelling for the removed kinds.
-// Legacy (proto) resources use kebab-case; the Mesh* resources use the lower-cased
-// kind. Anything missing falls back to the lower-cased kind.
+// Legacy (proto) resources mostly use kebab-case; HealthCheck, ProxyTemplate and
+// ZoneEgress do not (KumactlArg in kuma's zz_generated.resources.go, v2.14.5;
+// `kumactl delete health-check` fails with "unknown TYPE" on 2.14.7). The Mesh*
+// resources use the lower-cased kind. Anything missing falls back to the
+// lower-cased kind.
 var kumactlDeleteType = map[string]string{
 	"TrafficPermission":   "traffic-permission",
 	"TrafficRoute":        "traffic-route",
 	"TrafficLog":          "traffic-log",
 	"TrafficTrace":        "traffic-trace",
-	"HealthCheck":         "health-check",
+	"HealthCheck":         "healthcheck", // KumactlArg, no kebab-case alias
 	"CircuitBreaker":      "circuit-breaker",
 	"Retry":               "retry",
 	"Timeout":             "timeout",
@@ -112,7 +115,7 @@ var kumactlDeleteType = map[string]string{
 	"ProxyTemplate":       "proxytemplate",
 	"ExternalService":     "external-service",
 	"ZoneIngress":         "zone-ingress",
-	"ZoneEgress":          "zone-egress",
+	"ZoneEgress":          "zoneegress", // KumactlArg, no kebab-case alias
 	"OPAPolicy":           "opa-policy",
 	"MeshGateway":         "meshgateway",
 	"MeshGatewayRoute":    "meshgatewayroute",
