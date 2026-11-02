@@ -416,7 +416,9 @@ conf:
 		t.Errorf("healthyPanicThreshold = %v (%T), want string \"61.5\"", got, got)
 	}
 
-	if len(warnings) != 0 {
+	// The only warning is the v2 deprecation advisory on the threshold, which now
+	// finds the field where the conversion writes it (to[].default).
+	if len(warnings) != 1 || !strings.Contains(warnings[0], "healthyPanicThreshold is deprecated") {
 		t.Errorf("unexpected warnings: %v", warnings)
 	}
 }

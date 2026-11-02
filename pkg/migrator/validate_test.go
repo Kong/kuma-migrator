@@ -23,6 +23,12 @@ func TestValidateResourceName(t *testing.T) {
 		{strings.Repeat("a", 64), "Mesh", true, "RFC1035: exceeds 63 chars"},
 		{strings.Repeat("a", 63), "Mesh", false, "RFC1035: exactly 63 chars OK"},
 
+		{"MyMesh", "Mesh", true, "RFC1035: lowercase only (3.0)"},
+		{"Backend", "MeshService", true, "RFC1035: uppercase MeshService rejected"},
+		{"zone-1", "Zone", false, "Zone: valid lowercase label"},
+		{"Zone_1", "Zone", true, "Zone: RFC1035 applies from 3.0"},
+		{"1zone", "Zone", true, "Zone: must start with letter"},
+
 		// RFC 1123 kinds (everything else)
 		{"my-policy", "MeshTimeout", false, "valid RFC1123 name"},
 		{"1policy", "MeshTimeout", false, "RFC1123: may start with digit"},
@@ -49,5 +55,19 @@ func TestValidateResourceName(t *testing.T) {
 				t.Errorf("expected no validation warning but got: %s", warn)
 			}
 		})
+	}
+}
+
+// TestScanForDeprecations_ZoneNameChecked confirms a Zone reaching the scanner is
+// name-checked with the lowercase RFC 1035 rule.
+func TestScanForDeprecations_ZoneNameChecked(t *testing.T) {
+	in := "type: Zone\nname: Zone_East\n"
+	_, ws := ScanForDeprecations([]byte(in), TargetV3)
+	if !strings.Contains(strings.Join(ws, "\n"), `Zone "Zone_East": name must start with a lowercase letter`) {
+		t.Errorf("expected Zone name warning, got %v", ws)
+	}
+	_, ok := ScanForDeprecations([]byte("type: Zone\nname: zone-east\n"), TargetV3)
+	if len(ok) != 0 {
+		t.Errorf("valid Zone name must not warn, got %v", ok)
 	}
 }

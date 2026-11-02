@@ -209,8 +209,8 @@ func TransformMeshGateway(raw []byte, opts TransformOptions) ([][]byte, []string
 		"name":      name,
 		"namespace": namespace,
 	}
-	if ann := meshAnnotationFromLabels(gw.Metadata.Labels); len(ann) > 0 {
-		meta["annotations"] = ann
+	if labels := meshLabelFromLabels(gw.Metadata.Labels); len(labels) > 0 {
+		meta["labels"] = labels
 	}
 
 	className, classWarnings := resolveGatewayClassName(gw, name, opts)
@@ -255,11 +255,10 @@ func TransformMeshGatewayInstance(raw []byte, target TargetVersion) ([][]byte, [
 		return nil, nil, meshGatewayInstanceRemovedInV3(inst, name, namespace)
 	}
 
-	// GatewayClass is cluster-scoped (no namespace).
+	// GatewayClass is cluster-scoped (no namespace) and carries no mesh marking:
+	// Kuma resolves a gateway's mesh from the Gateway object (its own label or
+	// its Namespace's), never from the class the Gateway names.
 	gcMeta := map[string]interface{}{"name": name}
-	if ann := meshAnnotationFromLabels(inst.Metadata.Labels); len(ann) > 0 {
-		gcMeta["annotations"] = ann
-	}
 	gatewayClass := map[string]interface{}{
 		"apiVersion": gatewayAPIVersion,
 		"kind":       "GatewayClass",
@@ -458,12 +457,19 @@ func removedGatewaySourceNote(scenario Scenario) string {
 	default:
 		return ""
 	}
-	return fmt.Sprintf(
+	note := fmt.Sprintf(
 		"%s: the converted output is valid on Kuma 3.0, but the source %s object is not — "+
 			"3.0 removes the built-in gateway API in full (types, CRDs and KDS sync). Apply the "+
 			"converted Gateway API resources, verify traffic on them, then delete the %s objects "+
 			"before upgrading: the 3.0 Helm chart drops their CRDs and any resources still stored "+
 			"under them are deleted with it.", kind, kind, kind)
+	if scenario == ScenarioGatewayRoute {
+		note += " The generated route's parentRef is a Gateway: Kuma 3.0 ignores HTTPRoutes whose " +
+			"parentRefs target a Gateway (it only translates the east-west GAMMA case, parentRef = " +
+			"Service), so only the gateway implementation you adopt reconciles it. A conformant " +
+			"implementation requires a ReferenceGrant for every cross-namespace backendRef."
+	}
+	return note
 }
 
 // carriedGatewayInstanceSettings renders the MeshGatewayInstance spec fields that
@@ -523,12 +529,18 @@ func convertGWTLSMode(mode string) string {
 	}
 }
 
-// meshAnnotationFromLabels returns a Gateway API annotation map containing
-// kuma.io/mesh if the source labels specify a non-default mesh.
-// (Gateway API resources use annotations for mesh association, unlike old Kuma resources that used labels.)
-func meshAnnotationFromLabels(labels map[string]string) map[string]interface{} {
-	if mesh, ok := labels["kuma.io/mesh"]; ok && mesh != "" && mesh != "default" {
-		return map[string]interface{}{"kuma.io/mesh": mesh}
+// meshLabelFromLabels returns the metadata.labels map carrying kuma.io/mesh for a
+// generated Gateway API resource, or nil for the default mesh.
+//
+// It is a label, not an annotation. Kuma 2.9 deprecated the kuma.io/mesh
+// annotation in favour of the label (kuma#11690) and reads the label first on
+// every kind it resolves a mesh for, Gateway and HTTPRoute included. Kuma 3.0
+// stops reading the annotation entirely (UPGRADE.md, "kuma.io/mesh annotation no
+// longer honored on Kubernetes"), so an annotation-only resource silently lands
+// in the default mesh. The label is correct on both targets.
+func meshLabelFromLabels(labels map[string]string) map[string]interface{} {
+	if mesh, ok := labels[meshLabel]; ok && mesh != "" && mesh != "default" {
+		return map[string]interface{}{meshLabel: mesh}
 	}
 	return nil
 }

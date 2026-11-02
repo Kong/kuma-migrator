@@ -158,6 +158,14 @@ Same rules as `to[].targetRef`, including the `name/namespace` vs `labels` scopi
 Use `kuma.io/display-name` (not `k8s.kuma.io/service-name`) for cross-namespace label
 selection. The CP sets `kuma.io/display-name` on every auto-generated MeshService.
 
+**Kuma 3.0: `labels` only.** Policies select `Dataplane`, `MeshService`, `MeshExternalService`,
+`MeshMultiZoneService` and `MeshHTTPRoute` (in `spec.targetRef`, `spec.to[].targetRef` and route
+`backendRefs`) by `labels` only; `name`/`namespace`/`mesh` are gone (`sectionName` stays). Under
+`--to-latest v3` the converter always emits labels (`ConvertTargetRefForTarget`): `name` →
+`kuma.io/display-name`, `namespace` → `k8s.kuma.io/namespace`, `mesh` → `kuma.io/mesh`. A zone-origin
+policy also pins `kuma.io/zone`. `Dataplane{name}` cannot be converted (a Dataplane name is not a
+label) and is warned. The table above applies to v2 output only.
+
 ---
 
 ## 5. Policy Type Renaming (ScenarioLegacy)
@@ -298,6 +306,15 @@ These two kinds explicitly **do not** support the Rules API and must **never** b
 | `MeshFaultInjection` | Same — inbound-only policy; no Rules API equivalent |
 
 When these kinds have a `from:` block they fall through to `ScenarioPassthrough` (pass through unchanged).
+
+**Superseded for 3.0.** Both kinds now have a `rules[]` API and 3.0 removes `from` from them
+(MTP: "policy must define rules"). They are still excluded from `rulesAPIMigrationKinds` because the
+rewrite is not mechanical for MTP: `rules[].default.{allow,deny,allowWithShadowDeny}[]` matches SPIFFE
+IDs, which need a `MeshIdentity` and trust domain the manifest does not carry. Under v3:
+- legacy `TrafficPermission` conversion errors;
+- legacy `FaultInjection` and hand-written `MeshFaultInjection` convert to `rules[]` (no `matches`)
+  only when every source is `kind: Mesh` / `kuma.io/service: '*'`; anything else errors or warns;
+- a passthrough MTP with `from[]` is warned as rejected by 3.0.
 
 ### 8.3 Transformation
 
@@ -452,12 +469,12 @@ processes. This is required for MeshService-based policies to take effect.
 **Before enabling Exclusive mode**, confirm all policies and workload env-var addresses
 in the mesh have been migrated.
 
-**Kuma 3.0:** `meshServices` (field and enum) is **removed from the `Mesh` schema**
-entirely — `reserved 9` in `mesh.proto`, `mesh_helpers.go` deleted. Behaviour is
-unconditionally what `Exclusive` used to mean. Per `UPGRADE.md` a `Mesh` that still
-sets `meshServices` applies successfully and the field is silently ignored, so the
-`Exclusive` line the migrator emits is harmless on 3.0 — just inert. (This
-supersedes kuma#17102, which only flipped the nil default to `Exclusive`.)
+**Kuma 3.0 (released notes):** `meshServices` no longer has any effect; unified naming is
+unconditional. The field **stays in the schema as deprecated** so stored values keep syncing to
+zones over KDS: a 2.x zone reads a missing field as `Disabled` and deletes every generated
+`MeshService`. So `Exclusive` must be set on every mesh **before** the Global CP upgrade, and 3.0
+rejects writes with any other mode. Drop the field once every zone runs 3.0. The migrator keeps
+injecting `Exclusive` on both targets and says this under v3.
 Related 3.0 removals: `Dataplane.spec.networking.transparentProxying.reachableServices`
 and the `kuma.io/transparent-proxying-reachable-services` annotation, both replaced
 by `reachableBackends` / `kuma.io/reachable-backends`.
@@ -466,8 +483,8 @@ by `reachableBackends` / `kuma.io/reachable-backends`.
 
 ## 15. RFC 1035 / RFC 1123 Name Validation (Kuma 2.10+)
 
-**RFC 1035 kinds** (stricter — alphabetic start, max 63 chars):
-`Mesh`, `MeshService`, `MeshExternalService`, `MeshMultizoneService`
+**RFC 1035 kinds** (stricter — lowercase, alphabetic start, max 63 chars; a hard error on 3.0):
+`Mesh`, `Zone`, `MeshService`, `MeshExternalService`, `MeshMultiZoneService`
 
 **RFC 1123 kinds** (all others — alphanumeric start allowed):
 Everything else
@@ -507,3 +524,19 @@ Deduplicated by `OldToken` in the final report.
 | ADR-047 (hostnames & VIPs) | `kuma/docs/madr/decisions/047-meshservice-hostname-vips.md` |
 | MeshService targeting docs | `docs/app/mesh/meshservice.md` |
 | Kong Mesh OPAPolicy | `kong-mesh/` codebase |
+
+---
+
+## 18. Kuma / Kong Mesh 3.0 (`--to-latest v3`)
+
+The full per-entry coverage of the 3.0.0 upgrade notes (which files handle what, and the
+judgement calls) is in `CLAUDE.md`, section "Kuma / Kong Mesh 3.0 GA coverage". Rules to keep in
+mind when writing new transform logic:
+
+- Never emit a field 3.0 removed: 3.0 rejects unknown fields (`spec.from: unknown field`).
+- Never copy control-plane-owned labels (`kuma.io/origin`, `zone`, `display-name`, `policy-role`,
+  `k8s.kuma.io/namespace`, …) onto a resource's own labels; 3.0 rejects a value that differs from
+  the computed one. `stripControlPlaneLabels` removes them under v3. Selector labels are untouched.
+- Write `kuma.io/mesh` as a label, never an annotation.
+- Anything the tool cannot convert under v3 goes to the `_manual/` subtree, not the apply tree.
+

@@ -202,6 +202,9 @@ func writeMarkdown(b *strings.Builder, r *MigrationReport) {
 				for _, dc := range fr.Changes {
 					if dc.ErrMsg != "" {
 						linef(b, "- %s", dc.ErrMsg)
+						if dc.ManualRelPath != "" {
+							linef(b, "  - Original kept at `%s`. It is not part of any apply step.", dc.ManualRelPath)
+						}
 					}
 				}
 				line(b, "")
@@ -248,6 +251,11 @@ func writeMarkdown(b *strings.Builder, r *MigrationReport) {
 
 	// ── Deletable originals ───────────────────────────────────────────────────
 	writeDeletableOriginals(b, r, isPlan)
+
+	// ── v3: objects of kinds 3.0 removes ─────────────────────────────────────
+	if r.Target.IsV3() {
+		writeV3DeleteBeforeUpgrade(b, r, isPlan)
+	}
 }
 
 // writeSubfolderTables writes one compact table per subfolder key, followed by
@@ -428,6 +436,11 @@ func writeDeletableOriginals(b *strings.Builder, r *MigrationReport, isPlan bool
 			if dc.ErrMsg != "" || !requiresKubeDelete(dc.Scenario) {
 				continue
 			}
+			// Under v3, removed kinds are listed by writeV3DeleteBeforeUpgrade,
+			// which must happen before the upgrade rather than after applying.
+			if r.Target.IsV3() && isRemovedInV3Kind(dc.InputKind) {
+				continue
+			}
 			entries = append(entries, deletableEntry{
 				Kind:      dc.InputKind,
 				Name:      dc.InputName,
@@ -475,6 +488,154 @@ func writeDeletableOriginals(b *strings.Builder, r *MigrationReport, isPlan bool
 	line(b, "")
 }
 
+// v3Deletion is one source object of a kind 3.0 removes.
+type v3Deletion struct {
+	Kind, Name, Namespace, Mesh string
+	File                        string // input file, relative to the input dir
+	CPModeDir                   string
+	Converted                   bool   // a replacement is in the apply tree
+	ManualRelPath               string // copy under ManualDir, when not converted
+}
+
+// collectV3Deletions lists every input document whose kind 3.0 removes, whether
+// or not it was converted.
+func collectV3Deletions(r *MigrationReport) []v3Deletion {
+	var out []v3Deletion
+	for _, fr := range r.Files {
+		for _, dc := range fr.Changes {
+			if !isRemovedInV3Kind(dc.InputKind) {
+				continue
+			}
+			// A skip-listed document (e.g. a CP-managed ZoneIngress on
+			// Kubernetes) produces no output at all; the operator chose not to
+			// migrate it. Non-skip-listed removed kinds always end up either
+			// converted or under ManualDir.
+			if dc.Scenario == ScenarioSkipped && dc.ManualRelPath == "" {
+				continue
+			}
+			mesh := dc.InputMesh
+			if mesh == "" {
+				mesh = fr.MeshDir
+			}
+			file := fr.InputRelPath
+			if file == "" {
+				file = fr.FileName
+			}
+			out = append(out, v3Deletion{
+				Kind:          dc.InputKind,
+				Name:          dc.InputName,
+				Namespace:     dc.InputNamespace,
+				Mesh:          mesh,
+				File:          file,
+				CPModeDir:     fr.CPModeDir,
+				Converted:     dc.ErrMsg == "" && dc.ManualRelPath == "",
+				ManualRelPath: dc.ManualRelPath,
+			})
+		}
+	}
+	return out
+}
+
+// writeV3DeleteBeforeUpgrade lists, under --to-latest v3, the source objects of
+// kinds 3.0 removes, with the delete command for the tool each context was
+// extracted with. These must go before the control plane is upgraded.
+func writeV3DeleteBeforeUpgrade(b *strings.Builder, r *MigrationReport, isPlan bool) {
+	entries := collectV3Deletions(r)
+	if len(entries) == 0 {
+		return
+	}
+
+	line(b, "## Delete Before Upgrading to 3.0")
+	line(b, "")
+	line(b, "3.0 removes these kinds. The 3.0 control plane rejects them and does not migrate stored")
+	line(b, "objects, so delete them on the 2.x control plane before upgrading. Objects without a")
+	linef(b, "conversion are copied under `%s/` for reference; no apply step uses that directory.", ManualDir)
+	if isPlan {
+		line(b, "")
+		line(b, "> Dry run: the paths below are where `migrate` would write.")
+	}
+	line(b, "")
+	line(b, "| Source file | Kind | Name | Namespace / mesh | Replacement |")
+	line(b, "|---|---|---|---|---|")
+	for _, e := range entries {
+		scope := "—"
+		switch {
+		case e.Namespace != "":
+			scope = "ns `" + e.Namespace + "`"
+		case e.Mesh != "":
+			scope = "mesh `" + e.Mesh + "`"
+		}
+		repl := "converted (see the apply steps)"
+		if !e.Converted {
+			repl = "none — manual migration"
+			if e.ManualRelPath != "" {
+				repl += ", copy at `" + e.ManualRelPath + "`"
+			}
+		}
+		linef(b, "| `%s` | `%s` | `%s` | %s | %s |", e.File, e.Kind, e.Name, scope, repl)
+	}
+	line(b, "")
+
+	// Commands, per extraction tool.
+	metaCache := map[string]*extractor.ContextMeta{}
+	toolFor := func(cpModeDir string) string {
+		m, ok := metaCache[cpModeDir]
+		if !ok {
+			m = extractor.ReadContextMeta(r.InputDir, cpModeDir)
+			metaCache[cpModeDir] = m
+		}
+		if m != nil && m.Tool == "kumactl" {
+			return "kumactl"
+		}
+		return "kubectl"
+	}
+	line(b, "<details>")
+	line(b, "<summary>delete commands</summary>")
+	line(b, "")
+	line(b, "```bash")
+	for _, e := range entries {
+		linef(b, "%s", v3DeleteCommand(e, toolFor(e.CPModeDir)))
+	}
+	line(b, "```")
+	line(b, "</details>")
+	line(b, "")
+	if hasKind(entries, "MeshGlobalRateLimit") {
+		line(b, "After upgrading, Helm leaves the `meshglobalratelimits.kuma.io` CRD in place. Remove it with")
+		line(b, "`kubectl delete crd meshglobalratelimits.kuma.io`, and drop the `ratelimit.*` / `global.ratelimit.*`")
+		line(b, "Helm overrides.")
+		line(b, "")
+	}
+}
+
+func hasKind(entries []v3Deletion, kind string) bool {
+	for _, e := range entries {
+		if e.Kind == kind {
+			return true
+		}
+	}
+	return false
+}
+
+// v3DeleteCommand renders the delete command for one removed-kind object.
+func v3DeleteCommand(e v3Deletion, tool string) string {
+	if tool == "kumactl" {
+		typ, ok := kumactlDeleteType[e.Kind]
+		if !ok {
+			typ = strings.ToLower(e.Kind)
+		}
+		cmd := fmt.Sprintf("kumactl delete %s %s", typ, e.Name)
+		if e.Mesh != "" && !globalScopedRemovedKinds[e.Kind] {
+			cmd += " --mesh " + e.Mesh
+		}
+		return cmd
+	}
+	cmd := fmt.Sprintf("kubectl delete %s %s", e.Kind, e.Name)
+	if e.Namespace != "" {
+		cmd += " -n " + e.Namespace
+	}
+	return cmd
+}
+
 // writeApplyChecklist writes the numbered apply checklist. In plan mode this is
 // a short three-step list; in migrate mode it is the full ordered procedure.
 func writeApplyChecklist(b *strings.Builder, r *MigrationReport, isPlan bool) {
@@ -513,6 +674,16 @@ func writeApplyChecklist(b *strings.Builder, r *MigrationReport, isPlan bool) {
 
 	if len(r.AnnotationHits) > 0 {
 		linef(b, "**%d. Fix deprecated annotations** — update `\"yes\"`/`\"no\"` values to `\"true\"`/`\"false\"` as listed in **Action Items → Deprecated Annotations** above.", n)
+		line(b, "")
+		n++
+	}
+
+	if r.Target.IsV3() && len(collectV3Deletions(r)) > 0 {
+		linef(b, "**%d. Delete the resources 3.0 removes** listed under **Delete Before Upgrading to 3.0** below, on the 2.x control plane.", n)
+		line(b, "   The 3.0 control plane rejects them and does not migrate stored ones. If one still serves")
+		line(b, "   traffic (ExternalService, MeshGateway*, OPAPolicy), first apply its replacement on 2.14 from a")
+		line(b, "   `--to-latest v2` run of the same input, verify it, then delete it. Nothing under")
+		linef(b, "   `%s/` is applied by any step of this checklist.", ManualDir)
 		line(b, "")
 		n++
 	}

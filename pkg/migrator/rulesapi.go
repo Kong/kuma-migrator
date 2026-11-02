@@ -34,6 +34,14 @@ var rulesAPIMigrationKinds = map[string]bool{
 // Uses a map-based round-trip to preserve ALL top-level fields (including
 // Universal-format fields like "type", "name", "mesh", "creationTime", etc.).
 func TransformFromToRules(raw []byte) ([][]byte, []string, error) {
+	return TransformFromToRulesForTarget(raw, TargetV2)
+}
+
+// TransformFromToRulesForTarget is TransformFromToRules aware of the target major
+// version. Under TargetV3 it also warns, per from[] entry, when the entry selected
+// a subset of clients: 3.0 removes from[] from these policies, so that selector
+// cannot be kept, and the rules[] entry now applies to every client.
+func TransformFromToRulesForTarget(raw []byte, target TargetVersion) ([][]byte, []string, error) {
 	var obj map[string]interface{}
 	if err := yaml.Unmarshal(raw, &obj); err != nil {
 		return nil, nil, fmt.Errorf("unmarshal policy: %w", err)
@@ -46,7 +54,16 @@ func TransformFromToRules(raw []byte) ([][]byte, []string, error) {
 	}
 	name := extractNameFromObj(obj)
 
+	var widening []string
+	if target.IsV3() {
+		if spec, ok := obj["spec"].(map[string]interface{}); ok {
+			from, _ := spec["from"].([]interface{})
+			widening = fromScopeWideningWarnings(kind, name, fromSourceKinds(from))
+		}
+	}
+
 	warnings, modified := applyFromToRulesMap(obj, kind, name)
+	warnings = append(warnings, widening...)
 	if !modified {
 		return [][]byte{raw}, warnings, nil
 	}
@@ -69,14 +86,13 @@ func TransformFromToRules(raw []byte) ([][]byte, []string, error) {
 		delete(outboundSpec, "rules")
 		outboundName := name + "-outbound"
 		setObjName(outboundObj, outboundName)
+		// The control plane derives kuma.io/display-name from the resource name, so the
+		// copied value names the inbound half (and 3.0 rejects the mismatch on create).
+		deleteObjLabel(outboundObj, displayNameLabel)
 
 		delete(spec, "to")
 
-		warnings = append(warnings, fmt.Sprintf(
-			"%s %q: policy has both from[] and to[] — Kuma 2.10+ forbids rules[] and to[] "+
-				"in the same spec. Split into two policies: %q (rules[], inbound) and %q (to[], outbound). "+
-				"Apply both.",
-			kind, name, name, outboundName))
+		warnings = append(warnings, splitWarning(kind, name, outboundName))
 
 		b1, err := yaml.Marshal(obj)
 		if err != nil {
@@ -194,7 +210,7 @@ func applyFromToRulesMap(obj map[string]interface{}, kind, name string) (warning
 // applyFromToRules converts policy.Spec.From → policy.Spec.Rules in-place and
 // returns any warnings.  Called from transformScenarioSubset when a Kubernetes-style
 // Scenario-B policy also needs the from→rules migration applied as a second pass.
-func applyFromToRules(policy *KubePolicy) []string {
+func applyFromToRules(policy *KubePolicy, target TargetVersion) []string {
 	if len(policy.Spec.From) == 0 {
 		return nil
 	}
@@ -202,6 +218,15 @@ func applyFromToRules(policy *KubePolicy) []string {
 	var warnings []string
 	name := policy.Metadata.Name
 	kind := policy.Kind
+
+	var widening []string
+	if target.IsV3() {
+		kinds := make([]string, 0, len(policy.Spec.From))
+		for _, entry := range policy.Spec.From {
+			kinds = append(kinds, entry.TargetRef.Kind)
+		}
+		widening = fromScopeWideningWarnings(kind, name, kinds)
+	}
 
 	if len(policy.Spec.From) > 1 {
 		distinctKinds := map[string]bool{}
@@ -235,7 +260,66 @@ func applyFromToRules(policy *KubePolicy) []string {
 			"policies in rules[] apply to all inbound traffic matching spec.targetRef.",
 		kind, name))
 
+	return append(warnings, widening...)
+}
+
+// fromSourceKinds returns the targetRef.kind of every from[] entry ("" when absent).
+func fromSourceKinds(from []interface{}) []string {
+	kinds := make([]string, 0, len(from))
+	for _, entry := range from {
+		k := ""
+		if em, ok := entry.(map[string]interface{}); ok {
+			if tr, ok := em["targetRef"].(map[string]interface{}); ok {
+				k, _ = tr["kind"].(string)
+			}
+		}
+		kinds = append(kinds, k)
+	}
+	return kinds
+}
+
+// rulesMatchKinds are the rules-API policies whose 3.0 Rule carries matches[]
+// (spiffeID/sni). MeshCircuitBreaker and MeshTLS rules have no matches at all, so a
+// per-client scope cannot be expressed on them in 3.0.
+var rulesMatchKinds = map[string]bool{
+	"MeshAccessLog": true,
+	"MeshRateLimit": true,
+	"MeshTimeout":   true,
+}
+
+// fromScopeWideningWarnings returns one warning per from[] entry whose targetRef is
+// not kind: Mesh. Kuma 3.0 removes from[] from MeshTimeout, MeshCircuitBreaker,
+// MeshAccessLog, MeshRateLimit and MeshTLS; the mechanical rules[] equivalent is
+// documented only for kind: Mesh (all clients). Any narrower selector is lost.
+func fromScopeWideningWarnings(kind, name string, sourceKinds []string) []string {
+	var warnings []string
+	for i, k := range sourceKinds {
+		if k == "Mesh" {
+			continue
+		}
+		narrow := fmt.Sprintf("%s rules[] has no matches[] field, so a per-client scope cannot be "+
+			"expressed on 3.0", kind)
+		if rulesMatchKinds[kind] {
+			narrow = "to narrow it again, add rules[].matches[] with the clients' spiffeID or sni " +
+				"(needs MeshIdentity)"
+		}
+		warnings = append(warnings, fmt.Sprintf(
+			"%s %q: from[%d] selected clients with targetRef kind %q. Kuma 3.0 removes from[], so the "+
+				"selector is dropped and the converted rules[] entry applies to every client of the "+
+				"targeted proxies — a wider scope than before; %s.",
+			kind, name, i, k, narrow))
+	}
 	return warnings
+}
+
+// deleteObjLabel removes a label from a Kubernetes (metadata.labels) or Universal
+// (top-level labels) format object.
+func deleteObjLabel(obj map[string]interface{}, key string) {
+	labels := objLabels(obj)
+	if labels == nil {
+		return
+	}
+	delete(labels, key)
 }
 
 // sortedKeys returns a sorted slice of the keys of a bool map (for stable warning text).

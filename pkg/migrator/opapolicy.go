@@ -3,6 +3,8 @@ package migrator
 import (
 	"encoding/base64"
 	"fmt"
+	"sort"
+	"strings"
 
 	"sigs.k8s.io/yaml"
 )
@@ -374,6 +376,12 @@ func deepCopyValue(v interface{}) interface{} {
 // label key convention changes along with the kind, so it is renamed too, not
 // just carried over.
 //
+// `kind: MeshSubset` is converted to `kind: Dataplane` with its tags as labels.
+// The 3.0 MeshOPA CRD enum is [Mesh, Dataplane] and the 3.0 targetRef has no
+// `tags` field, so a MeshSubset{tags} — what TransformOPAPolicy produces from a
+// legacy selector without kuma.io/service — would be rejected on apply. A
+// MeshSubset with no tags selects every proxy and becomes kind: Mesh.
+//
 // Returns whether the document was modified.
 func fixMeshOPATargetRefForV3(obj map[string]interface{}, name string) (bool, []string) {
 	spec, _ := obj["spec"].(map[string]interface{})
@@ -395,6 +403,11 @@ func fixMeshOPATargetRefForV3(obj map[string]interface{}, name string) (bool, []
 	// a conflicting label names the key that is actually in the output.
 	wasMeshService := false
 	displayLabelKey := "kuma.io/display-name" // MeshService selector convention
+	if trKind, _ := targetRef["kind"].(string); trKind == "MeshSubset" {
+		c, ws := convertMeshOPAMeshSubsetForV3(targetRef, name)
+		changed = changed || c
+		warnings = append(warnings, ws...)
+	}
 	if trKind, _ := targetRef["kind"].(string); trKind == "MeshService" {
 		wasMeshService = true
 		displayLabelKey = "app" // Dataplane selector convention
@@ -457,6 +470,52 @@ func fixMeshOPATargetRefForV3(obj map[string]interface{}, name string) (bool, []
 	}
 
 	return changed, warnings
+}
+
+// convertMeshOPAMeshSubsetForV3 rewrites a MeshOPA targetRef of kind MeshSubset
+// for 3.0: tags become Dataplane labels, no tags becomes kind: Mesh. An existing
+// label with a different value is not overwritten; the conversion is then
+// abandoned and reported, leaving the document as it was.
+func convertMeshOPAMeshSubsetForV3(targetRef map[string]interface{}, name string) (bool, []string) {
+	tags, _ := targetRef["tags"].(map[string]interface{})
+	if len(tags) == 0 {
+		targetRef["kind"] = "Mesh"
+		delete(targetRef, "tags")
+		return true, []string{fmt.Sprintf(
+			"MeshOPA %q: spec.targetRef kind MeshSubset with no tags was converted to kind: Mesh "+
+				"(3.0 accepts only Mesh and Dataplane; an empty MeshSubset already selected every proxy).",
+			name)}
+	}
+
+	labels, _ := targetRef["labels"].(map[string]interface{})
+	for k, v := range tags {
+		if existing, ok := labels[k]; ok && existing != v {
+			return false, []string{fmt.Sprintf(
+				"MeshOPA %q: spec.targetRef kind MeshSubset is rejected in 3.0 (only Mesh and Dataplane). "+
+					"Its tag %s=%v conflicts with the existing label %s=%v, so it was NOT converted. "+
+					"Rewrite it as kind: Dataplane with labels by hand.",
+				name, k, v, k, existing)}
+		}
+	}
+	if labels == nil {
+		labels = map[string]interface{}{}
+	}
+	keys := make([]string, 0, len(tags))
+	for k, v := range tags {
+		labels[k] = v
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	targetRef["kind"] = "Dataplane"
+	targetRef["labels"] = labels
+	delete(targetRef, "tags")
+	return true, []string{fmt.Sprintf(
+		"MeshOPA %q: spec.targetRef kind MeshSubset (rejected in 3.0, which accepts only Mesh and "+
+			"Dataplane and has no tags field) was converted to kind: Dataplane with labels %s. A "+
+			"Dataplane label selector matches the Dataplane's labels, not its inbound tags: check that "+
+			"these keys exist as labels on the pods (Kubernetes) or in the Dataplane metadata "+
+			"(Universal), or the policy selects nothing.",
+		name, strings.Join(keys, ", "))}
 }
 
 // legacyOPADataSourceFields are the pre-3.0 flat DataSource variants on

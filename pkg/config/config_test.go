@@ -143,9 +143,27 @@ func TestSkipSetForEnv_Universal(t *testing.T) {
 	// But shared infrastructure kinds should still be skipped. Workload is
 	// CP-generated on Universal too, so it belongs here despite Universal
 	// carrying the kuma.io/workload label on the Dataplane.
-	for _, kind := range []string{"AccessRole", "Zone", "Workload"} {
+	for _, kind := range []string{"AccessRoleBinding", "Zone", "Workload"} {
 		if !set[kind] {
 			t.Errorf("universal skip set should contain %q", kind)
+		}
+	}
+}
+
+// TestDefaultSkipLists_ScanAccessRoleAndAccessAudit guards the Kong Mesh 3.0
+// RBAC checks: AccessRole and AccessAudit must reach the migrator in both
+// environments, while AccessRoleBinding stays skipped.
+func TestDefaultSkipLists_ScanAccessRoleAndAccessAudit(t *testing.T) {
+	cfg := &Config{}
+	for _, env := range []string{"kubernetes", "universal", ""} {
+		set := cfg.SkipSetForEnv(env)
+		for _, kind := range []string{"AccessRole", "AccessAudit"} {
+			if set[kind] {
+				t.Errorf("env %q: %s must not be in the default skip set", env, kind)
+			}
+		}
+		if !set["AccessRoleBinding"] {
+			t.Errorf("env %q: AccessRoleBinding should stay in the default skip set", env)
 		}
 	}
 }
@@ -222,7 +240,7 @@ func TestLoad_AdminServerTLSSkipVerify_DefaultFalse(t *testing.T) {
 
 func TestDefaultSkipKinds_ContainsExpected(t *testing.T) {
 	expected := []string{
-		"Dataplane", "AccessRole", "AccessRoleBinding",
+		"Dataplane", "AccessRoleBinding",
 		"ZoneEgress", "ZoneIngress", "Zone", "Workload",
 	}
 	set := make(map[string]bool)

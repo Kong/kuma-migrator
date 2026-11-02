@@ -67,9 +67,12 @@ spec:
 	if meta["name"] != "demo-app-gateway" {
 		t.Errorf("expected name=demo-app-gateway, got %v", meta["name"])
 	}
-	ann := meta["annotations"].(map[string]interface{})
-	if ann["kuma.io/mesh"] != "default" {
-		t.Errorf("expected mesh annotation=default, got %v", ann["kuma.io/mesh"])
+	if _, ok := meta["annotations"]; ok {
+		t.Errorf("kuma.io/mesh must not be written as an annotation (3.0 ignores it): %v", meta["annotations"])
+	}
+	labels := meta["labels"].(map[string]interface{})
+	if labels["kuma.io/mesh"] != "default" {
+		t.Errorf("expected mesh label=default, got %v", labels["kuma.io/mesh"])
 	}
 
 	spec := out["spec"].(map[string]interface{})
@@ -123,7 +126,7 @@ spec:
 	if br["namespace"] != "kuma-demo" {
 		t.Errorf("expected backendRef.namespace=kuma-demo, got %v", br["namespace"])
 	}
-	if br["port"] != "5000" {
+	if br["port"] != float64(5000) {
 		t.Errorf("expected backendRef.port=5000, got %v", br["port"])
 	}
 	if br["kind"] != "Service" {

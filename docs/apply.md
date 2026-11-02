@@ -20,10 +20,15 @@ what each step means, in the order they always appear when present.
    in Deployment/StatefulSet env vars (Action Items → Workload Service Address Mappings).
 3. **Fix deprecated annotations** — only if any `"yes"`/`"no"` `kuma.io/*` annotation values
    were found (Action Items → Deprecated Annotations).
-4. **Upgrade the Global Control Plane** to the target Kuma / Kong Mesh version.
-5. **Upgrade Zone Control Planes.** Kong Mesh supports at most two minor versions per step
+4. **Delete the resources 3.0 removes** — `--to-latest v3` only, when the report has a
+   **Delete Before Upgrading to 3.0** section. Do it on the 2.x control plane: 3.0 rejects these
+   kinds and does not migrate stored objects. If one still serves traffic (`ExternalService`,
+   `MeshGateway*`, `OPAPolicy`), first apply its replacement on 2.14 from a `--to-latest v2` run
+   of the same input, verify it, then delete it. See [below](#the-_manual-subtree-v3).
+5. **Upgrade the Global Control Plane** to the target Kuma / Kong Mesh version.
+6. **Upgrade Zone Control Planes.** Kong Mesh supports at most two minor versions per step
    (e.g. 2.7 → 2.9 → 2.11).
-6. **Install Gateway API CRDs** — only if a Gateway/route scenario was migrated. Applied to
+7. **Install Gateway API CRDs** — only if a `MeshGateway`/`MeshGatewayRoute` was migrated. Applied to
    every Kubernetes cluster (Global CP and each Zone, **never** to a Universal zone):
    ```bash
    kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/latest/download/standard-install.yaml
@@ -33,7 +38,7 @@ what each step means, in the order they always appear when present.
    ```bash
    kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/latest/download/experimental-install.yaml
    ```
-7. **Apply policies** (resiliency, routing, zero-trust, observability), one context at a time,
+8. **Apply policies** (resiliency, routing, zero-trust, observability), one context at a time,
    in the order the report lists them. **The command differs by how that context was
    extracted** — the report gets this from `.kuma-migrator.json`, written during `extract`:
    - **`extract --kumactl-context`** (including every Konnect-hosted CP) → `kumactl` rejects a
@@ -51,20 +56,22 @@ what each step means, in the order they always appear when present.
 
    Global-scoped resources (`global-scoped-resources/`, e.g. Kubernetes-native Gateway API CRDs)
    apply to the **zone clusters**, not the Global CP.
-8. **Apply `Mesh` CRs last**, same per-context command shape as step 7. These enable
+9. **Apply `Mesh` CRs last**, same per-context command shape as step 8. These enable
    `spec.meshServices.mode: Exclusive`, which disables legacy `kuma.io/service` routing —
    applying them before every other policy and workload env var is migrated will break any
-   workload still addressed by a tag. If a `Mesh` wasn't in the input directory, patch it
+   workload still addressed by a tag. Under `--to-latest v3` this field must be set **before**
+   the Global CP upgrade (a 2.x zone reads a missing field as `Disabled`); see
+   [Choosing a target version](target-version.md). If a `Mesh` wasn't in the input directory, patch it
    manually instead:
    ```bash
    kubectl patch mesh <name> --type merge -p '{"spec":{"meshServices":{"mode":"Exclusive"}}}'
    ```
-9. **Verify traffic health.** Check service-to-service connectivity across all meshes and
+10. **Verify traffic health.** Check service-to-service connectivity across all meshes and
    watch your observability stack before proceeding.
-10. **Delete the original policy files** once the migrated policies are confirmed working —
+11. **Delete the original policy files** once the migrated policies are confirmed working —
     the originals were not modified. (This is about the *input files*; resources whose *kind*
     changed also need deleting from the cluster — see [below](#clean-up-the-originals).)
-11. **Plan your next upgrade** if you haven't yet reached the target version — re-run
+12. **Plan your next upgrade** if you haven't yet reached the target version — re-run
     `extract` + `migrate --dry-run` + `migrate` for each minor-version step.
 
 `--dry-run` writes a shorter three-step version of this list (fix warnings, run `migrate` for
@@ -88,9 +95,36 @@ be explicitly removed):
 | `Timeout`, `Retry`, `TrafficPermission`, … | `MeshTimeout`, `MeshRetry`, `MeshTrafficPermission`, … |
 | `ExternalService` | `MeshExternalService` |
 | `MeshGateway` | `Gateway` |
-| `MeshGatewayInstance` | `GatewayClass` + `MeshGatewayConfig` |
-| `MeshGatewayRoute`, `MeshHTTPRoute`, `MeshTCPRoute` | `HTTPRoute` / `TCPRoute` |
+| `MeshGatewayInstance` | `GatewayClass` + `MeshGatewayConfig` (`v2` only) |
+| `MeshGatewayRoute` | `HTTPRoute` / `TCPRoute` |
 | `OPAPolicy` | `MeshOPA` |
 
 The migration report (`migration-report.md`) contains a ready-to-run
-`kubectl delete` command list for all such resources.
+`kubectl delete` command list for all such resources. Under `--to-latest v3` these kinds are
+listed in **Delete Before Upgrading to 3.0** instead, because they must go before the upgrade
+rather than after it.
+
+## The `_manual/` subtree (v3)
+
+Under `--to-latest v3`, two kinds of documents are written to a separate `_manual/` subtree
+instead of the apply tree:
+
+- originals whose conversion failed (`TrafficRoute`, `VirtualOutbound`, `MeshGatewayInstance`,
+  legacy `TrafficPermission`, …);
+- documents that pass through as a kind 3.0 removes (`MeshGlobalRateLimit`, Universal
+  `ZoneIngress`/`ZoneEgress`).
+
+```
+migrated/
+  <context>-global-ctx/
+    mesh-default/resiliency/...          ← apply tree
+    global-scoped-resources/routing/...  ← apply tree
+    _manual/
+      mesh-default/routing/TrafficRoute-route-all.yaml
+```
+
+No checklist step applies `_manual/`: `kubectl apply -f <dir>/` is not recursive, and the
+`kumactl` per-file list never includes these paths. Each file is listed in the report's Errors
+section or in **Delete Before Upgrading to 3.0**, with what to do about it. Under `v2` there is
+no `_manual/` subtree: errored originals stay in place, since they came from the 2.x control
+plane they are applied back to.

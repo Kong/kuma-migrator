@@ -178,54 +178,55 @@ type AnnotationHit struct {
 	AnnotationKey string
 	OldValue      string // "yes" or "no"
 	NewValue      string // "true" or "false"
-}
-
-// annotationProbe is a minimal struct to extract metadata.annotations from any resource.
-type annotationProbe struct {
-	Kind     string `json:"kind"`
-	Metadata struct {
-		Name        string            `json:"name"`
-		Namespace   string            `json:"namespace"`
-		Annotations map[string]string `json:"annotations"`
-	} `json:"metadata"`
+	Location      string // annotations map the key was found in, e.g. "spec.template.metadata.annotations"
 }
 
 // ScanKumaAnnotations scans a single YAML document for kuma.io/* annotations with
 // deprecated boolean values ("yes" or "no"). These were deprecated in Kuma 2.9 in
 // favour of "true"/"false".
 //
+// Both the resource's own metadata.annotations and a workload's pod template
+// annotations (spec.template / spec.jobTemplate.spec.template) are scanned — on a
+// Deployment, StatefulSet, DaemonSet or Job the Kuma annotations that matter live on
+// the pod template, not on the object itself.
+//
 // Returns one AnnotationHit per deprecated annotation found.
 func ScanKumaAnnotations(raw []byte) ([]AnnotationHit, error) {
-	var p annotationProbe
-	if err := yaml.Unmarshal(raw, &p); err != nil {
+	var obj map[string]interface{}
+	if err := yaml.Unmarshal(raw, &obj); err != nil {
 		return nil, err
 	}
-	if len(p.Metadata.Annotations) == 0 {
-		return nil, nil
-	}
+	kind, _ := obj["kind"].(string)
+	meta, _ := obj["metadata"].(map[string]interface{})
+	name, _ := meta["name"].(string)
+	namespace, _ := meta["namespace"].(string)
 
 	var hits []AnnotationHit
-	for k, v := range p.Metadata.Annotations {
-		if !strings.HasPrefix(k, "kuma.io/") && !strings.HasPrefix(k, "k8s.kuma.io/") {
-			continue
+	for _, site := range podAnnotationSites(obj) {
+		for _, k := range sortedMapKeys(site.annotations) {
+			if !strings.HasPrefix(k, "kuma.io/") && !strings.HasPrefix(k, "k8s.kuma.io/") {
+				continue
+			}
+			v, _ := site.annotations[k].(string)
+			var newVal string
+			switch v {
+			case "yes":
+				newVal = "true"
+			case "no":
+				newVal = "false"
+			default:
+				continue
+			}
+			hits = append(hits, AnnotationHit{
+				Kind:          kind,
+				Name:          name,
+				Namespace:     namespace,
+				AnnotationKey: k,
+				OldValue:      v,
+				NewValue:      newVal,
+				Location:      site.path,
+			})
 		}
-		var newVal string
-		switch v {
-		case "yes":
-			newVal = "true"
-		case "no":
-			newVal = "false"
-		default:
-			continue
-		}
-		hits = append(hits, AnnotationHit{
-			Kind:          p.Kind,
-			Name:          p.Metadata.Name,
-			Namespace:     p.Metadata.Namespace,
-			AnnotationKey: k,
-			OldValue:      v,
-			NewValue:      newVal,
-		})
 	}
 	return hits, nil
 }

@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
-	"sort"
 	"strings"
 
 	"sigs.k8s.io/yaml"
@@ -34,8 +33,10 @@ import (
 //   - MeshMetric/MeshTrace/MeshAccessLog inline openTelemetry.endpoint → MeshOpenTelemetryBackend + backendRef (v2.14, removed 3.0)
 //   - MeshAccessLog openTelemetry.attributes[].key validation tightened (v2.14)
 //   - Mesh spec.routing.defaultForbidMeshExternalServiceAccess removed (3.0)
-//   - Mesh spec.mtls.backends → advisory: MeshIdentity + MeshTrust successor model (2.12+, guided)
-//   - Mesh without spec.meshServices → advisory: 3.0 defaults the mode to Exclusive (kuma#17102)
+//   - Mesh spec.mtls → MeshIdentity + MeshTrust, required before 3.0 (removed in 3.0, guided)
+//   - Mesh routing.zoneEgress / routing.localityAwareLoadBalancing / skipCreatingInitialPolicies /
+//     PERMISSIVE mTLS backend → removed in 3.0 (warnMeshFieldsRemovedIn30, v3_mesh.go)
+//   - MeshMetric prometheus.tls.mode: ActiveMTLSBackend requires a client cert on 3.0 (v3 only)
 //   - Dataplane transparentProxying.redirectPortInboundV6 removed (v2.9)
 //   - Dataplane transparentProxying.reachableServices uses legacy kuma.io/service names (v2.10)
 //   - Any Mesh* policy with a deprecated top-level spec.targetRef.kind: MeshSubset (without
@@ -43,7 +44,14 @@ import (
 //     → spec.to[].targetRef (v2.10/2.11)
 //   - Mesh/MeshService/MeshExternalService/MeshMultiZoneService names that violate RFC 1035 /
 //     exceed 63 chars (warning in 2.14, hard error in 3.0)
-//   - Dataplane networking.gateway.type: BUILTIN, reserved/removed in 3.0 (kuma#18058)
+//   - Dataplane 3.0 removals (v3 rewrites in v3_dataplane.go): networking.gateway of any type,
+//     inbound tags → labels, kuma.io/protocol tag → inbound protocol, tag-based outbounds →
+//     backendRef, reachableServices → reachableBackends, reachableBackends name/namespace →
+//     labels; warn-only advertisedAddress, redirect ports, ipFamilyMode, probes, no reachableBackends
+//   - MeshService dataplaneTags → dataplaneLabels, ServiceTag identities (3.0, v3_scan.go)
+//   - MeshPassthrough Domain without port, filter-chain collisions (3.0, v3_scan.go)
+//   - ZoneIngress/ZoneEgress removed, MeshZoneAddress required (3.0, v3_scan.go)
+//   - ContainerPatch sidecar probes on admin port 9901 (3.0, v3_scan.go)
 //   - MeshLoadBalancingStrategy to[].default.localityAwareness.crossZone restricted to
 //     MeshMultiZoneService targets (3.0, kuma#18210)
 //   - Kong Mesh MeshOPA spec.targetRef.kind: MeshService, no longer valid in 3.0 (auto-fix under
@@ -77,44 +85,67 @@ func ScanForDeprecations(raw []byte, target TargetVersion) (out []byte, warnings
 	case "MeshMetric":
 		fix(fixMeshMetricSidecarRegex(obj, name))
 		warnings = append(warnings, warnInlineOtelEndpoint(obj, name, kind, target)...)
+		warnings = append(warnings, warnMeshMetricActiveMTLSBackend(obj, name, target)...)
 	case "MeshTrace":
 		warnings = append(warnings, warnInlineOtelEndpoint(obj, name, kind, target)...)
 	case "MeshAccessLog":
 		warnings = append(warnings, warnInlineOtelEndpoint(obj, name, kind, target)...)
 		warnings = append(warnings, warnMeshAccessLogOtelAttributeKeys(obj, name)...)
 	case "MeshHealthCheck":
-		warnings = warnHealthCheckPanicThreshold(obj, name)
+		if target.IsV3() {
+			fix(fixHealthCheckPanicThresholdForV3(obj, name))
+		} else {
+			warnings = warnHealthCheckPanicThreshold(obj, name)
+		}
 	case "MeshTrust":
 		warnings = warnMeshTrustOrigin(obj, name)
 	case "MeshTrafficPermission":
 		warnings = append(warnings, warnMeshServiceInFrom(obj, name, kind)...)
 		warnings = append(warnings, warnMeshTrafficPermissionActionCasing(obj, name)...)
-		warnings = append(warnings, warnFromDeprecatedForRulesAPI(obj, name, kind)...)
+		warnings = append(warnings, warnFromDeprecatedForRulesAPI(obj, name, kind, target)...)
 		fix(fixSpiffeIDCasing(obj, name))
+		warnings = append(warnings, warnMTPEmptyMatches(obj, name, target)...)
 	case "MeshFaultInjection":
+		if target.IsV3() {
+			fix(fixMeshFaultInjectionFromForV3(obj, name))
+		}
 		warnings = append(warnings, warnMeshServiceInFrom(obj, name, kind)...)
-		warnings = append(warnings, warnFromDeprecatedForRulesAPI(obj, name, kind)...)
+		warnings = append(warnings, warnFromDeprecatedForRulesAPI(obj, name, kind, target)...)
+	case "MeshProxyPatch":
+		warnings = append(warnings, warnMeshProxyPatchCircuitBreakers(obj, name, target)...)
 	case "MeshLoadBalancingStrategy":
 		warnings = append(warnings, warnSourceIPHashPolicy(obj, name)...)
 		fix(fixHashPoliciesPath(obj, name))
 		warnings = append(warnings, warnMeshLoadBalancingStrategyCrossZoneTarget(obj, name, target)...)
 	case "MeshService":
 		fix(fixMeshServicePortProtocol(obj, name))
+		fix(fixMeshService(obj, name, target))
 	case "Mesh":
 		warnings = append(warnings, warnMeshForbidExternalServiceAccess(obj, name)...)
-		warnings = append(warnings, warnMeshMtlsBackends(obj, name)...)
-		warnings = append(warnings, warnMeshServicesDefaultFlip(obj, name)...)
+		warnings = append(warnings, warnMeshMtlsBackends(obj, name, target)...)
+		warnings = append(warnings, warnMeshFieldsRemovedIn30(obj, name)...)
 	case "Dataplane":
+		// Rewrites first (v3 only), so the warn-only checks below report what is left.
+		fix(fixDataplane(obj, name, target))
 		warnings = append(warnings, warnDataplaneRedirectPortInboundV6(obj, name)...)
-		warnings = append(warnings, warnDataplaneReachableServices(obj, name)...)
+		warnings = append(warnings, warnDataplaneReachableServices(obj, name, target)...)
 		warnings = append(warnings, warnDataplaneInboundTags(obj, name, target)...)
-		warnings = append(warnings, warnDataplaneGatewayBuiltinType(obj, name, target)...)
+		warnings = append(warnings, warnDataplaneV3Removals(obj, name, target)...)
 	case "MeshPassthrough":
 		warnings = append(warnings, warnMeshPassthroughDomains(obj, name)...)
+		warnings = append(warnings, warnMeshPassthroughV3(obj, name, target)...)
+	case "ZoneIngress", "ZoneEgress":
+		warnings = append(warnings, warnZoneProxyRemoved(obj, name, kind, target)...)
+	case "ContainerPatch":
+		warnings = append(warnings, warnContainerPatchAdminProbePort(obj, name, target)...)
 	case "HostnameGenerator":
 		warnings = append(warnings, warnHostnameGeneratorTemplate(obj, name)...)
 	case "MeshExternalService":
+		if target.IsV3() {
+			fix(fixMESDataSourcesForV3(obj, name))
+		}
 		warnings = append(warnings, warnMeshExternalServiceDataSource(obj, name, target)...)
+		warnings = append(warnings, warnMESZoneLabel(obj, name, target)...)
 	case "MeshOPA":
 		if target.IsV3() {
 			fix(fixMeshOPATargetRefForV3(obj, name))
@@ -124,8 +155,15 @@ func ScanForDeprecations(raw []byte, target TargetVersion) (out []byte, warnings
 		warnings = append(warnings, warnMeshOPALegacyDataSource(obj, name, target)...)
 	case "MeshGlobalRateLimit":
 		warnings = append(warnings, warnMeshGlobalRateLimitRemoved(obj, name, target)...)
+	case "AccessRole":
+		fix(scanAccessRole(obj, name, target))
+	case "AccessAudit":
+		fix(scanAccessAudit(obj, name, target))
 	case "MeshHTTPRoute":
 		warnings = append(warnings, warnMeshHTTPRouteNoCatchAll(obj, name, target)...)
+		fix(fixRouteBackendRefsForV3(obj, name, kind, target))
+	case "MeshTCPRoute":
+		fix(fixRouteBackendRefsForV3(obj, name, kind, target))
 	}
 
 	// Generic checks applied to every Mesh* policy regardless of kind.
@@ -133,11 +171,30 @@ func ScanForDeprecations(raw []byte, target TargetVersion) (out []byte, warnings
 		// Deprecated top-level spec.targetRef kinds (MeshSubset/MeshService/MeshServiceSubset
 		// → Dataplane; MeshHTTPRoute → spec.to[].targetRef).
 		warnings = append(warnings, warnDeprecatedTopLevelTargetRef(obj, name, kind, target)...)
+		if target.IsV3() {
+			// MeshOPA's targetRef is rewritten by fixMeshOPATargetRefForV3 above.
+			if kind != "MeshOPA" {
+				fix(fixRealResourceTargetRefsForV3(obj, name, kind))
+			}
+			fix(fixRouteBackendRefNamesForV3(obj, name, kind))
+			warnings = append(warnings, warnV3ToTargetRefKinds(obj, name, kind)...)
+		}
 	}
 
-	// Annotation deprecations apply to any resource carrying metadata.annotations.
+	// Last: the targetRef rewrite above reads the policy's own kuma.io/zone label.
+	if target.IsV3() {
+		fix(stripControlPlaneLabels(obj, name, kind))
+	}
+
+	// Pods and workload pod templates: reachable-services/backends annotation rewrites.
+	if knownWorkloadKinds[kind] {
+		fix(fixWorkloadReachableAnnotations(obj, name, kind, target))
+	}
+
+	// Annotation deprecations apply to any resource carrying metadata.annotations,
+	// and to the pod template of a workload.
 	if kind != "" {
-		warnings = append(warnings, warnDeprecatedAnnotations(obj, name, kind)...)
+		warnings = append(warnings, warnDeprecatedAnnotations(obj, name, kind, target)...)
 	}
 
 	// Name-format validation for kinds with strict RFC 1035 requirements. These
@@ -197,14 +254,29 @@ func fixMeshMetricSidecarRegex(obj map[string]interface{}, name string) (bool, [
 
 // ---- MeshHealthCheck healthyPanicThreshold (v2.10) ----------------------------
 
+// warnHealthCheckPanicThreshold flags healthyPanicThreshold on a MeshHealthCheck.
+// The real field lives in to[].default (that is where the legacy HealthCheck
+// conversion writes it too); spec.default/spec.conf are checked for hand-written
+// variants. Under --to-latest v3 fixHealthCheckPanicThresholdForV3 runs instead.
 func warnHealthCheckPanicThreshold(obj map[string]interface{}, name string) []string {
-	if !hasNestedField(obj, "spec", "default", "healthyPanicThreshold") &&
-		!hasNestedField(obj, "spec", "conf", "healthyPanicThreshold") {
+	found := hasNestedField(obj, "spec", "default", "healthyPanicThreshold") ||
+		hasNestedField(obj, "spec", "conf", "healthyPanicThreshold")
+	if spec, ok := obj["spec"].(map[string]interface{}); ok && !found {
+		to, _ := spec["to"].([]interface{})
+		for _, entry := range to {
+			if em, ok := entry.(map[string]interface{}); ok && hasNestedField(em, "default", "healthyPanicThreshold") {
+				found = true
+				break
+			}
+		}
+	}
+	if !found {
 		return nil
 	}
 	return []string{fmt.Sprintf(
-		"MeshHealthCheck %q: healthyPanicThreshold has been moved to MeshCircuitBreaker.spec.default.outlierDetection (Kuma 2.10+) — "+
-			"create a MeshCircuitBreaker policy targeting the same service with this value.",
+		"MeshHealthCheck %q: healthyPanicThreshold is deprecated (Kuma 2.10+) and removed in 3.0 — "+
+			"set it on a MeshCircuitBreaker with the same targetRef and to[].targetRef, as "+
+			"to[].default.outlierDetection.healthyPanicThreshold.",
 		name)}
 }
 
@@ -269,7 +341,7 @@ func warnMeshServiceInFrom(obj map[string]interface{}, name, kind string) []stri
 // SPIFFE trust-domain and identity strings are not present in the source manifest (they depend
 // on MeshIdentity / cluster identity config), so a mechanical rewrite would either fail or —
 // worse, for MeshTrafficPermission — silently widen access. The warning gives the manual steps.
-func warnFromDeprecatedForRulesAPI(obj map[string]interface{}, name, kind string) []string {
+func warnFromDeprecatedForRulesAPI(obj map[string]interface{}, name, kind string, target TargetVersion) []string {
 	spec, ok := obj["spec"].(map[string]interface{})
 	if !ok {
 		return nil
@@ -279,21 +351,32 @@ func warnFromDeprecatedForRulesAPI(obj map[string]interface{}, name, kind string
 	}
 	switch kind {
 	case "MeshTrafficPermission":
+		rejected := ""
+		if target.IsV3() {
+			rejected = " Kuma 3.0 rejects this policy as it stands: spec.from is not in the schema " +
+				"(\"spec.from: unknown field\"), and an MTP without rules[] fails with \"policy must define rules\"."
+		}
 		return []string{fmt.Sprintf(
 			"MeshTrafficPermission %q: the from[] field is deprecated in favour of the rules[] API "+
 				"(Kuma 2.14, removed in 3.0) and is NOT auto-converted. rules[] requires MeshIdentity, "+
 				"matches clients by SPIFFE identity under default.{allow,deny,allowWithShadowDeny}, and is "+
 				"default-deny. Manually translate each from[] source selector to a spiffeID matcher and place "+
 				"it under allow / deny / allowWithShadowDeny per its Allow/Deny/AllowWithShadowDeny value. The "+
-				"SPIFFE trust-domain and identity values cannot be derived from this manifest.",
-			name)}
+				"SPIFFE trust-domain and identity values cannot be derived from this manifest.%s",
+			name, rejected)}
 	case "MeshFaultInjection":
+		rejected := ""
+		if target.IsV3() {
+			rejected = " Kuma 3.0 rejects this policy as it stands: spec.from is not in the schema " +
+				"(\"spec.from: unknown field\"). Only from[] entries that all target kind: Mesh are rewritten " +
+				"automatically."
+		}
 		return []string{fmt.Sprintf(
 			"MeshFaultInjection %q: the from[] field is deprecated in favour of the rules[] API "+
 				"(Kuma 2.13, removed in 3.0) and is NOT auto-converted. In rules[], each entry has matches[] "+
 				"(spiffeID/sni) plus a default fault config; re-express each from[] source as a matches[] clause. "+
-				"Omitting matches[] applies the fault to all inbound traffic, which widens the original scope.",
-			name)}
+				"Omitting matches[] applies the fault to all inbound traffic, which widens the original scope.%s",
+			name, rejected)}
 	}
 	return nil
 }
@@ -636,28 +719,48 @@ func collectOtelAttributeKeys(v interface{}, fn func(string)) {
 // ---- Mesh routing.defaultForbidMeshExternalServiceAccess (removed 3.0) --------
 
 func warnMeshForbidExternalServiceAccess(obj map[string]interface{}, name string) []string {
-	if !hasNestedField(obj, "spec", "routing", "defaultForbidMeshExternalServiceAccess") &&
-		!hasNestedField(obj, "routing", "defaultForbidMeshExternalServiceAccess") {
+	var v interface{}
+	if spec, ok := obj["spec"].(map[string]interface{}); ok {
+		if routing, ok := spec["routing"].(map[string]interface{}); ok {
+			v = routing["defaultForbidMeshExternalServiceAccess"]
+		}
+	}
+	if v == nil {
+		if routing, ok := obj["routing"].(map[string]interface{}); ok {
+			v = routing["defaultForbidMeshExternalServiceAccess"]
+		}
+	}
+	if v == nil {
 		return nil
+	}
+	if b, _ := v.(bool); !b {
+		return []string{fmt.Sprintf(
+			"Mesh %q: spec.routing.defaultForbidMeshExternalServiceAccess is removed in Kuma 3.0 — "+
+				"it is set to false, so remove it with no replacement.",
+			name)}
 	}
 	return []string{fmt.Sprintf(
 		"Mesh %q: spec.routing.defaultForbidMeshExternalServiceAccess is removed in Kuma 3.0 — "+
-			"control MeshExternalService access with MeshTrafficPermission instead.",
+			"control MeshExternalService access with MeshTrafficPermission instead: write an explicit "+
+			"MeshTrafficPermission on each MeshExternalService that only the intended clients may reach.",
 		name)}
 }
 
 // ---- Mesh spec.mtls backends → MeshIdentity + MeshTrust (advisory) ------------
 
-// warnMeshMtlsBackends emits a forward-looking advisory when a Mesh defines legacy mTLS
-// backends (spec.mtls.backends, builtin/provided/vault). Kuma 2.12+ introduces MeshIdentity
-// (workload identity) + MeshTrust (trust domains) as the successor model, and the experimental
-// SPIFFE rules[] API for MeshTrafficPermission requires MeshIdentity. This is intentionally
-// NOT auto-converted: the cutover is a guided multi-step CA migration (Kuma MADR-074) whose
-// inputs — trust domain (runtime/zone-derived), per-workload SPIFFE paths, and CA key material
-// (CP-generated Secret / DataSource / Vault) — are not present in the Mesh manifest, and the
-// builtin path mints a brand-new CA (a trust-root change). spec.mtls is not deprecated, so
-// doing nothing is currently safe.
-func warnMeshMtlsBackends(obj map[string]interface{}, name string) []string {
+// warnMeshMtlsBackends warns when a Mesh carries a legacy spec.mtls block
+// (enabledBackend or backends). Kuma 3.0 removes Mesh.mtls: the field is dropped
+// silently, it no longer issues certificates, and a mesh whose only identity source
+// is mtls serves and accepts plaintext, so MeshTLS and MeshTrafficPermission stop
+// applying to its proxies (UPGRADE.md "Mesh.mtls is removed from the API" and the
+// three entries after it). The successor is MeshIdentity + MeshTrust.
+//
+// This is NOT auto-converted into a MeshIdentity: the cutover is a guided CA
+// migration (Kuma MADR-074) whose inputs — trust domain (runtime/zone-derived),
+// per-workload SPIFFE paths, and CA key material (CP-generated Secret / DataSource /
+// Vault) — are not present in the Mesh manifest, and the builtin path mints a new CA.
+// Under v3 TransformMeshForTarget deletes the block and calls this for the text.
+func warnMeshMtlsBackends(obj map[string]interface{}, name string, target TargetVersion) []string {
 	// Kubernetes format: spec.mtls; Universal format: top-level mtls.
 	mtls, _ := obj["mtls"].(map[string]interface{})
 	if mtls == nil {
@@ -668,33 +771,60 @@ func warnMeshMtlsBackends(obj map[string]interface{}, name string) []string {
 	if mtls == nil {
 		return nil
 	}
-	backends, ok := mtls["backends"].([]interface{})
-	if !ok || len(backends) == 0 {
+	backends, _ := mtls["backends"].([]interface{})
+	enabled, _ := mtls["enabledBackend"].(string)
+	if len(backends) == 0 && enabled == "" {
 		return nil
 	}
 
-	msg := fmt.Sprintf(
-		"Mesh %q: spec.mtls.backends is the legacy mTLS/identity model. Kuma 2.12+ introduces "+
-			"MeshIdentity (workload identity) + MeshTrust (trust domains) as the successor, and the "+
-			"experimental SPIFFE rules[] MeshTrafficPermission API requires MeshIdentity. This is a "+
-			"guided CA cutover (see Kuma MADR-074), not a manifest rewrite — the trust domain, "+
-			"per-workload SPIFFE paths, and CA key material are not in this manifest, and the builtin "+
-			"backend mints a new CA. spec.mtls is NOT deprecated, so no action is required today; plan "+
-			"the migration when adopting MeshIdentity / the rules[] MeshTrafficPermission API.",
-		name)
+	const cutover = "This is a guided CA cutover (see Kuma MADR-074), not a manifest rewrite — the " +
+		"trust domain, per-workload SPIFFE paths, and CA key material are not in this manifest, and the " +
+		"builtin backend mints a new CA."
+
+	var msg string
+	if target.IsV3() {
+		msg = fmt.Sprintf(
+			"Mesh %q: spec.mtls is REMOVED in 3.0 and has been dropped from the Mesh output. BLOCKING: "+
+				"before upgrading, create a MeshIdentity (and MeshTrust) that selects every proxy in this "+
+				"mesh, unless one already does. On 3.0 spec.mtls issues no certificates: a mesh whose only "+
+				"identity source is spec.mtls serves and accepts plaintext, and MeshTLS and "+
+				"MeshTrafficPermission stop applying to its proxies. Finish the MeshIdentity migration "+
+				"first: after the upgrade, proxies still holding a legacy mesh certificate are not trusted "+
+				"by MeshIdentity peers and there is no rolling path back. %s The upgrade does not delete "+
+				"the <mesh>.ca-builtin-cert-<backend> / <mesh>.ca-builtin-key-<backend> Secrets; delete "+
+				"them yourself once no tooling needs the CA material.",
+			name, cutover)
+	} else {
+		msg = fmt.Sprintf(
+			"Mesh %q: spec.mtls is the legacy mTLS/identity model and is removed in Kuma 3.0. Migrating "+
+				"to MeshIdentity (workload identity) + MeshTrust (trust domains) is required before "+
+				"upgrading to 3.0: on 3.0 spec.mtls is dropped silently and issues no certificates, so a "+
+				"mesh whose only identity source is spec.mtls serves plaintext and MeshTLS / "+
+				"MeshTrafficPermission stop applying. %s The field still works on 2.x, so this output keeps it.",
+			name, cutover)
+	}
 
 	// Kong Mesh 2.14 added the MeshIdentity `Extension` provider, which is the
 	// native successor for the enterprise CA backends. Name the mapping when the
 	// Mesh actually uses one of them — it is not on the docs site, so it is easy
 	// to conclude that only Bundled and Spire exist.
 	if ext := kongMeshCABackendExtensions(backends); len(ext.types) > 0 {
-		msg += fmt.Sprintf(
-			" This Mesh uses the Kong Mesh CA backend type(s) %s. Kong Mesh 2.14 added a matching "+
-				"MeshIdentity provider: spec.provider.type: Extension with spec.provider.extension.name "+
-				"set to %s. Note the Kuma docs still list only Bundled and Spire as providers — the "+
-				"Extension provider and its acmpca/vault/certmanager configs are undocumented. "+
-				"certmanager is Kubernetes-only; on Universal the CP does not register it.",
-			strings.Join(ext.types, ", "), strings.Join(ext.names, "/"))
+		if target.IsV3() {
+			msg += fmt.Sprintf(
+				" This Mesh uses the Kong Mesh CA backend type(s) %s, which are removed in Kong Mesh 3.0. "+
+					"Replace them with a MeshIdentity using spec.provider.type: Extension with "+
+					"spec.provider.extension.name set to %s.",
+				strings.Join(ext.types, ", "), strings.Join(ext.names, "/"))
+		} else {
+			msg += fmt.Sprintf(
+				" This Mesh uses the Kong Mesh CA backend type(s) %s. Kong Mesh 2.14 added a matching "+
+					"MeshIdentity provider: spec.provider.type: Extension with spec.provider.extension.name "+
+					"set to %s.",
+				strings.Join(ext.types, ", "), strings.Join(ext.names, "/"))
+		}
+		msg += " Note the Kuma docs still list only Bundled and Spire as providers — the " +
+			"Extension provider and its acmpca/vault/certmanager configs are undocumented. " +
+			"certmanager is Kubernetes-only; on Universal the CP does not register it."
 	}
 
 	return []string{msg}
@@ -705,6 +835,7 @@ func warnMeshMtlsBackends(obj map[string]interface{}, name string) []string {
 var caBackendExtensionMap = map[string]string{
 	"vault":        "vault",
 	"acm":          "acmpca",
+	"acmpca":       "acmpca",
 	"cert-manager": "certmanager",
 	"certmanager":  "certmanager",
 }
@@ -736,36 +867,6 @@ func kongMeshCABackendExtensions(backends []interface{}) caBackendExtensions {
 	return out
 }
 
-// ---- Mesh meshServices default flip to Exclusive (advisory, 3.0) --------------
-
-// warnMeshServicesDefaultFlip advises when a Mesh has no spec.meshServices block. Kuma 3.0
-// changes the default for such meshes from permissive to meshServices.mode: Exclusive
-// (kumahq/kuma#17102), which restricts outbound connectivity to explicitly-reachable services
-// and requires reachableServices/reachableBackends to name MeshService display names. A mesh
-// that already sets meshServices (any mode) is left alone — the flip only affects the nil block.
-func warnMeshServicesDefaultFlip(obj map[string]interface{}, name string) []string {
-	// Kubernetes format: spec.meshServices; Universal format: top-level meshServices.
-	if v, ok := obj["meshServices"]; ok && v != nil {
-		return nil
-	}
-	if spec, ok := obj["spec"].(map[string]interface{}); ok {
-		if v, ok := spec["meshServices"]; ok && v != nil {
-			return nil
-		}
-	}
-	return []string{fmt.Sprintf(
-		"Mesh %q: no spec.meshServices block is set. Kuma 3.0 removes the meshServices field and its "+
-			"mode enum from the Mesh schema entirely and behaves as the old Exclusive mode "+
-			"unconditionally (kumahq/kuma#17102 flipped the nil default first; the field was then "+
-			"removed). Outbound connectivity is restricted to explicitly-reachable services, and "+
-			"reachableBackends must name MeshService resources — reachableServices and the "+
-			"kuma.io/transparent-proxying-reachable-services annotation are removed in 3.0 too. Set "+
-			"spec.meshServices.mode explicitly now (Everywhere preserves current 2.x behaviour) and "+
-			"declare reachable backends before upgrading, to avoid breaking connectivity. A Mesh that "+
-			"still sets meshServices applies successfully on 3.0; the field is silently ignored.",
-		name)}
-}
-
 // ---- Dataplane transparentProxying.redirectPortInboundV6 (v2.9) --------------
 
 // warnDataplaneRedirectPortInboundV6 checks both Universal (networking at top level)
@@ -783,35 +884,34 @@ func warnDataplaneRedirectPortInboundV6(obj map[string]interface{}, name string)
 		name)}
 }
 
-// ---- Dataplane transparentProxying.reachableServices (v2.10) ----------------
+// ---- Dataplane transparentProxying.reachableServices (v2.10, removed 3.0) ----
 
 // warnDataplaneReachableServices warns when a Dataplane uses reachableServices with
 // legacy kuma.io/service names. In Kuma 2.10+ with spec.meshServices.mode: Exclusive,
 // service names in reachableServices must be updated to use MeshService display names.
-func warnDataplaneReachableServices(obj map[string]interface{}, name string) []string {
-	// Universal format: networking at top level; Kubernetes: under spec.
-	networking, _ := obj["networking"].(map[string]interface{})
-	if networking == nil {
-		spec, _ := obj["spec"].(map[string]interface{})
-		networking, _ = spec["networking"].(map[string]interface{})
-	}
-	if networking == nil {
-		return nil
-	}
-	tp, _ := networking["transparentProxying"].(map[string]interface{})
-	if tp == nil {
-		return nil
-	}
+// Under v3 the field is removed outright; fixDataplaneReachableServicesForV3 has
+// already converted the decodable entries, so this reports what is left.
+func warnDataplaneReachableServices(obj map[string]interface{}, name string, target TargetVersion) []string {
+	tp := dataplaneTransparentProxying(obj)
 	services, _ := tp["reachableServices"].([]interface{})
 	if len(services) == 0 {
 		return nil
+	}
+	if target.IsV3() {
+		return []string{fmt.Sprintf(
+			"Dataplane %q: transparentProxying.reachableServices is removed in 3.0 (with the "+
+				"kuma.io/service-based mechanism) and these entries could not be converted: %v. Replace each "+
+				"with a reachableBackends ref, e.g. `reachableBackends: {refs: [{kind: MeshService, labels: "+
+				"{kuma.io/display-name: <name>}, port: <port>}]}` (add k8s.kuma.io/namespace for a "+
+				"Kubernetes service).",
+			name, services)}
 	}
 	return []string{fmt.Sprintf(
 		"Dataplane %q: transparentProxying.reachableServices uses legacy kuma.io/service names (%v). "+
 			"When spec.meshServices.mode is Exclusive (opt-in since Kuma 2.10; the default for meshes "+
 			"without a meshServices block in Kuma 3.0), update these to the corresponding MeshService "+
 			"display names (kuma.io/display-name label value), or migrate to the structured "+
-			"reachableBackends.refs[] form.",
+			"reachableBackends.refs[] form. 3.0 removes reachableServices.",
 		name, services)}
 }
 
@@ -1195,66 +1295,135 @@ func forEachPassthroughMatch(obj map[string]interface{}, fn func(map[string]inte
 	visit(obj)
 }
 
-// ---- Deprecated Kubernetes annotations (v2.13 / v2.14) -----------------------
+// ---- Deprecated / removed Kubernetes annotations (2.13, 2.14, 3.0) -----------
 
-// deprecatedPodAnnotations mirrors PodAnnotationDeprecations in
-// kuma/pkg/plugins/runtime/k8s/metadata/annotations.go on release-2.14.
+// podAnnotationDeprecation holds the message for each target. An empty v2 means the
+// annotation is still valid on 2.x and is flagged only under --to-latest v3. An
+// empty v3 means the v2 message applies to 3.0 as well.
+type podAnnotationDeprecation struct {
+	v2 string
+	v3 string
+}
+
+func (d podAnnotationDeprecation) message(target TargetVersion) string {
+	if target.IsV3() && d.v3 != "" {
+		return d.v3
+	}
+	return d.v2
+}
+
+const (
+	reasonEbpfRemoved = "is removed in 3.0 with the eBPF transparent proxy and silently ignored. Migrate to the " +
+		"iptables transparent proxy (the default) and run `kumactl uninstall ebpf` with the pre-upgrade " +
+		"version before upgrading, or the pinned BPF programs keep intercepting traffic"
+	reasonPrometheus = "is deprecated in favour of the MeshMetric policy — move the scrape configuration into a " +
+		"MeshMetric resource targeting this workload"
+	reasonIgnored = "Because it is ignored rather than rejected, a Pod still carrying it is silently running " +
+		"with the default rather than the value set here"
+)
+
+// deprecatedPodAnnotations lists annotations deprecated on 2.14 or removed in 3.0.
+//
+// v2 entries mirror PodAnnotationDeprecations in
+// kuma/pkg/plugins/runtime/k8s/metadata/annotations.go on release-2.14. v3-only
+// entries come from UPGRADE.md "Upgrade to 3.0.0" and were checked against the 3.0
+// annotations.go, where none of them is defined any more.
 //
 // The list is deliberately exact-match rather than prefix-match. Only
 // prometheus.metrics.kuma.io/port and /path are deprecated; the
 // aggregate-<name>-(port|path|enabled|address) family is NOT, so a prefix match
 // would produce false positives on a supported configuration.
-var deprecatedPodAnnotations = map[string]string{
-	"kuma.io/builtindns": "is no longer supported and is IGNORED — use \"kuma.io/builtin-dns\" instead. " +
-		"Because it is ignored rather than rejected, a Pod still carrying it is silently running " +
-		"with the default rather than the value set here",
-	"kuma.io/builtindnsport": "is no longer supported and is IGNORED — use \"kuma.io/builtin-dns-port\" " +
-		"instead. Because it is ignored rather than rejected, a Pod still carrying it is silently " +
-		"running with the default rather than the value set here",
-	"kuma.io/virtual-probes": "is deprecated and will be removed in a future release. The default " +
-		"flipped to disabled in Kuma 2.13; the replacement is the Application Probe Proxy. Confirm " +
-		"probes still work after upgrading",
-	"kuma.io/virtual-probes-port": "is being replaced by \"kuma.io/application-probe-proxy-port\"",
-	"kuma.io/sidecar-injection": "is not supported as an annotation — it must be set as a LABEL. " +
-		"As an annotation it has no effect, so injection is following whatever the namespace default is",
-	"prometheus.metrics.kuma.io/port": "is deprecated in favour of the MeshMetric policy — move the " +
-		"scrape configuration into a MeshMetric resource targeting this workload",
-	"prometheus.metrics.kuma.io/path": "is deprecated in favour of the MeshMetric policy — move the " +
-		"scrape configuration into a MeshMetric resource targeting this workload",
+var deprecatedPodAnnotations = map[string]podAnnotationDeprecation{
+	"kuma.io/builtindns": {v2: "is no longer supported and is IGNORED — use \"kuma.io/builtin-dns\" instead. " +
+		reasonIgnored},
+	"kuma.io/builtindnsport": {v2: "is no longer supported and is IGNORED — use \"kuma.io/builtin-dns-port\" " +
+		"instead. " + reasonIgnored},
+	"kuma.io/virtual-probes": {
+		v2: "is deprecated and will be removed in a future release. The default " +
+			"flipped to disabled in Kuma 2.13; the replacement is the Application Probe Proxy. Confirm " +
+			"probes still work after upgrading",
+		v3: "is removed in 3.0 with Virtual Probes. The injector no longer rewrites probes to a virtual probes " +
+			"listener; Application Probe Proxy (kuma.io/application-probe-proxy-port) is the only probe-rewriting " +
+			"path and is on by default. Remove the annotation and re-inject the pod after upgrading",
+	},
+	"kuma.io/virtual-probes-port": {
+		v2: "is being replaced by \"kuma.io/application-probe-proxy-port\"",
+		v3: "is removed in 3.0 with Virtual Probes — use \"kuma.io/application-probe-proxy-port\" and " +
+			"re-inject the pod after upgrading",
+	},
+	"kuma.io/sidecar-injection": {v2: "is not supported as an annotation — it must be set as a LABEL. " +
+		"As an annotation it has no effect, so injection is following whatever the namespace default is"},
+	"prometheus.metrics.kuma.io/port": {v2: reasonPrometheus},
+	"prometheus.metrics.kuma.io/path": {v2: reasonPrometheus},
+
+	// 3.0 removals.
+	"kuma.io/ingress": {v3: "is removed in 3.0 and ignored: the Pod is no longer turned into a ZoneIngress. It " +
+		"is reconciled as a regular Dataplane if it has a sidecar, otherwise ignored. Replace it with the chart's " +
+		"zone proxy Deployment (meshes[].ingress.enabled) or label its Service k8s.kuma.io/zone-proxy-type"},
+	"kuma.io/egress": {v3: "is removed in 3.0 and ignored: the Pod is no longer turned into a ZoneEgress. It " +
+		"is reconciled as a regular Dataplane if it has a sidecar, otherwise ignored. Replace it with the chart's " +
+		"zone proxy Deployment (meshes[].egress.enabled) or label its Service k8s.kuma.io/zone-proxy-type"},
+	"kuma.io/ingress-public-address": {v3: "is removed in 3.0 — the zone's public address comes from " +
+		"MeshZoneAddress (created automatically on Kubernetes for each mesh-scoped zone proxy Service)"},
+	"kuma.io/ingress-public-port": {v3: "is removed in 3.0 — the zone's public port comes from " +
+		"MeshZoneAddress (created automatically on Kubernetes for each mesh-scoped zone proxy Service)"},
+	"kuma.io/mesh": {v3: "is no longer honored as an annotation in 3.0 — only the kuma.io/mesh LABEL (on the " +
+		"resource, or on its Namespace) assigns the mesh. A resource with only the annotation lands in the " +
+		"default mesh. Switch it to a label before upgrading"},
+	annotationReachableServices: {v3: "is removed in 3.0 with the kuma.io/service-based reachable services. " +
+		"Use kuma.io/reachable-backends with `refs: [{kind: MeshService, labels: {kuma.io/display-name: <name>, " +
+		"k8s.kuma.io/namespace: <ns>}, port: <port>}]`"},
+	"kuma.io/xds-transport-protocol-variant": {v3: "is removed in 3.0 — Delta xDS is the only protocol. Remove " +
+		"it; for a zero-downtime upgrade set KUMA_EXPERIMENTAL_DELTA_XDS=true on the old control plane and " +
+		"restart the proxies first"},
+	"kuma.io/builtin-dns-logging": {v3: "is removed in 3.0 with CoreDNS (the embedded DNS proxy is always used)"},
+	"kuma.io/gateway": {v3: "is removed in 3.0 and ignored: the pod is injected like any other workload and its " +
+		"inbound traffic is redirected through Envoy. Replace it with traffic.kuma.io/exclude-inbound-ports " +
+		"listing every port the gateway listens on (comma-separated, no all-ports value), and annotate the " +
+		"fronting Service kuma.io/ignore: \"true\""},
+	"kuma.io/transparent-proxying-ebpf":                          {v3: reasonEbpfRemoved},
+	"kuma.io/transparent-proxying-ebpf-bpf-fs-path":              {v3: reasonEbpfRemoved},
+	"kuma.io/transparent-proxying-ebpf-cgroup-path":              {v3: reasonEbpfRemoved},
+	"kuma.io/transparent-proxying-ebpf-tc-attach-iface":          {v3: reasonEbpfRemoved},
+	"kuma.io/transparent-proxying-ebpf-instance-ip-env-var-name": {v3: reasonEbpfRemoved},
+	"kuma.io/transparent-proxying-ebpf-programs-source-path":     {v3: reasonEbpfRemoved},
 }
 
-// warnDeprecatedAnnotations warns about metadata annotations deprecated in the
-// 2.13/2.14 line. Unlike ScanKumaAnnotations (which repairs the yes/no boolean
-// spelling), these are deprecated wholesale in favour of a policy resource, a
-// renamed annotation, or a label.
+// warnDeprecatedAnnotations warns about annotations deprecated on 2.13/2.14 or
+// removed in 3.0, on the resource's own metadata.annotations and on a workload's
+// pod template (spec.template / spec.jobTemplate.spec.template). Unlike
+// ScanKumaAnnotations (which reports the yes/no boolean spelling), these are
+// deprecated wholesale in favour of a policy resource, a renamed annotation, or a
+// label.
 //
 // Several of these are ignored rather than rejected by the control plane, so the
 // only signal an operator gets is a CP log line at Pod admission — which is
 // easily missed. That is why they are surfaced here.
-func warnDeprecatedAnnotations(obj map[string]interface{}, name, kind string) []string {
-	meta, _ := obj["metadata"].(map[string]interface{})
-	if meta == nil {
-		return nil
-	}
-	anns, _ := meta["annotations"].(map[string]interface{})
-	if len(anns) == 0 {
-		return nil
-	}
-
-	// Sort for deterministic warning order across runs.
-	keys := make([]string, 0, len(anns))
-	for k := range anns {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-
+func warnDeprecatedAnnotations(obj map[string]interface{}, name, kind string, target TargetVersion) []string {
 	var warnings []string
-	for _, k := range keys {
-		reason, ok := deprecatedPodAnnotations[k]
-		if !ok {
-			continue
+	for _, site := range podAnnotationSites(obj) {
+		where := ""
+		if site.path != "metadata.annotations" {
+			where = " (" + site.path + ")"
 		}
-		warnings = append(warnings, fmt.Sprintf("%s %q: annotation %q %s.", kind, name, k, reason))
+		// Sort for deterministic warning order across runs.
+		for _, k := range sortedMapKeys(site.annotations) {
+			if d, ok := deprecatedPodAnnotations[k]; ok {
+				if reason := d.message(target); reason != "" {
+					warnings = append(warnings, fmt.Sprintf("%s %q: annotation %q%s %s.", kind, name, k, where, reason))
+				}
+			}
+		}
+		if target.IsV3() {
+			if v, ok := site.annotations["kuma.io/application-probe-proxy-port"]; ok && fmt.Sprint(v) == "0" {
+				warnings = append(warnings, fmt.Sprintf(
+					"%s %q: annotation \"kuma.io/application-probe-proxy-port\": \"0\"%s no longer falls back to "+
+						"virtual probes in 3.0 — it leaves the pod's original probes untouched, so they hit the "+
+						"application through the mesh. Remove the annotation to keep Application Probe Proxy, or "+
+						"exclude the probe ports from inbound redirection.",
+					kind, name, where))
+			}
+		}
 	}
 	return warnings
 }
@@ -1308,49 +1477,6 @@ func warnDataplaneInboundTags(obj map[string]interface{}, name string, target Ta
 			"targetRef or MeshService generation that selects on them stops matching, with nothing "+
 			"logged. Move the tags to Dataplane labels before applying to 3.0.",
 		name, tagged)}
-}
-
-// ---- Dataplane networking.gateway.type: BUILTIN (removed 3.0) ---------------
-
-// warnDataplaneGatewayBuiltinType warns when a Dataplane declares a BUILTIN
-// gateway. Kuma 3.0 removes the built-in gateway API in full: the BUILTIN
-// GatewayType ordinal is `reserved` in the proto (kuma#18058), so a Dataplane
-// still setting it is rejected at parse time, not merely at admission.
-//
-// Fires only under TargetV3: DELEGATED and BUILTIN are both valid in the 2.x
-// line, so a forward-looking advisory under TargetV2 would fire on every
-// built-in-gateway Dataplane in the input with nothing to act on yet — the
-// migrator's Gateway/MeshGatewayInstance scenarios are the actual migration
-// path for the gateway itself; this only flags the Dataplane side of it.
-func warnDataplaneGatewayBuiltinType(obj map[string]interface{}, name string, target TargetVersion) []string {
-	if !target.IsV3() {
-		return nil
-	}
-	networking, _ := obj["networking"].(map[string]interface{})
-	if networking == nil {
-		if spec, ok := obj["spec"].(map[string]interface{}); ok {
-			networking, _ = spec["networking"].(map[string]interface{})
-		}
-	}
-	if networking == nil {
-		return nil
-	}
-	gateway, _ := networking["gateway"].(map[string]interface{})
-	if gateway == nil {
-		return nil
-	}
-	if gwType, _ := gateway["type"].(string); gwType != "BUILTIN" {
-		return nil
-	}
-	return []string{fmt.Sprintf(
-		"Dataplane %q: networking.gateway.type BUILTIN is removed in 3.0 — the GatewayType ordinal is "+
-			"reserved in the proto, so this is rejected at parse time, not just admission. Migrate the "+
-			"built-in gateway to a delegated gateway (a Deployment/Service you own) before upgrading. "+
-			"Note 3.0 also removes the kuma.io/gateway marking itself rather than renaming it: annotate "+
-			"the pod traffic.kuma.io/exclude-inbound-ports with the gateway's listen ports, and the "+
-			"fronting Service kuma.io/ignore: \"true\" — see the MeshGatewayInstance advisory for the "+
-			"settings to carry over.",
-		name)}
 }
 
 // ---- MeshLoadBalancingStrategy crossZone target restriction (3.0) -----------
@@ -1420,28 +1546,23 @@ var legacyDataSourceKeys = []string{"inline", "inlineString", "secret"}
 // clientCert,clientKey} uses the legacy DataSource shape that 3.0 replaces with
 // SecureDataSource.
 //
-// This is warn-only rather than auto-converted even under v3 because the
-// conversion is not a pure rename: `inline` carried base64 and its successor
-// `insecureInline.value` carries plain text, so rewriting means decoding
-// credential material and re-emitting it in the clear. That is a decision for
-// the operator, not a silent transform.
+// Under v3, fixMESDataSourcesForV3 runs first and rewrites `inlineString` and
+// `secret`, so this only reports what is left: `inline`, which stays warn-only
+// because the conversion is not a pure rename — `inline` carried base64 and its
+// successor `insecureInline.value` carries plain text, so rewriting means
+// decoding credential material and re-emitting it in the clear. That is a
+// decision for the operator, not a silent transform.
+//
+// Under v2 every variant is reported as a forward-looking advisory; 2.14.6 and
+// later accept the new shape, so the rewrite can be done on 2.x.
 func warnMeshExternalServiceDataSource(obj map[string]interface{}, name string, target TargetVersion) []string {
-	tls, _ := obj["tls"].(map[string]interface{})
-	if tls == nil {
-		if spec, ok := obj["spec"].(map[string]interface{}); ok {
-			tls, _ = spec["tls"].(map[string]interface{})
-		}
-	}
-	if tls == nil {
-		return nil
-	}
-	verification, _ := tls["verification"].(map[string]interface{})
+	verification := mesTLSVerification(obj)
 	if verification == nil {
 		return nil
 	}
 
 	var warnings []string
-	for _, field := range []string{"caCert", "clientCert", "clientKey"} {
+	for _, field := range mesDataSourceFields {
 		ds, _ := verification[field].(map[string]interface{})
 		if ds == nil {
 			continue
@@ -1460,6 +1581,10 @@ func warnMeshExternalServiceDataSource(obj map[string]interface{}, name string, 
 				replacement = "type: InsecureInline + insecureInline.value"
 			} else {
 				replacement = "type: Secret + secretRef"
+			}
+			if !target.IsV3() {
+				extra += " Kuma 2.14.6 and later accept both shapes, so rewrite it on 2.14.6+ before " +
+					"upgrading the global control plane to 3.0."
 			}
 			warnings = append(warnings, fmt.Sprintf(
 				"MeshExternalService %q: spec.tls.verification.%s.%s uses the legacy DataSource shape, %s. "+
@@ -1509,9 +1634,11 @@ func warnMeshOPATargetRefFields(obj map[string]interface{}, name string, target 
 	}
 	if len(present) > 0 {
 		msg := fmt.Sprintf(
-			"MeshOPA %q: spec.targetRef.{%s} %s use spec.targetRef.labels[\"kuma.io/display-name\"] instead.",
+			"MeshOPA %q: spec.targetRef.{%s} %s. For kind: MeshService with name: <svc>, the "+
+				"documented rewrite is kind: Dataplane with labels: {app: <svc>}; namespace and mesh "+
+				"are dropped.",
 			name, strings.Join(present, ","),
-			target.removalNote("3.0 removes these targetRef fields —"))
+			target.removalNote("select the proxies through labels instead"))
 
 		// Only `name` carries the scope-widening hazard; namespace/mesh are pruned.
 		for _, f := range present {
@@ -1606,21 +1733,26 @@ func warnMeshOPALegacyDataSource(obj map[string]interface{}, name string, target
 // policy is removed in 3.0. Leftover objects go inert rather than being rejected,
 // and Helm does not delete the CRD, so the resource can linger and look healthy
 // while enforcing nothing.
+//
+// Under v3 the pipeline keeps the document out of the apply tree (it goes to
+// ManualDir) and the report lists it under "Delete Before Upgrading to 3.0".
 func warnMeshGlobalRateLimitRemoved(_ map[string]interface{}, name string, target TargetVersion) []string {
 	if target.IsV3() {
 		return []string{fmt.Sprintf(
-			"MeshGlobalRateLimit %q: this Kong Mesh policy is REMOVED in 3.0, along with its CP "+
+			"MeshGlobalRateLimit %q: removed in 3.0 with no in-mesh replacement, together with its CP "+
 				"support, the rate-limit service in the Helm chart (ratelimit.*, global.ratelimit.*), "+
-				"the KMESH_GLOBAL_RATE_LIMIT_* env vars and the kmesh.globalRateLimit CP config. "+
-				"Leftover objects become inert rather than rejected, and Helm does not delete the "+
-				"CRD — the policy will still be listed while enforcing nothing. Remove it and drop "+
-				"the CRD manually (kubectl delete crd meshglobalratelimits.kuma.io). There is no "+
-				"in-mesh replacement; plan rate limiting at the gateway or with MeshRateLimit.",
-			name)}
+				"the KMESH_GLOBAL_RATE_LIMIT_* env vars and the kmesh.globalRateLimit CP config. Delete "+
+				"it before upgrading and remove the ratelimit.* / global.ratelimit.* Helm overrides. It "+
+				"is not part of any apply step: the copy is under %s/ and the report lists it under "+
+				"\"Delete Before Upgrading to 3.0\". A leftover object is not rejected, it just enforces "+
+				"nothing. Helm does not delete the CRD; remove it after upgrading with "+
+				"kubectl delete crd meshglobalratelimits.kuma.io. Plan rate limiting at the gateway or "+
+				"with MeshRateLimit.",
+			name, ManualDir)}
 	}
 	return []string{fmt.Sprintf(
-		"MeshGlobalRateLimit %q: this Kong Mesh policy works in 2.14 but is removed in 3.0, with no "+
-			"in-mesh replacement. Leftover objects go inert rather than being rejected, so plan the "+
-			"replacement before upgrading.",
+		"MeshGlobalRateLimit %q: works in 2.14, removed in 3.0 with no in-mesh replacement. Delete it "+
+			"before upgrading to 3.0: a leftover object is not rejected, it just enforces nothing. Plan "+
+			"rate limiting at the gateway or with MeshRateLimit.",
 		name)}
 }

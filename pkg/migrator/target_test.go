@@ -228,7 +228,7 @@ spec:
 		want   string
 	}{
 		{TargetV2, "removed in 3.0"},
-		{TargetV3, "REMOVED in 3.0"},
+		{TargetV3, "Delete Before Upgrading to 3.0"},
 	} {
 		_, warnings := ScanForDeprecations([]byte(input), tc.target)
 		if len(warnings) == 0 || !strings.Contains(strings.Join(warnings, "\n"), tc.want) {
@@ -288,7 +288,7 @@ spec:
 `
 	_, warnings := ScanForDeprecations([]byte(input), TargetV2)
 	joined := strings.Join(warnings, "\n")
-	for _, want := range []string{"name", "namespace", "mesh", "kuma.io/display-name", "widen"} {
+	for _, want := range []string{"name", "namespace", "mesh", "kind: Dataplane", "labels: {app: <svc>}", "widen"} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("expected the v2 MeshOPA advisory to mention %q, got: %v", want, warnings)
 		}
@@ -480,13 +480,14 @@ spec:
         inlineString: |
           -----BEGIN CERTIFICATE-----
 `
-	_, v3 := ScanForDeprecations([]byte(input), TargetV3)
+	// Under v3 inlineString is rewritten (see v3_mes_test.go for the shape).
+	out, v3 := ScanForDeprecations([]byte(input), TargetV3)
 	joinedV3 := strings.Join(v3, "\n")
-	if !strings.Contains(joinedV3, "caCert.inlineString") {
-		t.Errorf("expected inlineString to be flagged, got: %v", v3)
+	if !strings.Contains(joinedV3, "caCert.inlineString rewritten") {
+		t.Errorf("expected inlineString to be rewritten, got: %v", v3)
 	}
-	if !strings.Contains(joinedV3, "removed in 3.0") {
-		t.Errorf("v3 wording should state the removal is active, got: %v", v3)
+	if !strings.Contains(string(out), "InsecureInline") {
+		t.Errorf("expected SecureDataSource output under v3, got:\n%s", out)
 	}
 	// inlineString is already plain text, so the base64 caveat must NOT appear.
 	if strings.Contains(joinedV3, "base64") {
@@ -648,8 +649,9 @@ spec:
 }
 
 // TestScanForDeprecations_DataplaneGatewayBuiltinType covers the removal of
-// the BUILTIN gateway type (kuma#18058) — reserved in the proto on 3.0, so a
-// Dataplane still using it is rejected at parse time.
+// the BUILTIN gateway type — reserved in the proto on 3.0, so the whole
+// networking.gateway message is ignored. The v3 rewrite (fixDataplaneGatewayForV3)
+// removes networking.gateway of any type; see v3_dataplane_test.go.
 func TestScanForDeprecations_DataplaneGatewayBuiltinType(t *testing.T) {
 	input := `type: Dataplane
 mesh: default

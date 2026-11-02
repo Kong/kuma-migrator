@@ -163,6 +163,15 @@ contain deprecated fields the migrator can warn about or fix. `Workload` stays s
 both environments: it is CP-generated either way, only *where* the `kuma.io/workload` label
 lives differs (on the `Dataplane` rather than a Pod annotation on Universal).
 
+The detected environment is recorded as `environment` in the context's `.kuma-migrator.json`,
+and `migrate` uses it to pick the same skip list, so Universal `Dataplane`s are scanned there too.
+
+If `GET <cpURL>/config` fails, the tool prints a warning and continues in unknown mode: no
+origin filter (zone-origin resources are extracted from a Global CP) and the Kubernetes skip
+list. On Kong Mesh 3.0, `/config` requires the `VIEW_CONTROL_PLANE_METADATA` access type, so a
+401/403 here usually means the kumactl context's role lacks it. Check with
+`kumactl get access-roles -o yaml` and add it to the role.
+
 **Kong Konnect (hosted)** — automatically detected when the CP URL contains `api.konghq.com`.
 kumactl stores Personal Access Tokens for Konnect as HTTP headers (`Authorization: Bearer kpat_…`)
 rather than the `authType: tokens` format used by self-hosted CPs. The tool reads both formats.

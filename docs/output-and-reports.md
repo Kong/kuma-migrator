@@ -58,4 +58,11 @@ contains:
   for each context (see [Applying the migrated manifests](apply.md)); a short 3-step stub under
   `--dry-run`
 - **Original Resources to Delete** — resources whose kind changed; includes a collapsible
-  `kubectl delete` command list
+  `kubectl delete` command list. Under `--to-latest v3` the kinds 3.0 removes are listed in the next
+  section instead
+- **Delete Before Upgrading to 3.0** (`--to-latest v3` only) — every source object of a kind 3.0
+  removes (the 12 legacy policies, `ExternalService`, `OPAPolicy`, `MeshGlobalRateLimit`,
+  `MeshGateway*`, `ZoneIngress`/`ZoneEgress`), whether it was converted, where its `_manual/`
+  copy is if not, and the `kubectl delete` or `kumactl delete` command for the tool the context
+  was extracted with. The Apply Checklist gets a matching step before the Global CP upgrade.
+  See [the `_manual/` subtree](apply.md#the-_manual-subtree-v3)

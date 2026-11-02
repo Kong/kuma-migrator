@@ -368,3 +368,46 @@ spec:
 		t.Errorf("expected no hits, got %d", len(hits))
 	}
 }
+
+func TestScanKumaAnnotations_PodTemplate(t *testing.T) {
+	in := `apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: job
+  namespace: ns
+spec:
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          annotations:
+            kuma.io/sidecar-drain-time: "10s"
+            kuma.io/transparent-proxying: "yes"
+`
+	hits, err := ScanKumaAnnotations([]byte(in))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hits) != 1 || hits[0].AnnotationKey != "kuma.io/transparent-proxying" || hits[0].NewValue != "true" ||
+		hits[0].Location != "spec.jobTemplate.spec.template.metadata.annotations" || hits[0].Namespace != "ns" {
+		t.Errorf("unexpected hits: %+v", hits)
+	}
+
+	dep := `apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+spec:
+  template:
+    metadata:
+      annotations:
+        kuma.io/gateway: "no"
+`
+	hits, err = ScanKumaAnnotations([]byte(dep))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hits) != 1 || hits[0].Location != "spec.template.metadata.annotations" || hits[0].Kind != "Deployment" {
+		t.Errorf("unexpected hits: %+v", hits)
+	}
+}
