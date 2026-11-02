@@ -287,7 +287,7 @@ checklist_files() { # report
 # rewrite an existing object, validated with `kubectl replace` (see apply_one).
 checklist_replace_files() { # report
   sed -n '/^## Apply Checklist/,/^## /p' "$1" |
-    grep -oE '^ *kubectl replace -f [^ ]+' | awk '{print $NF}'
+    { grep -oE '^ *kubectl replace -f [^ ]+' || true; } | awk '{print $NF}'
 }
 
 run_target() { # env target
