@@ -73,7 +73,7 @@ and is shown as commands only.</p>
 <p>What lands where:</p>
 <div class="code"><pre class="chroma" data-lang="text"><code>raw-policies/
   prod-eks-zone-ctx/                <span class="o-dim">← KUMA_MODE=zone (single-zone since Kuma 2.6)</span>
-    .kuma-migrator.json             <span class="o-dim">← {"tool":"kubectl","cpMode":"zone","environment":"kubernetes",…}</span>
+    .kuma-migrator.json             <span class="o-dim">← {"tool":"kubectl","cpMode":"zone","federated":false,…}</span>
     mesh-default/
       resiliency/ routing/ zero-trust/ observability/ mesh/
 migrated/
@@ -81,14 +81,13 @@ migrated/
   migration-plan.md
   migration-report.md
 </code></pre></div>
-<p>A control plane still running the older <code>standalone</code> mode is labelled
-<code>prod-eks-standalone-ctx</code> and extracted without an origin filter.</p>
-<blockquote class="callout callout-warning"><p><strong>Warning:</strong> In <code>zone</code> mode <code>extract</code> keeps only resources labelled
-<code>kuma.io/origin: zone</code> (and gateway kinds without an origin label). Before you rely on the
-extracted tree, compare it with the cluster, for example
-<code>kubectl get meshes,meshtimeouts,meshtrafficpermissions -A</code>, and add any missing resource
-to the input tree by hand.</p>
-</blockquote>
+<p>A single-zone control plane is a zone with no Global address, so <code>extract</code> reports
+<code>zone (…), not federated</code> and applies no origin filter: every resource is extracted, labelled
+or not. A control plane still configured with the older <code>standalone</code> mode is labelled
+<code>prod-eks-standalone-ctx</code> and is also extracted without an origin filter. Kuma 3.0 removes
+<code>standalone</code>: rename it to <code>zone</code> before upgrading. The directory name stays
+<code>-standalone-ctx</code>, so earlier extracts remain valid input, and a <code>--to-latest v3</code> report lists
+the rename as blocking (see <a href="../upgrade-plans/#control-plane-topology">Upgrade plans</a>).</p>
 <p>What to review in the report:</p>
 <ul>
 <li><strong>Action Items → Errors</strong>: documents that were not converted (for example <code>TrafficRoute</code>).</li>
@@ -117,7 +116,10 @@ directory; each gets its own context directory.</p>
 </code></pre></div>
 <p>Use <code>--kumactl-context</code> for a Global control plane that runs on Universal (PostgreSQL store).
 On 3.0 that is the only supported setup for a Global control plane
-(<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md">Kuma <code>UPGRADE.md</code></a>).</p>
+(<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#global-control-plane-on-kubernetes-is-no-longer-supported">Kuma <code>UPGRADE.md</code></a>).
+The <code>global-prod</code> control plane above is Kubernetes-native, so a <code>--to-latest v3</code> report on
+this tree opens with a blocking <strong>Control Plane Topology</strong> section for it (see
+<a href="../upgrade-plans/#control-plane-topology">Upgrade plans</a>).</p>
 <p>What each extraction gets:</p>
 <div class="table-wrap"><table>
 <thead>
@@ -136,7 +138,7 @@ On 3.0 that is the only supported setup for a Global control plane
 <tr>
 <td><code>zone-eu-west1-prod-zone-ctx</code></td>
 <td>Policies created on that zone, its <code>MeshGatewayInstance</code>/<code>MeshGatewayConfig</code>, gateways and routes created directly on the zone</td>
-<td>Everything synced from the Global control plane</td>
+<td>Everything synced from the Global control plane; resources with no <code>kuma.io/origin</code> label, listed after extraction</td>
 </tr>
 <tr>
 <td><code>zone-us-east1-prod-zone-ctx</code></td>

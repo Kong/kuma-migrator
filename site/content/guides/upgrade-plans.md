@@ -40,6 +40,9 @@ and Kong Mesh's latest 2.14 patch accepts the renamed KDS authentication setting
 | `standalone` mode is removed | Rename it to `zone` | [Kuma `UPGRADE.md`](https://github.com/kumahq/kuma/blob/v3.0.1/UPGRADE.md#standalone-mode-removed) |
 | Meshes no longer get default policies | Write the policies you relied on | [Kuma `UPGRADE.md`](https://github.com/kumahq/kuma/blob/v3.0.1/UPGRADE.md#meshes-no-longer-come-with-default-policies) |
 
+A `--to-latest v3` report checks the first two for every extracted control plane. See
+[Control Plane Topology](#control-plane-topology).
+
 ## Which target for which step
 
 | Upgrade step | Run | Apply on |
@@ -155,6 +158,30 @@ order are described in [Apply](apply.md). Two points matter for an upgrade plan:
   cutover (when a `Mesh` sets `spec.mtls`), set `meshServices.mode: Exclusive` on every mesh,
   delete the removed kinds, upgrade, apply backends then policies, apply the `Mesh` files. The
   first four run on 2.14; the `Mesh` files, which drop `spec.mtls`, are applied only on 3.0.
+
+## Control Plane Topology
+
+A `--to-latest v3` report opens with this section when an extracted control plane cannot run
+3.0 as deployed. It is read from each context's `.kuma-migrator.json` (see
+[Extract](extract.md#output-layout)); a context without one is not checked.
+
+| Context | Classified as | Required change |
+|---|---|---|
+| `cpMode: standalone` | Blocking | Set `KUMA_MODE=zone` or `controlPlane.mode: zone`. 3.0 `kuma-cp` fails config validation on `standalone` and the Helm chart fails at template time. |
+| `cpMode: global` with `environment: kubernetes` or `storeType: kubernetes`, not Konnect | Blocking | Deploy a Global `kuma-cp` with `environment=universal` on PostgreSQL (it can still run in a cluster), recreate the Global's resources on it, point every zone's `controlPlane.kdsGlobalAddress` at it, then retire the old one. |
+| `cpMode: zone`, not federated, extracted with `kumactl` | Check | A 2.x `kuma-cp` started with `KUMA_MODE=standalone` reports `zone` through `GET /config`. Confirm the configured value is `zone`. |
+
+Konnect's hosted Global control plane is never flagged. A Global control plane deployed in a
+cluster with `controlPlane.environment: universal` and a PostgreSQL store is not flagged either.
+
+Recreating the Global's resources uses `kumactl apply`, which takes Universal YAML: extract the
+current Global with `--kumactl-context <ctx> --output-format universal`. `extract` skips
+`Secret`, `GlobalSecret` and `AccessRoleBinding`, so copy those separately. Without the Mesh CA
+secrets the new Global generates new CAs.
+
+Sources: [Global control plane on Kubernetes is no longer supported](https://github.com/kumahq/kuma/blob/v3.0.1/UPGRADE.md#global-control-plane-on-kubernetes-is-no-longer-supported),
+[`standalone` mode removed](https://github.com/kumahq/kuma/blob/v3.0.1/UPGRADE.md#standalone-mode-removed),
+[Universal on Kubernetes using Helm](https://kuma.io/docs/latest/production/cp-deployment/multi-zone/).
 
 ## Read Delete Before Upgrading to 3.0
 

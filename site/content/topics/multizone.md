@@ -41,17 +41,25 @@ per-zone `MeshService`s, and target it from clients and from `MeshLoadBalancingS
 ### Extraction
 
 `extract` detects the control plane mode (`GET /config` with `--kumactl-context`, `KUMA_MODE`
-with `--kube-context`) and filters on `kuma.io/origin`:
+with `--kube-context`), whether a zone is federated (a Global address and a zone name are both
+set), and filters on `kuma.io/origin`:
 
 | CP mode | Kept | Skipped |
 |---|---|---|
 | `global` | `kuma.io/origin: global` and unlabelled resources | `kuma.io/origin: zone`: read-only copies of zone-created resources. Listed after extraction with the zone to extract from (its `kuma.io/zone` label) |
-| `zone` | `kuma.io/origin: zone` and gateway-local kinds | Resources synced from the Global CP |
+| `zone`, federated | `kuma.io/origin: zone` and gateway-local kinds | Resources synced from the Global CP (`kuma.io/origin: global`); other resources with no origin label, listed after extraction |
+| `zone`, not federated | Everything | Nothing |
 | `standalone`, unknown | Everything | Nothing |
+
+A zone with no Global owns all of its resources, so no origin filter applies to it. On a
+federated zone, Kuma 2.7+ labels every locally created resource `kuma.io/origin: zone` and
+every synced copy `kuma.io/origin: global`; an unlabelled resource predates the label or
+bypassed the admission webhook, so `extract` lists it instead of guessing its owner.
 
 `MeshGatewayInstance` and `MeshGatewayConfig` are zone-local and never synced to the Global CP.
 Each context is written to its own directory (`<context>-global-ctx`, `<context>-zone-ctx`,
-`<context>-standalone-ctx`). Details: [Extract](../guides/extract.md).
+`<context>-standalone-ctx`). On 3.0 the `standalone` mode is `zone`; the `-standalone-ctx`
+name is kept so existing extracts stay valid. Details: [Extract](../guides/extract.md).
 
 > **Note:** On Kong Mesh 3.0, `GET /config` needs the `VIEW_CONTROL_PLANE_METADATA` access type.
 > Without it `extract` warns and continues with the mode unknown, so no origin filter is applied.
@@ -77,9 +85,12 @@ list (the control plane generates them), so only Universal zone proxies reach `m
 
 - **Upgrade the topology.** Moving a Kubernetes-native Global CP to Universal + PostgreSQL,
   renaming `standalone` to `zone` in `KUMA_MODE`/`controlPlane.mode`, and redeploying zone proxies
-  as mesh-scoped ones are control plane and Helm changes, not manifests. The extractor still
-  labels a standalone context `-standalone-ctx` and accepts a Kubernetes Global CP; both
-  describe topologies 3.0 does not support.
+  as mesh-scoped ones are control plane and Helm changes, not manifests. `extract` records
+  each control plane's mode, environment, store type and federation in `.kuma-migrator.json`,
+  and a `--to-latest v3` report lists a `standalone` control plane and a Kubernetes-native
+  Global CP (Konnect excluded) as blocking, with the steps
+  ([Upgrade plans](../guides/upgrade-plans.md#control-plane-topology)). It does not make
+  the change.
 - **Write `MeshMultiZoneService`.** Which services must keep cross-zone behaviour is a design
   decision.
 - **Create `MeshZoneAddress`.** It does not exist before 3.0 and must be created right after the
@@ -88,7 +99,7 @@ list (the control plane generates them), so only Universal zone proxies reach `m
 ## Manual steps
 
 1. Extract from the Global CP and from every Zone CP. Check the zone-origin skip list printed by
-   the Global extraction.
+   the Global extraction, and the unlabelled-resource list printed by each federated zone.
 2. On 2.14, set `meshServices.mode: Exclusive` on every mesh (see [MeshService](meshservice.md)).
 3. Create `MeshMultiZoneService`s for services that need cross-zone load balancing, and move
    `crossZone` settings onto `to[]` entries that target them.

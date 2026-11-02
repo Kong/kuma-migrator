@@ -65,18 +65,37 @@ is configured with `ApiServer.ReadOnly=true` (common on self-hosted Global CPs),
 is reported as `readOnly=true`, which would produce zero results. Insight kinds are excluded
 by name (`isInsightKind`) instead.
 
-Both modes detect the CP mode at runtime (`GET <cpURL>/config` for kumactl; `KUMA_MODE` env var
-on the CP Deployment for kubectl) and apply origin-based filtering:
+Both modes detect the CP at runtime into a `CPInfo` (`detectKumactlCPInfo`: `GET <cpURL>/config`
+`mode`, `environment`, `store.type`, `multizone.zone.{name,globalAddress}`; `detectKubeCPInfo`:
+`KUMA_MODE`, `KUMA_MULTIZONE_ZONE_NAME`, `KUMA_MULTIZONE_ZONE_GLOBAL_ADDRESS`, `KUMA_ENVIRONMENT`,
+`KUMA_STORE_TYPE` on the CP Deployment) and apply origin-based filtering:
 
 | CP mode | Filter applied |
 |---|---|
-| `zone` | Only `kuma.io/origin: zone` kept; resources with `origin: global` or no label skipped (except gateway-local kinds) |
+| `zone`, federated | Only `kuma.io/origin: zone` kept (`zoneOriginDecision`); `origin: global` skipped silently; no label → kept for gateway-local kinds, otherwise skipped **and recorded** (`ZoneOriginSkip{NoOriginLabel: true}`) |
+| `zone`, not federated | All resources extracted (no origin filter) — `originFilterMode` passes `""` |
 | `global` | Resources with `kuma.io/origin: zone` **skipped** — these are zone-created policies synced read-only to the Global CP. The user is told which zone to target (via `kuma.io/zone` label). Resources with `origin: global` or no label are extracted normally. |
 | `standalone` / unknown | All resources extracted (no origin filter) |
 
-Zone-origin skips on Global CP are accumulated into `[]ZoneOriginSkip` and printed after
-`ExtractDone` as a `⚠` warning section listing each skipped resource and the zone to target.
+**Federation** mirrors upstream `Config.IsFederatedZoneCP` (kuma `pkg/config/app/kuma-cp/config.go`):
+zone mode + non-empty Global address + non-empty zone name (`isFederatedZone`). The Helm chart
+always renders `KUMA_MULTIZONE_ZONE_GLOBAL_ADDRESS` in zone mode, **empty** when
+`controlPlane.kdsGlobalAddress` is unset, so the value is checked, not the variable's presence.
+`/config`'s `globalAddress` is `omitempty`. Why no filter on a non-federated zone: Kuma 2.7+
+labels every zone-created resource `kuma.io/origin: zone` whether or not the zone is federated
+(`labels.Compute`, webhook defaulter / API server), but objects created on ≤2.6 and never
+updated carry no label — the old zone filter silently dropped them on a single-zone CP. Note a
+2.x `kuma-cp` started with `KUMA_MODE=standalone` rewrites it to `zone` at startup
+(`app/kuma-cp/cmd/run.go`), so `/config` reports `zone`; only the kubectl path sees `standalone`.
+
+Origin skips are accumulated into `[]ZoneOriginSkip` and printed after `ExtractDone` by
+`printZoneOriginSkips`: zone-origin skips on a Global CP (with the zone to target) and, in a
+separate section (`printNoOriginSkips`), unlabelled resources skipped on a federated zone (with
+their mesh and what to do). Resources excluded by `--mesh` are not recorded.
 Unknown mode falls back to extracting everything.
+
+`runKubectl` (package var in `kube.go`) is the kubectl runner for the kubectl path; tests
+substitute a fake (`federation_test.go`).
 
 The kumactl path also reads the `environment` field from `GET <cpURL>/config`
 (`"kubernetes"` or `"universal"`) to select the appropriate default skip list. See
@@ -159,10 +178,24 @@ the top-level context directory (`<outputDir>/<cpModeDir>/.kuma-migrator.json`) 
 after `dirLabel` is computed. This records how the extraction was performed:
 
 ```json
-{"tool":"kubectl","context":"my-kube-ctx","cpMode":"global","isKonnect":false,"environment":"kubernetes"}
+{"tool":"kubectl","context":"my-kube-ctx","cpMode":"zone","environment":"kubernetes","storeType":"kubernetes","federated":true}
 ```
 
-`environment` (`kubernetes`/`universal`) selects the skip list in `migrate` (see above).
+`environment` (`kubernetes`/`universal`) selects the skip list in `migrate` (see above). The
+kubectl path records the Deployment's `KUMA_ENVIRONMENT` (default `kubernetes`), so a Global
+deployed in-cluster with `controlPlane.environment: universal` on PostgreSQL is recorded as
+`universal`. `storeType` and `federated` (zone mode only, `*bool`) were added for the 3.0
+topology check. Written via `WriteContextMetaFile(outputDir, dirLabel, contextMetaFor(...))`;
+`WriteContextMeta` (positional) is kept for compatibility.
+
+**3.0 topology advisory**: `ContextMeta.V3Topology()` classifies a context —
+`V3TopologyStandalone` (cpMode `standalone`), `V3TopologyKubernetesGlobal` (cpMode `global`,
+not Konnect, `environment` or `storeType` = `kubernetes`; a kubectl Global with neither recorded
+counts too), `V3TopologyCheckMode` (kumactl, non-federated zone: may still be configured
+`standalone`). `ListContextMetas(inputDir)` enumerates context dirs. `writeV3TopologyNote` in
+`report.go` (v3 only, right after the v3 banner) renders a **Control Plane Topology** section:
+the first two as blocking with steps and UPGRADE.md links, the third as a check list. The
+`-standalone-ctx` label is kept on purpose — renaming it would break existing extracts.
 
 When `GET <cpURL>/config` fails, `detectKumactlCPMode` prints `cpConfigUnavailableWarning` and
 falls back to unknown mode. Kong Mesh 3.0 requires the `VIEW_CONTROL_PLANE_METADATA` access type
@@ -504,9 +537,10 @@ Konnect) gets `kubectl` commands (`resolveContextTool`). `MeshGatewayConfig` is 
 - `reachableBackends` name→labels and `MeshService` `dataplaneTags` rewrites are v3-only: on 2.14 a
   labels selector matches same-named services synced from other zones, which widens selection.
 
-Remaining topology gaps (not manifest-level): `standalone` CP mode is removed (rename to `zone`)
-and a Kubernetes-native Global CP is unsupported on 3.0. The extractor still labels output
-`-standalone-ctx` and detects `mode=global` on Kubernetes.
+Topology (not manifest-level): `standalone` CP mode is removed (rename to `zone`) and a
+Kubernetes-native Global CP is unsupported on 3.0. Reported as blocking in the v3 report's
+**Control Plane Topology** section (see **Context metadata file**); the tool does not change
+the deployment. The extractor keeps the `-standalone-ctx` label.
 
 ### Closed
 
