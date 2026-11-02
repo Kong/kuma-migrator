@@ -15,8 +15,8 @@
 <meta property="og:image" content="https://kong.github.io/kuma-migrator/assets/migration-overview.svg">
 <meta name="twitter:card" content="summary_large_image">
 
+<link rel="stylesheet" href="../../static/shared.css">
 <link rel="stylesheet" href="../../static/style.css">
-<link rel="stylesheet" href="../../static/chroma.css">
 </head>
 <body data-root="../../">
 <a class="skip" href="#content">Skip to content</a>
@@ -30,6 +30,7 @@
       <a href="../../policies/">Policies</a>
       <a href="https://github.com/Kong/kuma-migrator">GitHub</a>
     </nav>
+    <!-- release-tag --><a class="release-badge" href="https://github.com/Kong/kuma-migrator/releases/latest" title="Latest release: v0.8.0">v0.8.0</a><!-- /release-tag -->
     <div class="search">
       <input id="search-input" type="search" placeholder="Search docs" aria-label="Search docs" autocomplete="off">
       <ul id="search-results" hidden></ul>
@@ -139,11 +140,13 @@ upgrades of at most two minor versions at a time, for example 2.10 → 2.12 → 
 <h3 id="install-gateway-api-crds">Install Gateway API CRDs</h3>
 <p>Only when a built-in gateway resource was converted. Install on every Kubernetes cluster that
 runs a gateway, never on a Universal zone:</p>
-<pre class="chroma"><code><span class="line"><span class="cl">kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/latest/download/standard-install.yaml
-</span></span></code></pre><p>When the output contains a <code>TCPRoute</code>, install the experimental channel instead (a superset of
+<div class="code"><pre class="chroma" data-lang="bash"><code><span class="k-manual">kubectl</span> <span class="k-manual-b">apply</span> <span class="k-flag">-f</span> <span class="k-val">https://github.com/kubernetes-sigs/gateway-api/releases/latest/download/standard-install.yaml</span>
+</code></pre></div>
+<p>When the output contains a <code>TCPRoute</code>, install the experimental channel instead (a superset of
 standard):</p>
-<pre class="chroma"><code><span class="line"><span class="cl">kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/latest/download/experimental-install.yaml
-</span></span></code></pre><p>See <a href="../../topics/gateways/">Gateways</a>.</p>
+<div class="code"><pre class="chroma" data-lang="bash"><code><span class="k-manual">kubectl</span> <span class="k-manual-b">apply</span> <span class="k-flag">-f</span> <span class="k-val">https://github.com/kubernetes-sigs/gateway-api/releases/latest/download/experimental-install.yaml</span>
+</code></pre></div>
+<p>See <a href="../../topics/gateways/">Gateways</a>.</p>
 <h3 id="apply-policies">Apply policies</h3>
 <p>One context at a time, in the order the report lists: Global and standalone contexts before
 Zone contexts, and within a context <code>resiliency</code>, <code>routing</code>, <code>zero-trust</code>, <code>observability</code>,
@@ -153,14 +156,16 @@ from <code>.kuma-migrator.json</code>:</p>
 <li>
 <p><strong><code>extract --kumactl-context</code></strong>, including Konnect. <code>kumactl</code> does not accept a directory
 for <code>-f</code>, so the report lists one command per file, after a reminder to select the context:</p>
-<pre class="chroma"><code><span class="line"><span class="cl">kumactl config use-context konnect-global-prod
-</span></span><span class="line"><span class="cl">kumactl apply -f ./migrated/konnect-global-prod-global-ctx/mesh-default/resiliency/MeshTimeout-my-timeout.yaml
-</span></span><span class="line"><span class="cl">kumactl apply -f ./migrated/konnect-global-prod-global-ctx/mesh-default/resiliency/MeshRetry-my-retry.yaml
-</span></span></code></pre></li>
+<div class="code"><pre class="chroma" data-lang="bash"><code><span class="k-manual">kumactl</span> <span class="k-manual-b">config</span> <span class="k-manual-b">use-context</span> <span class="k-manual-b">konnect-global-prod</span>
+<span class="k-manual">kumactl</span> <span class="k-manual-b">apply</span> <span class="k-flag">-f</span> <span class="k-val">./migrated/konnect-global-prod-global-ctx/mesh-default/resiliency/MeshTimeout-my-timeout.yaml</span>
+<span class="k-manual">kumactl</span> <span class="k-manual-b">apply</span> <span class="k-flag">-f</span> <span class="k-val">./migrated/konnect-global-prod-global-ctx/mesh-default/resiliency/MeshRetry-my-retry.yaml</span>
+</code></pre></div>
+</li>
 <li>
 <p><strong><code>extract --kube-context</code></strong>. One directory apply per kind subfolder:</p>
-<pre class="chroma"><code><span class="line"><span class="cl">kubectl apply -f ./migrated/zone-eu-west1-prod-zone-ctx/mesh-default/resiliency/
-</span></span></code></pre></li>
+<div class="code"><pre class="chroma" data-lang="bash"><code><span class="k-manual">kubectl</span> <span class="k-manual-b">apply</span> <span class="k-flag">-f</span> <span class="k-val">./migrated/zone-eu-west1-prod-zone-ctx/mesh-default/resiliency/</span>
+</code></pre></div>
+</li>
 </ul>
 <p>Without <code>.kuma-migrator.json</code> (a hand-built input tree), the report uses <code>kubectl</code>.</p>
 <p><code>global-scoped-resources/</code> holds both Kuma global resources and the Gateway API output.
@@ -171,8 +176,9 @@ context, and its Gateway API output lands in <code>&lt;zone-ctx&gt;/global-scope
 <p>The migrated <code>Mesh</code> sets <code>spec.meshServices.mode: Exclusive</code>. That turns off routing by
 <code>kuma.io/service</code> tags, so applying it before every policy and workload is migrated breaks
 any workload still addressed by a tag. If a <code>Mesh</code> was not in the input, set the mode by hand:</p>
-<pre class="chroma"><code><span class="line"><span class="cl">kubectl patch mesh &lt;name&gt; --type merge -p <span class="s1">&#39;{&#34;spec&#34;:{&#34;meshServices&#34;:{&#34;mode&#34;:&#34;Exclusive&#34;}}}&#39;</span>
-</span></span></code></pre><blockquote class="callout callout-v3"><p><strong>v3:</strong> <code>meshServices.mode: Exclusive</code> must be set on every mesh <strong>before</strong> the Global
+<div class="code"><pre class="chroma" data-lang="bash"><code><span class="k-manual">kubectl</span> <span class="k-manual-b">patch</span> <span class="k-manual-b">mesh</span> <span class="k-manual-b">&lt;name&gt;</span> <span class="k-flag">--type</span> <span class="k-val">merge</span> <span class="k-flag">-p</span> <span class="s1">'{"spec":{"meshServices":{"mode":"Exclusive"}}}'</span>
+</code></pre></div>
+<blockquote class="callout callout-v3"><p><strong>v3:</strong> <code>meshServices.mode: Exclusive</code> must be set on every mesh <strong>before</strong> the Global
 control plane is upgraded to 3.0: a 2.x zone reads a missing field as <code>Disabled</code> and stops
 serving <code>MeshService</code> outbounds
 (<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md">Kuma <code>UPGRADE.md</code></a>). The checklist
@@ -235,13 +241,13 @@ legacy <code>TrafficPermission</code>, …);</li>
 <li>documents that pass through as a kind 3.0 removes (<code>MeshGlobalRateLimit</code>, Universal
 <code>ZoneIngress</code>/<code>ZoneEgress</code>).</li>
 </ul>
-<pre><code>migrated/
+<div class="code"><pre class="chroma" data-lang="text"><code>migrated/
   &lt;context&gt;-global-ctx/
-    mesh-default/resiliency/...          ← apply tree
-    global-scoped-resources/routing/...  ← apply tree
+    mesh-default/resiliency/...          <span class="o-dim">← apply tree</span>
+    global-scoped-resources/routing/...  <span class="o-dim">← apply tree</span>
     _manual/
       mesh-default/routing/TrafficRoute-route-all.yaml
-</code></pre>
+</code></pre></div>
 <p>No checklist step applies <code>_manual/</code>: <code>kubectl apply -f &lt;dir&gt;/</code> is not recursive, and the
 <code>kumactl</code> file list never includes these paths. Each file is listed in <strong>Action Items →
 Errors</strong> or in <strong>Delete Before Upgrading to 3.0</strong> with what to do about it. Under <code>v2</code> there is
@@ -271,5 +277,6 @@ control plane they are applied back to.</p>
 </footer>
 <script src="../../static/search-index.js"></script>
 <script src="../../static/search.js"></script>
+<script src="../../static/copy.js"></script>
 </body>
 </html>

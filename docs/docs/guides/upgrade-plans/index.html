@@ -15,8 +15,8 @@
 <meta property="og:image" content="https://kong.github.io/kuma-migrator/assets/migration-overview.svg">
 <meta name="twitter:card" content="summary_large_image">
 
+<link rel="stylesheet" href="../../static/shared.css">
 <link rel="stylesheet" href="../../static/style.css">
-<link rel="stylesheet" href="../../static/chroma.css">
 </head>
 <body data-root="../../">
 <a class="skip" href="#content">Skip to content</a>
@@ -30,6 +30,7 @@
       <a href="../../policies/">Policies</a>
       <a href="https://github.com/Kong/kuma-migrator">GitHub</a>
     </nav>
+    <!-- release-tag --><a class="release-badge" href="https://github.com/Kong/kuma-migrator/releases/latest" title="Latest release: v0.8.0">v0.8.0</a><!-- /release-tag -->
     <div class="search">
       <input id="search-input" type="search" placeholder="Search docs" aria-label="Search docs" autocomplete="off">
       <ul id="search-results" hidden></ul>
@@ -161,24 +162,27 @@ fields that 2.14 still requires, so it is never applied before the upgrade. See
 <li>
 <p><strong>Extract every control plane</strong> into one directory: the Global control plane first, then
 each zone. See <a href="../extract/">Extract</a>.</p>
-<pre class="chroma"><code><span class="line"><span class="cl">kuma-migrator extract --kumactl-context global-prod        --output-dir ./raw-policies
-</span></span><span class="line"><span class="cl">kuma-migrator extract --kube-context    zone-eu-west1-prod --output-dir ./raw-policies
-</span></span><span class="line"><span class="cl">kuma-migrator extract --kube-context    zone-us-east1-prod --output-dir ./raw-policies
-</span></span></code></pre></li>
+<div class="code"><pre class="chroma" data-lang="bash"><code><span class="k-bin">kuma-migrator</span> <span class="k-sub">extract</span> <span class="k-flag">--kumactl-context</span> <span class="k-val">global-prod</span>        <span class="k-flag">--output-dir</span> <span class="k-val">./raw-policies</span>
+<span class="k-bin">kuma-migrator</span> <span class="k-sub">extract</span> <span class="k-flag">--kube-context</span>    <span class="k-val">zone-eu-west1-prod</span> <span class="k-flag">--output-dir</span> <span class="k-val">./raw-policies</span>
+<span class="k-bin">kuma-migrator</span> <span class="k-sub">extract</span> <span class="k-flag">--kube-context</span>    <span class="k-val">zone-us-east1-prod</span> <span class="k-flag">--output-dir</span> <span class="k-val">./raw-policies</span>
+</code></pre></div>
+</li>
 <li>
 <p><strong>Dry-run both targets</strong> into separate directories. The v3 plan is the list of work the
 3.0 upgrade needs.</p>
-<pre class="chroma"><code><span class="line"><span class="cl">kuma-migrator migrate -i ./raw-policies -o ./plan-v2 --dry-run
-</span></span><span class="line"><span class="cl">kuma-migrator migrate -i ./raw-policies -o ./plan-v3 --dry-run --to-latest v3
-</span></span></code></pre></li>
+<div class="code"><pre class="chroma" data-lang="bash"><code><span class="k-bin">kuma-migrator</span> <span class="k-sub">migrate</span> <span class="k-flag">-i</span> <span class="k-val">./raw-policies</span> <span class="k-flag">-o</span> <span class="k-val">./plan-v2</span> <span class="k-flag">--dry-run</span>
+<span class="k-bin">kuma-migrator</span> <span class="k-sub">migrate</span> <span class="k-flag">-i</span> <span class="k-val">./raw-policies</span> <span class="k-flag">-o</span> <span class="k-val">./plan-v3</span> <span class="k-flag">--dry-run</span> <span class="k-flag">--to-latest</span> <span class="k-val">v3</span>
+</code></pre></div>
+</li>
 <li>
 <p><strong>Migrate to v2 and apply on 2.14.</strong> This replaces the kinds 3.0 removes with their
 successors while the control plane still accepts both: legacy policies become <code>Mesh*</code>
 policies, <code>ExternalService</code> becomes <code>MeshExternalService</code>, <code>OPAPolicy</code> becomes <code>MeshOPA</code>,
 built-in gateways become Gateway API resources. Follow the Apply Checklist, skipping its
 control plane upgrade steps, and check traffic.</p>
-<pre class="chroma"><code><span class="line"><span class="cl">kuma-migrator migrate -i ./raw-policies -o ./migrated-v2
-</span></span></code></pre></li>
+<div class="code"><pre class="chroma" data-lang="bash"><code><span class="k-bin">kuma-migrator</span> <span class="k-sub">migrate</span> <span class="k-flag">-i</span> <span class="k-val">./raw-policies</span> <span class="k-flag">-o</span> <span class="k-val">./migrated-v2</span>
+</code></pre></div>
+</li>
 <li>
 <p><strong>Move every mesh to <code>MeshIdentity</code>.</strong> On 3.0 <code>Mesh.mtls</code> issues nothing: a mesh whose
 only identity source is <code>mtls</code> serves plaintext and <code>MeshTrafficPermission</code>/<code>MeshTLS</code> stop
@@ -200,8 +204,9 @@ every workload and policy uses <code>MeshService</code> names. See
 </li>
 <li>
 <p><strong>Migrate to v3</strong> and review the report.</p>
-<pre class="chroma"><code><span class="line"><span class="cl">kuma-migrator migrate -i ./raw-policies -o ./migrated-v3 --to-latest v3
-</span></span></code></pre><p>Resolve every entry under <strong>Action Items → Errors</strong>. Each <code>_manual/</code> file needs a
+<div class="code"><pre class="chroma" data-lang="bash"><code><span class="k-bin">kuma-migrator</span> <span class="k-sub">migrate</span> <span class="k-flag">-i</span> <span class="k-val">./raw-policies</span> <span class="k-flag">-o</span> <span class="k-val">./migrated-v3</span> <span class="k-flag">--to-latest</span> <span class="k-val">v3</span>
+</code></pre></div>
+<p>Resolve every entry under <strong>Action Items → Errors</strong>. Each <code>_manual/</code> file needs a
 decision: rewrite it by hand, or drop it.</p>
 </li>
 <li>
@@ -261,9 +266,10 @@ answers the planning questions directly:</p>
 </tbody>
 </table></div>
 <p>Compare the two plans to see what 3.0 adds on top of the 2.x work:</p>
-<pre class="chroma"><code><span class="line"><span class="cl">diff &lt;<span class="o">(</span>grep -o <span class="s1">&#39;⚠ [^|]*&#39;</span> ./plan-v2/migration-plan.md <span class="p">|</span> sort -u<span class="o">)</span> <span class="se">\
-</span></span></span><span class="line"><span class="cl">     &lt;<span class="o">(</span>grep -o <span class="s1">&#39;⚠ [^|]*&#39;</span> ./plan-v3/migration-plan.md <span class="p">|</span> sort -u<span class="o">)</span>
-</span></span></code></pre><p>Re-run the dry run after each fix until the error count is zero. It reads local files only,
+<div class="code"><pre class="chroma" data-lang="bash"><code><span class="k-cmd">diff</span> &lt;<span class="o">(</span><span class="k-cmd">grep</span> <span class="k-flag">-o</span> <span class="s1">'⚠ [^|]*'</span> ./plan-v2/migration-plan.md <span class="p">|</span> <span class="k-cmd">sort</span> <span class="k-flag">-u</span><span class="o">)</span> <span class="se">\
+</span>     &lt;<span class="o">(</span><span class="k-cmd">grep</span> <span class="k-flag">-o</span> <span class="s1">'⚠ [^|]*'</span> ./plan-v3/migration-plan.md <span class="p">|</span> <span class="k-cmd">sort</span> <span class="k-flag">-u</span><span class="o">)</span>
+</code></pre></div>
+<p>Re-run the dry run after each fix until the error count is zero. It reads local files only,
 so it is safe to run as often as needed.</p>
 <h2 id="read-the-apply-checklist">Read the Apply Checklist</h2>
 <p>The checklist in <code>migration-report.md</code> is generated from the run's output. Its steps and their
@@ -358,5 +364,6 @@ was in the control plane before the upgrade and what changed.</p>
 </footer>
 <script src="../../static/search-index.js"></script>
 <script src="../../static/search.js"></script>
+<script src="../../static/copy.js"></script>
 </body>
 </html>

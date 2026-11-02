@@ -230,7 +230,7 @@ spec:
     namespace: demo
 ```
 
-```
+```text
 ⚠  MeshTrafficPermission "web-to-backend": from[].targetRef.kind MeshService is deprecated in
    Kuma 2.7+ — use kind: Dataplane with labels instead.
 ⚠  MeshTrafficPermission "web-to-backend": the from[] field is deprecated in favour of the rules[]
@@ -264,7 +264,7 @@ rules:
 type: AccessRole
 ```
 
-```
+```text
 ✗  TrafficPermission "web-to-backend" requires manual migration for Kuma 3.0: 3.0 removes
    MeshTrafficPermission spec.from … its replacement selects clients with
    rules[].default.{allow,deny,allowWithShadowDeny}[].spiffeID matches. Those need a MeshIdentity

@@ -208,7 +208,7 @@ spec:
 
 `--to-latest v2` copies both unchanged; the `MeshTimeout` gets one warning:
 
-```
+```text
 ⚠  MeshTimeout "backend-timeouts": spec.targetRef.kind MeshService is deprecated as a top-level
    target in Kuma 2.10+ — use kind: Dataplane with labels instead.
 ```
@@ -271,7 +271,7 @@ spec:
 The control-plane-owned labels are gone and selectors use labels. Both policies are still invalid
 on 3.0, and the warnings say why (shortened):
 
-```
+```text
 ⚠  MeshTimeout "backend-timeouts": spec.targetRef.kind MeshService is deprecated as a top-level
    target … Kuma 3.0 rejects it outright: Mesh and Dataplane are the only top-level targetRef kinds
    any policy accepts.

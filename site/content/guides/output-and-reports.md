@@ -13,7 +13,7 @@ the first output path (`→`), relative to `--input-dir` and `--output-dir`. War
 
 Output of `migrate --dry-run` on a Global and a Zone context (warnings shortened):
 
-```
+```text
   kuma-migrator  migrate --dry-run
 
   ✓  MESH              default  default.yaml

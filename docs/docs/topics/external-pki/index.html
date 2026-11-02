@@ -15,8 +15,8 @@
 <meta property="og:image" content="https://kong.github.io/kuma-migrator/assets/migration-overview.svg">
 <meta name="twitter:card" content="summary_large_image">
 
+<link rel="stylesheet" href="../../static/shared.css">
 <link rel="stylesheet" href="../../static/style.css">
-<link rel="stylesheet" href="../../static/chroma.css">
 </head>
 <body data-root="../../">
 <a class="skip" href="#content">Skip to content</a>
@@ -30,6 +30,7 @@
       <a href="../../policies/">Policies</a>
       <a href="https://github.com/Kong/kuma-migrator">GitHub</a>
     </nav>
+    <!-- release-tag --><a class="release-badge" href="https://github.com/Kong/kuma-migrator/releases/latest" title="Latest release: v0.8.0">v0.8.0</a><!-- /release-tag -->
     <div class="search">
       <input id="search-input" type="search" placeholder="Search docs" aria-label="Search docs" autocomplete="off">
       <ul id="search-results" hidden></ul>
@@ -167,48 +168,49 @@ cert-manager issuer.</li>
 Kong Mesh Secrets once nothing references them.</li>
 </ol>
 <h3 id="vault">Vault</h3>
-<pre class="chroma"><code><span class="line"><span class="cl"><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l">kuma.io/v1alpha1</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshIdentity</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">metadata</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">vault-identity</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l">kong-mesh-system</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">labels</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kuma.io/mesh</span><span class="p">:</span><span class="w"> </span><span class="l">payments</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">spec</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">selector</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">dataplane</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">matchLabels</span><span class="p">:</span><span class="w"> </span>{}<span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">provider</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l">Extension</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">extension</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">vault</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">config</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">connection</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">          </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l">Server             </span><span class="w"> </span><span class="c"># or Agent, with agent.address</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">          </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="s2">&#34;&#34;</span><span class="w">             </span><span class="c"># Vault Enterprise namespace, optional</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">          </span><span class="nt">server</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">            </span><span class="nt">address</span><span class="p">:</span><span class="w"> </span><span class="l">https://vault.example.com:8200</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">            </span><span class="nt">tls</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">              </span><span class="nt">caCert</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">                </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l">Secret</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">                </span><span class="nt">secretRef</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">                  </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">Secret</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">                  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">vault-ca</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">              </span><span class="nt">serverName</span><span class="p">:</span><span class="w"> </span><span class="l">vault.example.com</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">            </span><span class="nt">auth</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">              </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l">Token          </span><span class="w"> </span><span class="c"># or TLS (clientCert/clientKey) or AWS (type: IAM|EC2, role, mount, iamServerIdHeader)</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">              </span><span class="nt">token</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">                </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l">Secret</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">                </span><span class="nt">secretRef</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">                  </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">Secret</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">                  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">vault-token</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">pki</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">          </span><span class="nt">mount</span><span class="p">:</span><span class="w"> </span><span class="l">kong-mesh-pki-payments  </span><span class="w"> </span><span class="c"># default: kong-mesh-pki-&lt;mesh&gt;</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">          </span><span class="nt">role</span><span class="p">:</span><span class="w"> </span><span class="l">dataplane-proxies        </span><span class="w"> </span><span class="c"># default: dataplanes</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">          </span><span class="nt">certificateParameters</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">            </span><span class="nt">expiry</span><span class="p">:</span><span class="w"> </span><span class="l">24h                  </span><span class="w"> </span><span class="c"># default 120h; capped by the role&#39;s max_ttl</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">meshTrustCreation</span><span class="p">:</span><span class="w"> </span><span class="l">Enabled       </span><span class="w"> </span><span class="c"># default when unset</span><span class="w">
-</span></span></span></code></pre><p>Field mapping from the <code>Mesh.mtls</code> backend:</p>
+<div class="code"><pre class="chroma" data-lang="yaml"><code><span class="nt">apiVersion</span><span class="p">:</span> <span class="l">kuma.io/v1alpha1</span>
+<span class="nt">kind</span><span class="p">:</span> <span class="l">MeshIdentity</span>
+<span class="nt">metadata</span><span class="p">:</span>
+  <span class="nt">name</span><span class="p">:</span> <span class="l">vault-identity</span>
+  <span class="nt">namespace</span><span class="p">:</span> <span class="l">kong-mesh-system</span>
+  <span class="nt">labels</span><span class="p">:</span>
+    <span class="nt">kuma.io/mesh</span><span class="p">:</span> <span class="l">payments</span>
+<span class="nt">spec</span><span class="p">:</span>
+  <span class="nt">selector</span><span class="p">:</span>
+    <span class="nt">dataplane</span><span class="p">:</span>
+      <span class="nt">matchLabels</span><span class="p">:</span> {}
+  <span class="nt">provider</span><span class="p">:</span>
+    <span class="nt">type</span><span class="p">:</span> <span class="l">Extension</span>
+    <span class="nt">extension</span><span class="p">:</span>
+      <span class="nt">name</span><span class="p">:</span> <span class="l">vault</span>
+      <span class="nt">config</span><span class="p">:</span>
+        <span class="nt">connection</span><span class="p">:</span>
+          <span class="nt">type</span><span class="p">:</span> <span class="l">Server             </span> <span class="c"># or Agent, with agent.address</span>
+          <span class="nt">namespace</span><span class="p">:</span> <span class="s2">""</span>             <span class="c"># Vault Enterprise namespace, optional</span>
+          <span class="nt">server</span><span class="p">:</span>
+            <span class="nt">address</span><span class="p">:</span> <span class="l">https://vault.example.com:8200</span>
+            <span class="nt">tls</span><span class="p">:</span>
+              <span class="nt">caCert</span><span class="p">:</span>
+                <span class="nt">type</span><span class="p">:</span> <span class="l">Secret</span>
+                <span class="nt">secretRef</span><span class="p">:</span>
+                  <span class="nt">kind</span><span class="p">:</span> <span class="l">Secret</span>
+                  <span class="nt">name</span><span class="p">:</span> <span class="l">vault-ca</span>
+              <span class="nt">serverName</span><span class="p">:</span> <span class="l">vault.example.com</span>
+            <span class="nt">auth</span><span class="p">:</span>
+              <span class="nt">type</span><span class="p">:</span> <span class="l">Token          </span> <span class="c"># or TLS (clientCert/clientKey) or AWS (type: IAM|EC2, role, mount, iamServerIdHeader)</span>
+              <span class="nt">token</span><span class="p">:</span>
+                <span class="nt">type</span><span class="p">:</span> <span class="l">Secret</span>
+                <span class="nt">secretRef</span><span class="p">:</span>
+                  <span class="nt">kind</span><span class="p">:</span> <span class="l">Secret</span>
+                  <span class="nt">name</span><span class="p">:</span> <span class="l">vault-token</span>
+        <span class="nt">pki</span><span class="p">:</span>
+          <span class="nt">mount</span><span class="p">:</span> <span class="l">kong-mesh-pki-payments  </span> <span class="c"># default: kong-mesh-pki-&lt;mesh&gt;</span>
+          <span class="nt">role</span><span class="p">:</span> <span class="l">dataplane-proxies        </span> <span class="c"># default: dataplanes</span>
+          <span class="nt">certificateParameters</span><span class="p">:</span>
+            <span class="nt">expiry</span><span class="p">:</span> <span class="l">24h                  </span> <span class="c"># default 120h; capped by the role's max_ttl</span>
+        <span class="nt">meshTrustCreation</span><span class="p">:</span> <span class="l">Enabled       </span> <span class="c"># default when unset</span>
+</code></pre></div>
+<p>Field mapping from the <code>Mesh.mtls</code> backend:</p>
 <div class="table-wrap"><table>
 <thead>
 <tr>
@@ -264,60 +266,62 @@ Kong Mesh Secrets once nothing references them.</li>
 </tbody>
 </table></div>
 <h3 id="acm-private-ca">ACM Private CA</h3>
-<pre class="chroma"><code><span class="line"><span class="cl"><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l">kuma.io/v1alpha1</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshIdentity</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">metadata</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">acmpca-identity</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l">kong-mesh-system</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">labels</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kuma.io/mesh</span><span class="p">:</span><span class="w"> </span><span class="l">payments</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">spec</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">selector</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">dataplane</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">matchLabels</span><span class="p">:</span><span class="w"> </span>{}<span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">provider</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l">Extension</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">extension</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">acmpca</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">config</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">arn</span><span class="p">:</span><span class="w"> </span><span class="l">arn:aws:acm-pca:eu-west-1:123456789012:certificate-authority/12345678-1234-1234-1234-123456789012</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">certificateParameters</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">          </span><span class="nt">expiry</span><span class="p">:</span><span class="w"> </span><span class="l">24h              </span><span class="w"> </span><span class="c"># default 120h</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">meshTrustCreation</span><span class="p">:</span><span class="w"> </span><span class="l">Enabled </span><span class="w"> </span><span class="c"># default when unset</span><span class="w">
-</span></span></span></code></pre><p><code>arn</code> is the only required field. The control plane authenticates with the AWS default credential
+<div class="code"><pre class="chroma" data-lang="yaml"><code><span class="nt">apiVersion</span><span class="p">:</span> <span class="l">kuma.io/v1alpha1</span>
+<span class="nt">kind</span><span class="p">:</span> <span class="l">MeshIdentity</span>
+<span class="nt">metadata</span><span class="p">:</span>
+  <span class="nt">name</span><span class="p">:</span> <span class="l">acmpca-identity</span>
+  <span class="nt">namespace</span><span class="p">:</span> <span class="l">kong-mesh-system</span>
+  <span class="nt">labels</span><span class="p">:</span>
+    <span class="nt">kuma.io/mesh</span><span class="p">:</span> <span class="l">payments</span>
+<span class="nt">spec</span><span class="p">:</span>
+  <span class="nt">selector</span><span class="p">:</span>
+    <span class="nt">dataplane</span><span class="p">:</span>
+      <span class="nt">matchLabels</span><span class="p">:</span> {}
+  <span class="nt">provider</span><span class="p">:</span>
+    <span class="nt">type</span><span class="p">:</span> <span class="l">Extension</span>
+    <span class="nt">extension</span><span class="p">:</span>
+      <span class="nt">name</span><span class="p">:</span> <span class="l">acmpca</span>
+      <span class="nt">config</span><span class="p">:</span>
+        <span class="nt">arn</span><span class="p">:</span> <span class="l">arn:aws:acm-pca:eu-west-1:123456789012:certificate-authority/12345678-1234-1234-1234-123456789012</span>
+        <span class="nt">certificateParameters</span><span class="p">:</span>
+          <span class="nt">expiry</span><span class="p">:</span> <span class="l">24h              </span> <span class="c"># default 120h</span>
+        <span class="nt">meshTrustCreation</span><span class="p">:</span> <span class="l">Enabled </span> <span class="c"># default when unset</span>
+</code></pre></div>
+<p><code>arn</code> is the only required field. The control plane authenticates with the AWS default credential
 chain (environment, shared config, instance or pod role) in the region parsed from the ARN. The
 <code>caCert</code>, <code>commonName</code> and <code>auth.awsCredentials</code> fields of the <code>acmpca</code> backend have no
 equivalent: move inline credentials to the control plane's AWS credential chain.</p>
 <h3 id="cert-manager">cert-manager</h3>
-<pre class="chroma"><code><span class="line"><span class="cl"><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l">kuma.io/v1alpha1</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshIdentity</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">metadata</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">certmanager-identity</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l">kong-mesh-system</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">labels</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kuma.io/mesh</span><span class="p">:</span><span class="w"> </span><span class="l">payments</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">spec</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">selector</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">dataplane</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">matchLabels</span><span class="p">:</span><span class="w"> </span>{}<span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">provider</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l">Extension</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">extension</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">certmanager</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">config</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">issuerRef</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">          </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">my-ca-issuer       </span><span class="w"> </span><span class="c"># required</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">          </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">Issuer             </span><span class="w"> </span><span class="c"># default Issuer; or ClusterIssuer</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">          </span><span class="nt">group</span><span class="p">:</span><span class="w"> </span><span class="l">cert-manager.io   </span><span class="w"> </span><span class="c"># default</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">caCert</span><span class="p">:</span><span class="w">                     </span><span class="c"># used to create the MeshTrust; without it, write the MeshTrust yourself</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">          </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l">Secret</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">          </span><span class="nt">secretRef</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">            </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">Secret</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">            </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">my-ca-cert</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">certificateParameters</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">          </span><span class="nt">expiry</span><span class="p">:</span><span class="w"> </span><span class="l">24h              </span><span class="w"> </span><span class="c"># default 120h</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">meshTrustCreation</span><span class="p">:</span><span class="w"> </span><span class="l">Enabled </span><span class="w"> </span><span class="c"># default when caCert is set</span><span class="w">
-</span></span></span></code></pre><p><code>issuerRef</code> and <code>caCert</code> map directly from the <code>certmanager</code> backend's <code>conf</code>; the data source
+<div class="code"><pre class="chroma" data-lang="yaml"><code><span class="nt">apiVersion</span><span class="p">:</span> <span class="l">kuma.io/v1alpha1</span>
+<span class="nt">kind</span><span class="p">:</span> <span class="l">MeshIdentity</span>
+<span class="nt">metadata</span><span class="p">:</span>
+  <span class="nt">name</span><span class="p">:</span> <span class="l">certmanager-identity</span>
+  <span class="nt">namespace</span><span class="p">:</span> <span class="l">kong-mesh-system</span>
+  <span class="nt">labels</span><span class="p">:</span>
+    <span class="nt">kuma.io/mesh</span><span class="p">:</span> <span class="l">payments</span>
+<span class="nt">spec</span><span class="p">:</span>
+  <span class="nt">selector</span><span class="p">:</span>
+    <span class="nt">dataplane</span><span class="p">:</span>
+      <span class="nt">matchLabels</span><span class="p">:</span> {}
+  <span class="nt">provider</span><span class="p">:</span>
+    <span class="nt">type</span><span class="p">:</span> <span class="l">Extension</span>
+    <span class="nt">extension</span><span class="p">:</span>
+      <span class="nt">name</span><span class="p">:</span> <span class="l">certmanager</span>
+      <span class="nt">config</span><span class="p">:</span>
+        <span class="nt">issuerRef</span><span class="p">:</span>
+          <span class="nt">name</span><span class="p">:</span> <span class="l">my-ca-issuer       </span> <span class="c"># required</span>
+          <span class="nt">kind</span><span class="p">:</span> <span class="l">Issuer             </span> <span class="c"># default Issuer; or ClusterIssuer</span>
+          <span class="nt">group</span><span class="p">:</span> <span class="l">cert-manager.io   </span> <span class="c"># default</span>
+        <span class="nt">caCert</span><span class="p">:</span>                     <span class="c"># used to create the MeshTrust; without it, write the MeshTrust yourself</span>
+          <span class="nt">type</span><span class="p">:</span> <span class="l">Secret</span>
+          <span class="nt">secretRef</span><span class="p">:</span>
+            <span class="nt">kind</span><span class="p">:</span> <span class="l">Secret</span>
+            <span class="nt">name</span><span class="p">:</span> <span class="l">my-ca-cert</span>
+        <span class="nt">certificateParameters</span><span class="p">:</span>
+          <span class="nt">expiry</span><span class="p">:</span> <span class="l">24h              </span> <span class="c"># default 120h</span>
+        <span class="nt">meshTrustCreation</span><span class="p">:</span> <span class="l">Enabled </span> <span class="c"># default when caCert is set</span>
+</code></pre></div>
+<p><code>issuerRef</code> and <code>caCert</code> map directly from the <code>certmanager</code> backend's <code>conf</code>; the data source
 moves to the <code>SecureDataSource</code> shape. Kong Mesh 2.14 added the <code>list</code> verb on cert-manager
 resources to the control plane's RBAC <code>Role</code>; check it if you manage RBAC yourself
 (<a href="https://developer.konghq.com/mesh/version-specific-upgrade-notes/">Kong Mesh upgrade notes</a>).</p>
@@ -355,57 +359,59 @@ resources to the control plane's RBAC <code>Role</code>; check it if you manage 
 </table></div>
 <h2 id="example">Example</h2>
 <p>Input — a Kong Mesh <code>Mesh</code> on the <code>vault</code> backend:</p>
-<pre class="chroma"><code><span class="line"><span class="cl"><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l">kuma.io/v1alpha1</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">Mesh</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">metadata</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">payments</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">spec</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">meshServices</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">mode</span><span class="p">:</span><span class="w"> </span><span class="l">Exclusive</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">mtls</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">enabledBackend</span><span class="p">:</span><span class="w"> </span><span class="l">vault-1</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">backends</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span>- <span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">vault-1</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l">vault</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">dpCert</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">          </span><span class="nt">rotation</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">            </span><span class="nt">expiration</span><span class="p">:</span><span class="w"> </span><span class="l">24h</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">conf</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">          </span><span class="nt">fromCp</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">            </span><span class="nt">address</span><span class="p">:</span><span class="w"> </span><span class="l">https://vault.example.com:8200</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">            </span><span class="nt">agentAddress</span><span class="p">:</span><span class="w"> </span><span class="s2">&#34;&#34;</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">            </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="s2">&#34;&#34;</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">            </span><span class="nt">pki</span><span class="p">:</span><span class="w"> </span><span class="l">kong-mesh-pki-payments</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">            </span><span class="nt">role</span><span class="p">:</span><span class="w"> </span><span class="l">dataplane-proxies</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">            </span><span class="nt">tls</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">              </span><span class="nt">caCert</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">                </span><span class="nt">secret</span><span class="p">:</span><span class="w"> </span><span class="l">vault-ca</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">              </span><span class="nt">skipVerify</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">              </span><span class="nt">serverName</span><span class="p">:</span><span class="w"> </span><span class="l">vault.example.com</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">            </span><span class="nt">auth</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">              </span><span class="nt">token</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">                </span><span class="nt">secret</span><span class="p">:</span><span class="w"> </span><span class="l">vault-token</span><span class="w">
-</span></span></span></code></pre><p>With <code>--to-latest v2</code> the <code>Mesh</code> is written back unchanged, with this advisory (shortened):</p>
-<pre><code>⚠  Mesh &quot;payments&quot;: spec.mtls is the legacy mTLS/identity model and is removed in Kuma 3.0. …
+<div class="code"><pre class="chroma" data-lang="yaml"><code><span class="nt">apiVersion</span><span class="p">:</span> <span class="l">kuma.io/v1alpha1</span>
+<span class="nt">kind</span><span class="p">:</span> <span class="l">Mesh</span>
+<span class="nt">metadata</span><span class="p">:</span>
+  <span class="nt">name</span><span class="p">:</span> <span class="l">payments</span>
+<span class="nt">spec</span><span class="p">:</span>
+  <span class="nt">meshServices</span><span class="p">:</span>
+    <span class="nt">mode</span><span class="p">:</span> <span class="l">Exclusive</span>
+  <span class="nt">mtls</span><span class="p">:</span>
+    <span class="nt">enabledBackend</span><span class="p">:</span> <span class="l">vault-1</span>
+    <span class="nt">backends</span><span class="p">:</span>
+      - <span class="nt">name</span><span class="p">:</span> <span class="l">vault-1</span>
+        <span class="nt">type</span><span class="p">:</span> <span class="l">vault</span>
+        <span class="nt">dpCert</span><span class="p">:</span>
+          <span class="nt">rotation</span><span class="p">:</span>
+            <span class="nt">expiration</span><span class="p">:</span> <span class="l">24h</span>
+        <span class="nt">conf</span><span class="p">:</span>
+          <span class="nt">fromCp</span><span class="p">:</span>
+            <span class="nt">address</span><span class="p">:</span> <span class="l">https://vault.example.com:8200</span>
+            <span class="nt">agentAddress</span><span class="p">:</span> <span class="s2">""</span>
+            <span class="nt">namespace</span><span class="p">:</span> <span class="s2">""</span>
+            <span class="nt">pki</span><span class="p">:</span> <span class="l">kong-mesh-pki-payments</span>
+            <span class="nt">role</span><span class="p">:</span> <span class="l">dataplane-proxies</span>
+            <span class="nt">tls</span><span class="p">:</span>
+              <span class="nt">caCert</span><span class="p">:</span>
+                <span class="nt">secret</span><span class="p">:</span> <span class="l">vault-ca</span>
+              <span class="nt">skipVerify</span><span class="p">:</span> <span class="kc">false</span>
+              <span class="nt">serverName</span><span class="p">:</span> <span class="l">vault.example.com</span>
+            <span class="nt">auth</span><span class="p">:</span>
+              <span class="nt">token</span><span class="p">:</span>
+                <span class="nt">secret</span><span class="p">:</span> <span class="l">vault-token</span>
+</code></pre></div>
+<p>With <code>--to-latest v2</code> the <code>Mesh</code> is written back unchanged, with this advisory (shortened):</p>
+<div class="code"><pre class="chroma" data-lang="text"><code><span class="o-warn">⚠</span>  Mesh "payments": spec.mtls is the legacy mTLS/identity model and is removed in Kuma 3.0. …
    This Mesh uses the Kong Mesh CA backend type(s) vault. Kong Mesh 2.14 added a matching
    MeshIdentity provider: spec.provider.type: Extension with spec.provider.extension.name set to
    vault. … certmanager is Kubernetes-only; on Universal the CP does not register it.
-</code></pre>
+</code></pre></div>
 <p>With <code>--to-latest v3</code> the backend is removed:</p>
-<pre class="chroma"><code><span class="line"><span class="cl"><span class="c"># mesh/Mesh-payments.yaml</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l">kuma.io/v1alpha1</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">Mesh</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">metadata</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">payments</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">spec</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">meshServices</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">mode</span><span class="p">:</span><span class="w"> </span><span class="l">Exclusive</span><span class="w">
-</span></span></span></code></pre><pre><code>⚠  Mesh &quot;payments&quot;: spec.mtls is REMOVED in 3.0 and has been dropped from the Mesh output.
+<div class="code"><pre class="chroma" data-lang="yaml"><code><span class="c"># mesh/Mesh-payments.yaml</span>
+<span class="nt">apiVersion</span><span class="p">:</span> <span class="l">kuma.io/v1alpha1</span>
+<span class="nt">kind</span><span class="p">:</span> <span class="l">Mesh</span>
+<span class="nt">metadata</span><span class="p">:</span>
+  <span class="nt">name</span><span class="p">:</span> <span class="l">payments</span>
+<span class="nt">spec</span><span class="p">:</span>
+  <span class="nt">meshServices</span><span class="p">:</span>
+    <span class="nt">mode</span><span class="p">:</span> <span class="l">Exclusive</span>
+</code></pre></div>
+<div class="code"><pre class="chroma" data-lang="text"><code><span class="o-warn">⚠</span>  Mesh "payments": spec.mtls is REMOVED in 3.0 and has been dropped from the Mesh output.
    BLOCKING: before upgrading, create a MeshIdentity (and MeshTrust) that selects every proxy in
    this mesh, unless one already does. … This Mesh uses the Kong Mesh CA backend type(s) vault,
    which are removed in Kong Mesh 3.0. Replace them with a MeshIdentity using
    spec.provider.type: Extension with spec.provider.extension.name set to vault. …
-</code></pre>
+</code></pre></div>
 <h2 id="related">Related</h2>
 <ul>
 <li><a href="../mtls-identity/">mTLS and workload identity</a></li>
@@ -435,5 +441,6 @@ resources to the control plane's RBAC <code>Role</code>; check it if you manage 
 </footer>
 <script src="../../static/search-index.js"></script>
 <script src="../../static/search.js"></script>
+<script src="../../static/copy.js"></script>
 </body>
 </html>

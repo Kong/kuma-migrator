@@ -258,7 +258,7 @@ spec:
 
 With `--to-latest v2` the `Mesh` is written back unchanged, with this advisory (shortened):
 
-```
+```text
 ⚠  Mesh "payments": spec.mtls is the legacy mTLS/identity model and is removed in Kuma 3.0. …
    This Mesh uses the Kong Mesh CA backend type(s) vault. Kong Mesh 2.14 added a matching
    MeshIdentity provider: spec.provider.type: Extension with spec.provider.extension.name set to
@@ -278,7 +278,7 @@ spec:
     mode: Exclusive
 ```
 
-```
+```text
 ⚠  Mesh "payments": spec.mtls is REMOVED in 3.0 and has been dropped from the Mesh output.
    BLOCKING: before upgrading, create a MeshIdentity (and MeshTrust) that selects every proxy in
    this mesh, unless one already does. … This Mesh uses the Kong Mesh CA backend type(s) vault,

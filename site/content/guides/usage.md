@@ -7,7 +7,7 @@ nav_title: Typical usage
 
 Every walkthrough follows the same three steps:
 
-```
+```text
 extract  →  migrate --dry-run, then migrate  →  apply (by hand, following the report)
 ```
 
@@ -32,7 +32,7 @@ kuma-migrator migrate --input-dir ./raw-policies --output-dir ./migrated
 
 What lands where:
 
-```
+```text
 raw-policies/
   prod-eks-zone-ctx/                ← KUMA_MODE=zone (single-zone since Kuma 2.6)
     .kuma-migrator.json             ← {"tool":"kubectl","cpMode":"zone","environment":"kubernetes",…}
@@ -101,14 +101,14 @@ What each extraction gets:
 
 The end of the Global extraction lists what to fetch from the zones:
 
-```
+```text
   ⚠  Zone-origin resources skipped on Global CP — extract from their zone instead:
      MeshTimeout/my-timeout        →  zone: zone-eu-west1-prod
 ```
 
 Output of `migrate --dry-run` on such a tree (Global and one zone, warnings shortened):
 
-```
+```text
   ✓  MESH              default  default.yaml
        ←  global-prod-global-ctx/mesh-default/mesh/default.yaml
        →  global-prod-global-ctx/mesh-default/mesh/Mesh-default.yaml
@@ -188,7 +188,7 @@ plane, and reads meshes, zones and resources over HTTPS. The files are in Univer
 
 Output of `migrate` on a Konnect tree (warnings shortened):
 
-```
+```text
   ●  ALREADY MIGRATED  default  MeshTrace-otel.yaml
        ←  konnect-global-prod-global-ctx/mesh-default/observability/MeshTrace-otel.yaml
        →  konnect-global-prod-global-ctx/mesh-default/observability/MeshTrace-otel.yaml
@@ -229,7 +229,7 @@ kuma-migrator extract --kumactl-context uni-global --output-dir ./raw-policies
 kuma-migrator migrate --input-dir ./raw-policies --output-dir ./migrated --dry-run
 ```
 
-```
+```text
   –  SKIP              ZoneIngress-zi-1.yaml: no recognised Kuma policy documents
        ←  uni-global-global-ctx/global-scoped-resources/other/ZoneIngress-zi-1.yaml
        →  uni-global-global-ctx/global-scoped-resources/other/ZoneIngress-zi-1.yaml

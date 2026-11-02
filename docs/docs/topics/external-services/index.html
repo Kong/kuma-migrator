@@ -15,8 +15,8 @@
 <meta property="og:image" content="https://kong.github.io/kuma-migrator/assets/migration-overview.svg">
 <meta name="twitter:card" content="summary_large_image">
 
+<link rel="stylesheet" href="../../static/shared.css">
 <link rel="stylesheet" href="../../static/style.css">
-<link rel="stylesheet" href="../../static/chroma.css">
 </head>
 <body data-root="../../">
 <a class="skip" href="#content">Skip to content</a>
@@ -30,6 +30,7 @@
       <a href="../../policies/">Policies</a>
       <a href="https://github.com/Kong/kuma-migrator">GitHub</a>
     </nav>
+    <!-- release-tag --><a class="release-badge" href="https://github.com/Kong/kuma-migrator/releases/latest" title="Latest release: v0.8.0">v0.8.0</a><!-- /release-tag -->
     <div class="search">
       <input id="search-input" type="search" placeholder="Search docs" aria-label="Search docs" autocomplete="off">
       <ul id="search-results" hidden></ul>
@@ -221,72 +222,75 @@ the endpoints.</li>
 </ol>
 <h2 id="example">Example</h2>
 <p>Input:</p>
-<pre class="chroma"><code><span class="line"><span class="cl"><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l">kuma.io/v1alpha1</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">ExternalService</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">mesh</span><span class="p">:</span><span class="w"> </span><span class="l">default</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">metadata</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">httpbin</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">spec</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">tags</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kuma.io/service</span><span class="p">:</span><span class="w"> </span><span class="l">httpbin</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kuma.io/protocol</span><span class="p">:</span><span class="w"> </span><span class="l">http</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">networking</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">address</span><span class="p">:</span><span class="w"> </span><span class="l">httpbin.org:443</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">tls</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">caCert</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">inlineString</span><span class="p">:</span><span class="w"> </span><span class="p">|</span><span class="sd">
-</span></span></span><span class="line"><span class="cl"><span class="sd">          -----BEGIN CERTIFICATE-----
-</span></span></span><span class="line"><span class="cl"><span class="sd">          MIIB...
-</span></span></span><span class="line"><span class="cl"><span class="sd">          -----END CERTIFICATE-----</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">serverName</span><span class="p">:</span><span class="w"> </span><span class="l">httpbin.org</span><span class="w">
-</span></span></span></code></pre><p>Output with <code>--to-latest v2</code>:</p>
-<pre class="chroma"><code><span class="line"><span class="cl"><span class="c"># routing/MeshExternalService-kong-mesh-system-httpbin.yaml</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l">kuma.io/v1alpha1</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshExternalService</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">metadata</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">labels</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kuma.io/mesh</span><span class="p">:</span><span class="w"> </span><span class="l">default</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">httpbin</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l">kong-mesh-system</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">spec</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">endpoints</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span>- <span class="nt">address</span><span class="p">:</span><span class="w"> </span><span class="l">httpbin.org</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">port</span><span class="p">:</span><span class="w"> </span><span class="m">443</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">match</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">port</span><span class="p">:</span><span class="w"> </span><span class="m">443</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">protocol</span><span class="p">:</span><span class="w"> </span><span class="l">http</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l">HostnameGenerator</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">tls</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">verification</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">caCert</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">inlineString</span><span class="p">:</span><span class="w"> </span><span class="p">|</span><span class="sd">
-</span></span></span><span class="line"><span class="cl"><span class="sd">          -----BEGIN CERTIFICATE-----
-</span></span></span><span class="line"><span class="cl"><span class="sd">          MIIB...
-</span></span></span><span class="line"><span class="cl"><span class="sd">          -----END CERTIFICATE-----</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">mode</span><span class="p">:</span><span class="w"> </span><span class="l">Secured</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">serverName</span><span class="p">:</span><span class="w"> </span><span class="l">httpbin.org</span><span class="w">
-</span></span></span></code></pre><p>Output with <code>--to-latest v3</code> — the same, with the CA in the <code>SecureDataSource</code> shape:</p>
-<pre class="chroma"><code><span class="line"><span class="cl"><span class="w">    </span><span class="nt">verification</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">caCert</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">insecureInline</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">          </span><span class="nt">value</span><span class="p">:</span><span class="w"> </span><span class="p">|</span><span class="sd">
-</span></span></span><span class="line"><span class="cl"><span class="sd">            -----BEGIN CERTIFICATE-----
-</span></span></span><span class="line"><span class="cl"><span class="sd">            MIIB...
-</span></span></span><span class="line"><span class="cl"><span class="sd">            -----END CERTIFICATE-----</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l">InsecureInline</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">mode</span><span class="p">:</span><span class="w"> </span><span class="l">Secured</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">serverName</span><span class="p">:</span><span class="w"> </span><span class="l">httpbin.org</span><span class="w">
-</span></span></span></code></pre><p><code>v3</code> warnings (shortened):</p>
-<pre><code>⚠  spec.tls.verification.caCert.inlineString rewritten to the SecureDataSource shape (type:
+<div class="code"><pre class="chroma" data-lang="yaml"><code><span class="nt">apiVersion</span><span class="p">:</span> <span class="l">kuma.io/v1alpha1</span>
+<span class="nt">kind</span><span class="p">:</span> <span class="l">ExternalService</span>
+<span class="nt">mesh</span><span class="p">:</span> <span class="l">default</span>
+<span class="nt">metadata</span><span class="p">:</span>
+  <span class="nt">name</span><span class="p">:</span> <span class="l">httpbin</span>
+<span class="nt">spec</span><span class="p">:</span>
+  <span class="nt">tags</span><span class="p">:</span>
+    <span class="nt">kuma.io/service</span><span class="p">:</span> <span class="l">httpbin</span>
+    <span class="nt">kuma.io/protocol</span><span class="p">:</span> <span class="l">http</span>
+  <span class="nt">networking</span><span class="p">:</span>
+    <span class="nt">address</span><span class="p">:</span> <span class="l">httpbin.org:443</span>
+    <span class="nt">tls</span><span class="p">:</span>
+      <span class="nt">enabled</span><span class="p">:</span> <span class="kc">true</span>
+      <span class="nt">caCert</span><span class="p">:</span>
+        <span class="nt">inlineString</span><span class="p">:</span> <span class="p">|</span><span class="sd">
+          -----BEGIN CERTIFICATE-----
+          MIIB...
+          -----END CERTIFICATE-----</span>
+      <span class="nt">serverName</span><span class="p">:</span> <span class="l">httpbin.org</span>
+</code></pre></div>
+<p>Output with <code>--to-latest v2</code>:</p>
+<div class="code"><pre class="chroma" data-lang="yaml"><code><span class="c"># routing/MeshExternalService-kong-mesh-system-httpbin.yaml</span>
+<span class="nt">apiVersion</span><span class="p">:</span> <span class="l">kuma.io/v1alpha1</span>
+<span class="nt">kind</span><span class="p">:</span> <span class="l">MeshExternalService</span>
+<span class="nt">metadata</span><span class="p">:</span>
+  <span class="nt">labels</span><span class="p">:</span>
+    <span class="nt">kuma.io/mesh</span><span class="p">:</span> <span class="l">default</span>
+  <span class="nt">name</span><span class="p">:</span> <span class="l">httpbin</span>
+  <span class="nt">namespace</span><span class="p">:</span> <span class="l">kong-mesh-system</span>
+<span class="nt">spec</span><span class="p">:</span>
+  <span class="nt">endpoints</span><span class="p">:</span>
+  - <span class="nt">address</span><span class="p">:</span> <span class="l">httpbin.org</span>
+    <span class="nt">port</span><span class="p">:</span> <span class="m">443</span>
+  <span class="nt">match</span><span class="p">:</span>
+    <span class="nt">port</span><span class="p">:</span> <span class="m">443</span>
+    <span class="nt">protocol</span><span class="p">:</span> <span class="l">http</span>
+    <span class="nt">type</span><span class="p">:</span> <span class="l">HostnameGenerator</span>
+  <span class="nt">tls</span><span class="p">:</span>
+    <span class="nt">enabled</span><span class="p">:</span> <span class="kc">true</span>
+    <span class="nt">verification</span><span class="p">:</span>
+      <span class="nt">caCert</span><span class="p">:</span>
+        <span class="nt">inlineString</span><span class="p">:</span> <span class="p">|</span><span class="sd">
+          -----BEGIN CERTIFICATE-----
+          MIIB...
+          -----END CERTIFICATE-----</span>
+      <span class="nt">mode</span><span class="p">:</span> <span class="l">Secured</span>
+      <span class="nt">serverName</span><span class="p">:</span> <span class="l">httpbin.org</span>
+</code></pre></div>
+<p>Output with <code>--to-latest v3</code> — the same, with the CA in the <code>SecureDataSource</code> shape:</p>
+<div class="code"><pre class="chroma" data-lang="yaml"><code>    <span class="nt">verification</span><span class="p">:</span>
+      <span class="nt">caCert</span><span class="p">:</span>
+        <span class="nt">insecureInline</span><span class="p">:</span>
+          <span class="nt">value</span><span class="p">:</span> <span class="p">|</span><span class="sd">
+            -----BEGIN CERTIFICATE-----
+            MIIB...
+            -----END CERTIFICATE-----</span>
+        <span class="nt">type</span><span class="p">:</span> <span class="l">InsecureInline</span>
+      <span class="nt">mode</span><span class="p">:</span> <span class="l">Secured</span>
+      <span class="nt">serverName</span><span class="p">:</span> <span class="l">httpbin.org</span>
+</code></pre></div>
+<p><code>v3</code> warnings (shortened):</p>
+<div class="code"><pre class="chroma" data-lang="text"><code><span class="o-warn">⚠</span>  spec.tls.verification.caCert.inlineString rewritten to the SecureDataSource shape (type:
    InsecureInline) that Kuma 3.0 requires. Apply it while every control plane runs 2.14.6 or
    later and before upgrading the global control plane to 3.0 …
-⚠  no MeshIdentity for mesh default in the input set. Kuma 3.0 gives a client proxy a
+<span class="o-warn">⚠</span>  no MeshIdentity for mesh default in the input set. Kuma 3.0 gives a client proxy a
    MeshExternalService cluster only when it has a workload identity … 503 cluster_not_found …
-⚠  ExternalService &quot;httpbin&quot;: ExternalService is removed in 3.0 … Delete it before upgrading,
+<span class="o-warn">⚠</span>  ExternalService "httpbin": ExternalService is removed in 3.0 … Delete it before upgrading,
    once its converted replacement is in place …
-</code></pre>
+</code></pre></div>
 <h2 id="related">Related</h2>
 <ul>
 <li><a href="../meshes/">Meshes</a> — the <code>Mesh</code> passthrough and routing fields</li>
@@ -318,5 +322,6 @@ the endpoints.</li>
 </footer>
 <script src="../../static/search-index.js"></script>
 <script src="../../static/search.js"></script>
+<script src="../../static/copy.js"></script>
 </body>
 </html>

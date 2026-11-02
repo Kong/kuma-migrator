@@ -13,11 +13,40 @@ make site-test   # unit tests of the generator
 The build fails, listing every problem as `file:line: message`, on: a page without `title`, unknown
 front matter keys, a dangling `.md`/`policy:`/`#anchor`/site-root link, a duplicate slug, a policy
 entry with an unknown `group`/`product`/`status`, a `topics` slug with no topic page, a `code` path
-that does not exist, or a `docs/...` link on `docs/index.html` that matches no generated page.
+that does not exist, a `docs/...` link on `docs/index.html` that matches no generated page, a code
+fence without a language tag (or with one chroma does not know), or an indented code block.
 
 The sitemap `<lastmod>` is the date of the last commit touching `site/` (today's date while `site/`
 has uncommitted changes); `make site SITE_LASTMOD=YYYY-MM-DD` pins it. `site-check` ignores
 `<lastmod>` lines.
+
+### Release badge
+
+The header of every docs page and of the landing page shows the latest release tag, linking to
+`https://github.com/Kong/kuma-migrator/releases/latest`. The generator takes it from
+`git describe --tags --abbrev=0` at build time (`go run . -release vX.Y.Z` overrides it,
+`-release none` hides it) and writes it on a single line between `<!-- release-tag -->` and
+`<!-- /release-tag -->`. No request goes to the GitHub API at runtime.
+
+**After a release, run `make site` and commit** to refresh the badge. Until then the site shows
+the previous tag. `site-check` ignores the release-tag line, so pushing a tag never fails CI, and
+a shallow CI clone (no tags, empty badge) does not either.
+
+### Landing page
+
+`docs/index.html` is hand-written and self-contained (inline CSS and JS, no external requests). The
+generator rewrites three marked regions of it on every build, so the landing page and the docs
+share one header and one code palette:
+
+| Region | Source |
+|---|---|
+| `/* shared.css: … */` … `/* /shared.css */` in `<style>` | `site/static/shared.css` (tokens, header, code blocks) |
+| `/* copy.js: … */` … `/* /copy.js */` in `<script>` | `site/static/copy.js` (copy buttons) |
+| `<!-- release-tag -->` … `<!-- /release-tag -->` | the release tag (above) |
+
+Edit the files under `site/static/`, not the copies in `docs/index.html`. `site-check` diffs
+`docs/index.html` too. Code blocks on the landing page are written by hand with the same classes
+the generator emits (see below).
 
 ## Layout
 
@@ -33,7 +62,8 @@ site/
   data/
     policies.yaml           one entry per resource kind → /docs/policies/ and /docs/policies/<kind>/
   templates/                HTML templates (generator-owned)
-  static/                   CSS/JS/SVG copied to docs/docs/static/ (generator-owned)
+  static/                   CSS/JS/SVG copied to docs/docs/static/ (generator-owned);
+                            shared.css and copy.js are also inlined into docs/index.html
   gen/                      the generator: separate Go module, not part of the CLI's module
 ```
 
@@ -77,6 +107,31 @@ the on-page table of contents.
   (`https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/v3_mesh.go`).
 - Link to upstream docs or UPGRADE notes with full public URLs only (github.com/kumahq/kuma,
   developer.konghq.com, kuma.io). Never a local filesystem path.
+
+### Code blocks
+
+Every fenced block needs a language tag; the build fails without one. Use:
+
+| Tag | For |
+|---|---|
+| `yaml`, `json`, `go`, `markdown`, `diff` | files in that format |
+| `bash` (or `shell`) | commands only, no output |
+| `console` | commands prefixed `$ ` mixed with their output; the copy button copies the commands only |
+| `text` | plain output, directory trees, usage synopses |
+
+Highlighting happens at build time (`site/gen/highlight.go`): chroma tokenises the block and each
+token becomes a `<span>` with chroma's short class name (`nt`, `s2`, `c1`, …), styled by the
+site's own palette in `site/static/shared.css` (`--c-*` variables derived from the colour tokens,
+each at least 4.5:1 against the code background in light and dark mode). Two extra passes:
+
+- `bash`/`shell`/`console`: the first word of each command is classed `k-bin` (`kuma-migrator`),
+  `k-manual` (`kubectl`/`kumactl`, the manual apply step) or `k-cmd` (anything else); then
+  `k-sub` for the kuma-migrator subcommand, `k-flag` for flags, `k-val` for flag values.
+- `text`: a leading `⚠`/`✗`/`✓`/`●`, `[WARN]`/`[INFO]`, and `← …`/`→ …` path annotations are
+  coloured as the CLI prints them.
+
+Each block is wrapped in `<div class="code">`; `copy.js` adds the copy button (none without
+JavaScript).
 
 ### Callouts
 

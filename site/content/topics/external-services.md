@@ -157,7 +157,7 @@ Output with `--to-latest v3` — the same, with the CA in the `SecureDataSource`
 
 `v3` warnings (shortened):
 
-```
+```text
 ⚠  spec.tls.verification.caCert.inlineString rewritten to the SecureDataSource shape (type:
    InsecureInline) that Kuma 3.0 requires. Apply it while every control plane runs 2.14.6 or
    later and before upgrading the global control plane to 3.0 …

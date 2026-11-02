@@ -8,12 +8,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	chromahtml "github.com/alecthomas/chroma/v2/formatters/html"
 	"github.com/yuin/goldmark"
-	highlighting "github.com/yuin/goldmark-highlighting/v2"
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/extension"
 	"github.com/yuin/goldmark/parser"
+	"github.com/yuin/goldmark/renderer"
 	"github.com/yuin/goldmark/text"
 )
 
@@ -23,13 +22,11 @@ func newMarkdown() goldmark.Markdown {
 			extension.Table,
 			extension.Strikethrough,
 			extension.TaskList,
-			highlighting.NewHighlighting(
-				highlighting.WithFormatOptions(chromahtml.WithClasses(true)),
-			),
 		),
 		goldmark.WithParserOptions(
 			parser.WithAutoHeadingID(),
 		),
+		goldmark.WithRendererOptions(renderer.WithNodeRenderers(newCodeRenderer())),
 	)
 }
 
@@ -49,6 +46,16 @@ func (s *Site) parseMarkdown(file string, line int, body []byte) *mdDoc {
 	_ = ast.Walk(d.doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
 			return ast.WalkContinue, nil
+		}
+		switch c := n.(type) {
+		case *ast.FencedCodeBlock:
+			if msg := checkLang(string(c.Language(body))); msg != "" {
+				s.errorf("%s:%d: %s", file, d.fenceLine(c), msg)
+			}
+			return ast.WalkSkipChildren, nil
+		case *ast.CodeBlock:
+			s.errorf("%s:%d: indented code block: use a fenced block with a language tag", file, d.fenceLine(c)+1)
+			return ast.WalkSkipChildren, nil
 		}
 		if h, ok := n.(*ast.Heading); ok {
 			id, _ := h.AttributeString("id")
@@ -81,6 +88,17 @@ func plainText(n ast.Node, src []byte) string {
 		return ast.WalkContinue, nil
 	})
 	return strings.TrimSpace(b.String())
+}
+
+// fenceLine returns the file line of a code block's opening fence.
+func (d *mdDoc) fenceLine(n ast.Node) int {
+	if n.Lines().Len() > 0 {
+		return d.line + bytes.Count(d.body[:n.Lines().At(0).Start], []byte("\n")) - 1
+	}
+	if f, ok := n.(*ast.FencedCodeBlock); ok && f.Info != nil {
+		return d.line + bytes.Count(d.body[:f.Info.Segment.Start], []byte("\n"))
+	}
+	return d.lineOf(n)
 }
 
 // lineOf returns the file line number of a node, best effort.

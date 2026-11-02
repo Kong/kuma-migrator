@@ -1,0 +1,169 @@
+/* Shared by the /docs/ pages (static/shared.css) and the landing page (inlined into
+   docs/index.html by site/gen): colour tokens, the site header, and code blocks. */
+:root {
+  --bg:        #ffffff;
+  --bg-alt:    #f6f8fa;
+  --ink:       #1f2328;
+  --muted:     #6e7781;
+  --line:      #d0d7de;
+  --code-bg:   rgba(31, 35, 40, .06);
+  --accent:    #6639ba;
+  --accent-d:  #4f2a94;
+  --old:       #b3261e;
+  --new:       #0f6f5c;
+  --manual:    #9a6700;
+  --accent2:   #3d1f75;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+
+  /* Code palette, derived from the tokens above. --muted, --new and --manual are darkened
+     so every text token keeps a contrast of at least 4.5:1 on --code-bg, including a code
+     block nested in a callout (two --code-bg layers). */
+  --c-key:     var(--accent);   /* YAML/JSON keys, Go functions, kuma-migrator */
+  --c-kw:      var(--accent2);  /* keywords, commands, subcommands */
+  --c-str:     #0d6553;         /* strings and plain YAML scalars, flags (--new) */
+  --c-num:     #7d5300;         /* numbers, variables, kubectl/kumactl (--manual) */
+  --c-const:   var(--old);      /* true/false/null */
+  --c-comment: #57606a;         /* comments, punctuation (--muted) */
+  --c-ins-bg:  rgba(15, 111, 92, .12);
+  --c-del-bg:  rgba(179, 38, 30, .10);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg:       #0d1117;
+    --bg-alt:   #161b22;
+    --ink:      #e6edf3;
+    --muted:    #8b949e;
+    --line:     #30363d;
+    --code-bg:  rgba(230, 237, 243, .08);
+    --accent:   #b083f0;
+    --accent-d: #cba8f7;
+    --old:      #ff7b72;
+    --new:      #56d4a4;
+    --manual:   #e3b341;
+    --accent2:  #e2a6ff;
+
+    --c-key:     #bb94f5;
+    --c-kw:      var(--accent2);
+    --c-str:     var(--new);
+    --c-num:     var(--manual);
+    --c-const:   var(--old);
+    --c-comment: #9ea7b3;
+    --c-ins-bg:  rgba(86, 212, 164, .14);
+    --c-del-bg:  rgba(255, 123, 114, .14);
+  }
+}
+
+/* ---- header ---- */
+.site-header {
+  position: sticky; top: 0; z-index: 10;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+}
+.site-header .bar {
+  max-width: 90rem; margin: 0 auto;
+  display: flex; align-items: center; gap: 1.25rem;
+  padding: .6rem 1.25rem;
+  flex-wrap: wrap;
+  min-height: 3.62rem; /* the docs header's height with its search box, so both headers match */
+}
+.brand {
+  display: inline-flex; align-items: center; gap: .5rem;
+  color: var(--ink); text-decoration: none;
+  font-family: var(--mono); font-weight: 700; font-size: 1.05rem;
+}
+.brand:hover { color: var(--ink) }
+.brand img { border-radius: 7px }
+.docs-home {
+  color: var(--muted); text-decoration: none; font-weight: 600; font-size: .9rem;
+  border-left: 1px solid var(--line); padding-left: 1rem;
+}
+.docs-home:hover { color: var(--accent) }
+.top-nav { display: flex; gap: .4rem 1rem; flex-wrap: wrap }
+.top-nav a { color: var(--ink); text-decoration: none; font-weight: 500; font-size: .95rem; padding: .2rem 0 }
+.top-nav a:hover { color: var(--accent) }
+.top-nav a.active { color: var(--accent); box-shadow: inset 0 -2px 0 var(--accent) }
+.release-badge {
+  font-family: var(--mono); font-size: .78rem; font-weight: 600; line-height: 1.4;
+  color: var(--accent); text-decoration: none;
+  border: 1px solid var(--line); border-radius: 999px;
+  padding: .12rem .6rem;
+  white-space: nowrap;
+}
+.release-badge:hover { border-color: var(--accent); color: var(--accent) }
+@media (max-width: 52rem) {
+  .site-header .bar { gap: .5rem 1rem; padding: .55rem 1rem }
+}
+
+/* ---- code ---- */
+code, pre { font-family: var(--mono) }
+code {
+  font-size: .875em;
+  background: var(--code-bg);
+  padding: .15em .4em;
+  border-radius: 4px;
+}
+pre {
+  background: var(--code-bg);
+  border-radius: 8px;
+  padding: 1rem 1.1rem;
+  overflow-x: auto;
+  font-size: .84rem;
+  line-height: 1.6;
+  border: 1px solid var(--line);
+  color: var(--ink);
+}
+pre code { background: none; padding: 0; font-size: inherit; border-radius: 0 }
+
+/* .code wraps a <pre> so the copy button (added by copy.js) stays put while the block scrolls. */
+.code { position: relative; margin: 1rem 0 }
+.code > pre { margin: 0 }
+.code .copy {
+  position: absolute; top: .45rem; right: .45rem;
+  font: 600 .72rem/1.2 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: var(--muted); background: var(--bg);
+  border: 1px solid var(--line); border-radius: 6px;
+  padding: .3rem .55rem;
+  cursor: pointer;
+  opacity: 0; transition: opacity .15s;
+}
+.code:hover .copy, .code .copy:focus-visible, .code .copy.done { opacity: 1 }
+.code .copy:hover { color: var(--accent); border-color: var(--accent) }
+.code .copy.done { color: var(--c-str); border-color: var(--c-str) }
+@media (hover: none) { .code .copy { opacity: 1 } }
+
+/* Token classes are chroma's short names, emitted by site/gen (and hand-written on the
+   landing page). Anything without a class renders in --ink. */
+.chroma .c, .chroma .c1, .chroma .cm, .chroma .cs, .chroma .ch, .chroma .cp, .chroma .cpf { color: var(--c-comment); font-style: italic }
+.chroma .p, .chroma .o, .chroma .se, .chroma .nn, .chroma .gp { color: var(--c-comment) }
+.chroma .gp { user-select: none }
+.chroma .nt, .chroma .na, .chroma .nl, .chroma .nf, .chroma .fm, .chroma .nc { color: var(--c-key) }
+.chroma .k, .chroma .kd, .chroma .kn, .chroma .kp, .chroma .kr, .chroma .kt, .chroma .ow, .chroma .nb { color: var(--c-kw); font-weight: 600 }
+.chroma .s, .chroma .s1, .chroma .s2, .chroma .sa, .chroma .sb, .chroma .sc, .chroma .sd, .chroma .sh,
+.chroma .si, .chroma .sx, .chroma .sr, .chroma .ss, .chroma .dl, .chroma .l, .chroma .ld { color: var(--c-str) }
+.chroma .m, .chroma .mb, .chroma .mf, .chroma .mh, .chroma .mi, .chroma .il, .chroma .mo,
+.chroma .nv, .chroma .vc, .chroma .vg, .chroma .vi { color: var(--c-num) }
+.chroma .kc, .chroma .bp { color: var(--c-const) }
+.chroma .gh, .chroma .gu { color: var(--c-key); font-weight: 700 }
+.chroma .gi { color: var(--c-str); background: var(--c-ins-bg) }
+.chroma .gd { color: var(--c-const); background: var(--c-del-bg) }
+.chroma .ge { font-style: italic }
+.chroma .gs { font-weight: 700 }
+.chroma .err { color: inherit; background: none }
+
+/* Shell: kuma-migrator commands (binary, subcommand, flags, values), other commands, and
+   kubectl/kumactl in amber because applying is the manual step, not a kuma-migrator command. */
+.chroma .k-bin      { color: var(--c-key); font-weight: 700 }
+.chroma .k-sub      { color: var(--c-kw); font-weight: 700 }
+.chroma .k-cmd      { color: var(--c-kw); font-weight: 600 }
+.chroma .k-flag     { color: var(--c-str) }
+.chroma .k-val      { color: var(--ink); font-weight: 600 }
+.chroma .k-manual   { color: var(--c-num); font-weight: 600 }
+.chroma .k-manual-b { color: var(--c-num); font-weight: 700 }
+
+/* CLI output: status glyphs and the dimmed ← input / → output path lines. */
+.chroma .o-warn { color: var(--c-num); font-weight: 700 }
+.chroma .o-err  { color: var(--c-const); font-weight: 700 }
+.chroma .o-ok   { color: var(--c-str); font-weight: 700 }
+.chroma .o-info { color: var(--c-key); font-weight: 700 }
+.chroma .o-dim  { color: var(--c-comment) }

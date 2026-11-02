@@ -68,7 +68,7 @@ integration compiles **into** them: on 3.0 the control plane registers an `HTTPR
 and a `GRPCRoute` reconciler (kuma#18280), and both produce a generated `MeshHTTPRoute` for an
 `HTTPRoute`/`GRPCRoute` whose parent is a `Service` or `MeshService`:
 
-```
+```text
 Gateway API HTTPRoute / GRPCRoute   (GAMMA: parentRef → Service or MeshService)
             ↓  control plane reconciler
       MeshHTTPRoute                 (generated; hand-written ones are still supported)
@@ -403,7 +403,7 @@ spec:
 
 `v3` messages (shortened):
 
-```
+```text
 ✗  MeshGatewayInstance "edge-gateway" (kong-mesh-system) has no successor on Kuma 3.0 … Replace it
    with a delegated gateway: a Deployment and Service you manage … annotation
    traffic.kuma.io/exclude-inbound-ports: "<ports>" … kuma.io/ignore: "true" … Settings to carry

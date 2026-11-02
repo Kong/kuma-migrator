@@ -157,7 +157,7 @@ type: Dataplane
 The inbound is converted; the outbound and `reachableServices` are not, because `backend` is a
 Universal name with no port. Warnings (shortened):
 
-```
+```text
 ⚠  3.0 no longer reads the inbound protocol from the kuma.io/protocol tag … Auto-set
    inbound[].protocol from the tag: inbound port 8080=http.
 ⚠  networking.inbound[].tags is removed in 3.0 and dropped silently on apply … Auto-moved to

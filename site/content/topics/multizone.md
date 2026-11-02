@@ -142,7 +142,7 @@ With `--to-latest v2` both are copied unchanged without warnings.
 With `--to-latest v3` the `ZoneIngress` is moved to `_manual/other/ZoneIngress-zone-ingress-1.yaml`
 and both documents are reported (shortened):
 
-```
+```text
 ⚠  BLOCKING — ZoneIngress "zone-ingress-1": the ZoneIngress resource is removed in 3.0 (CRD, API
    and KDS sync) … deploy mesh-scoped zone proxies (Kubernetes: meshes[].ingress.enabled /
    meshes[].egress.enabled; Universal: one regular Dataplane per mesh with

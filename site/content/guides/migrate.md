@@ -76,7 +76,7 @@ The output mirrors the input layout. Each document is written to the kind subfol
 **output** kind, named `<Kind>-<name>.yaml`, or `<Kind>-<namespace>-<name>.yaml` when it has a
 namespace.
 
-```
+```text
 migrated/
   konnect-global-prod-global-ctx/
     mesh-default/

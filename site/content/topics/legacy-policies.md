@@ -261,7 +261,7 @@ spec:
 
 The `TrafficRoute` is copied to `routing/TrafficRoute-route-all.yaml` unchanged, with an error:
 
-```
+```text
 ⚠  Retry "web-retry": conf.http.retriableStatusCodes ([503]) has no MeshRetry equivalent and was
    dropped — MeshRetry cannot retry on specific status codes. …
 ✗  TrafficRoute requires manual migration to MeshHTTPRoute or MeshTCPRoute

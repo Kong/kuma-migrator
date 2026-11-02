@@ -15,8 +15,8 @@
 <meta property="og:image" content="https://kong.github.io/kuma-migrator/assets/migration-overview.svg">
 <meta name="twitter:card" content="summary_large_image">
 
+<link rel="stylesheet" href="../../static/shared.css">
 <link rel="stylesheet" href="../../static/style.css">
-<link rel="stylesheet" href="../../static/chroma.css">
 </head>
 <body data-root="../../">
 <a class="skip" href="#content">Skip to content</a>
@@ -30,6 +30,7 @@
       <a href="../../policies/">Policies</a>
       <a href="https://github.com/Kong/kuma-migrator">GitHub</a>
     </nav>
+    <!-- release-tag --><a class="release-badge" href="https://github.com/Kong/kuma-migrator/releases/latest" title="Latest release: v0.8.0">v0.8.0</a><!-- /release-tag -->
     <div class="search">
       <input id="search-input" type="search" placeholder="Search docs" aria-label="Search docs" autocomplete="off">
       <ul id="search-results" hidden></ul>
@@ -112,10 +113,10 @@ with <code>ApiServer.ReadOnly=true</code> reports every type as read-only, which
 <p>Code: <a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/extractor/kube.go"><code>pkg/extractor/kube.go</code></a>,
 <a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/extractor/kumactl.go"><code>pkg/extractor/kumactl.go</code></a>.</p>
 <h2 id="output-layout">Output layout</h2>
-<pre><code>&lt;output-dir&gt;/
-  &lt;context&gt;-global-ctx/            ← context name + control plane mode
-    .kuma-migrator.json            ← how this context was extracted
-    mesh-default/                  ← one directory per mesh, prefixed &quot;mesh-&quot;
+<div class="code"><pre class="chroma" data-lang="text"><code>&lt;output-dir&gt;/
+  &lt;context&gt;-global-ctx/            <span class="o-dim">← context name + control plane mode</span>
+    .kuma-migrator.json            <span class="o-dim">← how this context was extracted</span>
+    mesh-default/                  <span class="o-dim">← one directory per mesh, prefixed "mesh-"</span>
       resiliency/
       routing/
       zero-trust/
@@ -124,14 +125,14 @@ with <code>ApiServer.ReadOnly=true</code> reports every type as read-only, which
       other/
     mesh-prod/
       resiliency/
-    global-scoped-resources/       ← resources with no mesh (Zone, HostnameGenerator, …)
+    global-scoped-resources/       <span class="o-dim">← resources with no mesh (Zone, HostnameGenerator, …)</span>
       other/
-  &lt;context&gt;-zone-ctx/              ← a Zone control plane
+  &lt;context&gt;-zone-ctx/              <span class="o-dim">← a Zone control plane</span>
     mesh-default/
       resiliency/
   &lt;context&gt;-standalone-ctx/
-  &lt;context&gt;-unknown-ctx/           ← mode could not be detected
-</code></pre>
+  &lt;context&gt;-unknown-ctx/           <span class="o-dim">← mode could not be detected</span>
+</code></pre></div>
 <p>The kind subfolders come from
 <a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/resource/subfolder.go"><code>pkg/resource/subfolder.go</code></a>:</p>
 <div class="table-wrap"><table>
@@ -169,13 +170,15 @@ with <code>ApiServer.ReadOnly=true</code> reports every type as read-only, which
 </tbody>
 </table></div>
 <p><code>.kuma-migrator.json</code> records the extraction:</p>
-<pre class="chroma"><code><span class="line"><span class="cl"><span class="p">{</span><span class="nt">&#34;tool&#34;</span><span class="p">:</span><span class="s2">&#34;kumactl&#34;</span><span class="p">,</span><span class="nt">&#34;context&#34;</span><span class="p">:</span><span class="s2">&#34;konnect-global-prod&#34;</span><span class="p">,</span><span class="nt">&#34;cpMode&#34;</span><span class="p">:</span><span class="s2">&#34;global&#34;</span><span class="p">,</span><span class="nt">&#34;isKonnect&#34;</span><span class="p">:</span><span class="kc">true</span><span class="p">}</span>
-</span></span><span class="line"><span class="cl"><span class="p">{</span><span class="nt">&#34;tool&#34;</span><span class="p">:</span><span class="s2">&#34;kubectl&#34;</span><span class="p">,</span><span class="nt">&#34;context&#34;</span><span class="p">:</span><span class="s2">&#34;zone-eu-west1-prod&#34;</span><span class="p">,</span><span class="nt">&#34;cpMode&#34;</span><span class="p">:</span><span class="s2">&#34;zone&#34;</span><span class="p">,</span><span class="nt">&#34;environment&#34;</span><span class="p">:</span><span class="s2">&#34;kubernetes&#34;</span><span class="p">}</span>
-</span></span></code></pre><p><code>migrate</code> reads it to pick the skip list (<code>environment</code>) and to write the right apply command
+<div class="code"><pre class="chroma" data-lang="json"><code><span class="p">{</span><span class="nt">"tool"</span><span class="p">:</span><span class="s2">"kumactl"</span><span class="p">,</span><span class="nt">"context"</span><span class="p">:</span><span class="s2">"konnect-global-prod"</span><span class="p">,</span><span class="nt">"cpMode"</span><span class="p">:</span><span class="s2">"global"</span><span class="p">,</span><span class="nt">"isKonnect"</span><span class="p">:</span><span class="kc">true</span><span class="p">}</span>
+<span class="p">{</span><span class="nt">"tool"</span><span class="p">:</span><span class="s2">"kubectl"</span><span class="p">,</span><span class="nt">"context"</span><span class="p">:</span><span class="s2">"zone-eu-west1-prod"</span><span class="p">,</span><span class="nt">"cpMode"</span><span class="p">:</span><span class="s2">"zone"</span><span class="p">,</span><span class="nt">"environment"</span><span class="p">:</span><span class="s2">"kubernetes"</span><span class="p">}</span>
+</code></pre></div>
+<p><code>migrate</code> reads it to pick the skip list (<code>environment</code>) and to write the right apply command
 (<code>tool</code>, <code>context</code>, <code>isKonnect</code>) into the report. Without it, the report assumes <code>kubectl</code>.</p>
 <p>Extract one mesh only:</p>
-<pre class="chroma"><code><span class="line"><span class="cl">kuma-migrator extract --kumactl-context global-cp --output-dir ./raw-policies --mesh default
-</span></span></code></pre><p>Running <code>extract</code> against several control planes with the same <code>--output-dir</code> is supported:
+<div class="code"><pre class="chroma" data-lang="bash"><code><span class="k-bin">kuma-migrator</span> <span class="k-sub">extract</span> <span class="k-flag">--kumactl-context</span> <span class="k-val">global-cp</span> <span class="k-flag">--output-dir</span> <span class="k-val">./raw-policies</span> <span class="k-flag">--mesh</span> <span class="k-val">default</span>
+</code></pre></div>
+<p>Running <code>extract</code> against several control planes with the same <code>--output-dir</code> is supported:
 each control plane gets its own <code>&lt;context&gt;-&lt;mode&gt;-ctx/</code> directory.</p>
 <h2 id="control-plane-modes">Control plane modes</h2>
 <p><code>extract</code> detects the mode of the control plane and filters on the <code>kuma.io/origin</code> label.
@@ -222,23 +225,24 @@ Kuma's multizone resource sync is described in the
 <a href="https://kuma.io/docs/latest/production/deployment/multi-zone/">Kuma multizone docs</a>.</p>
 <h3 id="global-control-plane">Global control plane</h3>
 <p>Extract the Global control plane first:</p>
-<pre class="chroma"><code><span class="line"><span class="cl"><span class="c1"># kumactl path</span>
-</span></span><span class="line"><span class="cl">kuma-migrator extract --kumactl-context global-cp --output-dir ./raw-policies
-</span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl"><span class="c1"># or the kubectl path, same control plane</span>
-</span></span><span class="line"><span class="cl">kuma-migrator extract --kube-context global-cp --output-dir ./raw-policies
-</span></span></code></pre><p>Console output on a Global control plane:</p>
-<pre><code>CP mode:        global
+<div class="code"><pre class="chroma" data-lang="bash"><code><span class="c1"># kumactl path</span>
+<span class="k-bin">kuma-migrator</span> <span class="k-sub">extract</span> <span class="k-flag">--kumactl-context</span> <span class="k-val">global-cp</span> <span class="k-flag">--output-dir</span> <span class="k-val">./raw-policies</span>
+
+<span class="c1"># or the kubectl path, same control plane</span>
+<span class="k-bin">kuma-migrator</span> <span class="k-sub">extract</span> <span class="k-flag">--kube-context</span> <span class="k-val">global-cp</span> <span class="k-flag">--output-dir</span> <span class="k-val">./raw-policies</span>
+</code></pre></div>
+<p>Console output on a Global control plane:</p>
+<div class="code"><pre class="chroma" data-lang="text"><code>CP mode:        global
 Attached zones: zone-eu-west, zone-us-east
-[INFO] MeshGatewayInstance and MeshGatewayConfig are zone-local and skipped here.
+<span class="o-info">[INFO]</span> MeshGatewayInstance and MeshGatewayConfig are zone-local and skipped here.
        Run extract against each Zone CP to capture gateway instances.
 Found 24 writable resource type(s)
 Extracted 83 resource(s) to ./raw-policies
 
-  ⚠  Zone-origin resources skipped on Global CP — extract from their zone instead:
+  <span class="o-warn">⚠</span>  Zone-origin resources skipped on Global CP — extract from their zone instead:
      MeshTimeout/my-timeout        →  zone: zone-eu-west
      MeshRateLimit/rate-limit-svc  →  zone: zone-us-east
-</code></pre>
+</code></pre></div>
 <h3 id="zone-control-planes">Zone control planes</h3>
 <p>Zone control planes hold what the Global control plane does not:</p>
 <ul>
@@ -247,14 +251,15 @@ consumer policies, anything applied directly to the zone cluster;</li>
 <li><code>MeshGatewayInstance</code> and <code>MeshGatewayConfig</code>, which are never synced to the Global
 control plane.</li>
 </ul>
-<pre class="chroma"><code><span class="line"><span class="cl">kuma-migrator extract --kube-context prod-zone-eu --output-dir ./raw-policies
-</span></span><span class="line"><span class="cl">kuma-migrator extract --kube-context prod-zone-us --output-dir ./raw-policies
-</span></span></code></pre><p>Console output on a Zone control plane:</p>
-<pre><code>CP mode:        zone (eu-west)
-[WARN] Extracting from a Zone CP. Only resources with kuma.io/origin: zone will be kept.
+<div class="code"><pre class="chroma" data-lang="bash"><code><span class="k-bin">kuma-migrator</span> <span class="k-sub">extract</span> <span class="k-flag">--kube-context</span> <span class="k-val">prod-zone-eu</span> <span class="k-flag">--output-dir</span> <span class="k-val">./raw-policies</span>
+<span class="k-bin">kuma-migrator</span> <span class="k-sub">extract</span> <span class="k-flag">--kube-context</span> <span class="k-val">prod-zone-us</span> <span class="k-flag">--output-dir</span> <span class="k-val">./raw-policies</span>
+</code></pre></div>
+<p>Console output on a Zone control plane:</p>
+<div class="code"><pre class="chroma" data-lang="text"><code>CP mode:        zone (eu-west)
+<span class="o-warn">[WARN]</span> Extracting from a Zone CP. Only resources with kuma.io/origin: zone will be kept.
        For a complete policy set, also run extract against the Global CP.
-[INFO] MeshGatewayInstance and MeshGatewayConfig are zone-local and will be extracted here.
-</code></pre>
+<span class="o-info">[INFO]</span> MeshGatewayInstance and MeshGatewayConfig are zone-local and will be extracted here.
+</code></pre></div>
 <h3 id="where-gateway-resources-live">Where gateway resources live</h3>
 <div class="table-wrap"><table>
 <thead>
@@ -353,5 +358,6 @@ file, for a control plane API with a self-signed certificate.</p>
 </footer>
 <script src="../../static/search-index.js"></script>
 <script src="../../static/search.js"></script>
+<script src="../../static/copy.js"></script>
 </body>
 </html>
