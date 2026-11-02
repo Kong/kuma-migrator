@@ -169,18 +169,16 @@ On a Global CP, the following kinds are always skipped — they are zone-local a
     ...
 ```
 
-### Migrate — all-zones routing
+### Migrate — Gateway API output routing
 
-When migrating resources from the `global/` input folder, Gateway API output kinds (`Gateway`, `HTTPRoute`, `TCPRoute`, `GatewayClass`, `ReferenceGrant`) are written to `all-zones/` instead of `global/`. These are Kubernetes-native CRDs that must be applied to zone clusters, not to the Global CP.
+Gateway API output kinds (`Gateway`, `HTTPRoute`, `TCPRoute`, `GatewayClass`, `ReferenceGrant`) are written to the context's `global-scoped-resources/` directory instead of the mesh directory. They are Kubernetes-native objects applied to the zone clusters that run the gateway, not mesh-scoped Kuma resources.
 
 ```
 <output-dir>/
-  global/          ← Kuma policy CRDs; apply to Global CP
-  all-zones/       ← Gateway API CRDs; apply to every Zone cluster
-    routing/
-  zone-<name>/     ← zone-origin Kuma policies; apply to that Zone cluster
-    resiliency/
-    ...
+  <context>-<mode>-ctx/
+    mesh-<mesh>/<sub>/              ← Kuma resources for that mesh
+    global-scoped-resources/<sub>/  ← global-scoped Kuma resources and Gateway API objects
+    _manual/...                     ← --to-latest v3 only: not converted, never applied
 ```
 
 ---
