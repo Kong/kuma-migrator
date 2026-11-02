@@ -26,7 +26,7 @@
     <a class="docs-home" href="{{.Home}}">Docs</a>
     <nav class="top-nav" aria-label="Sections">
       {{range .TopNav}}<a href="{{.URL}}"{{if .Active}} class="active" aria-current="true"{{end}}>{{.Title}}</a>
-      {{end}}<a href="{{.RepoURL}}">GitHub</a>
+      {{end}}<a class="external" href="{{.RepoURL}}">GitHub<svg class="ext-icon" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" focusable="false"><path d="M6 3H3.5A1.5 1.5 0 0 0 2 4.5v8A1.5 1.5 0 0 0 3.5 14h8a1.5 1.5 0 0 0 1.5-1.5V10M9 2h5v5M14 2 7 9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="visually-hidden"> (external site)</span></a>
     </nav>
     {{.Release}}
     <div class="search">
