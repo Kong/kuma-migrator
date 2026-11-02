@@ -12,9 +12,13 @@ import (
 // DefaultSkipKindsKubernetes is the built-in skip list for Kubernetes deployments.
 // Dataplane, ZoneIngress, ZoneEgress, and Workload are CP-managed in Kubernetes
 // and are never hand-authored by users.
+//
+// AccessRole is not skipped in either environment: Kong Mesh 3.0 rejects roles
+// that list removed types or use the removed qualifiers, so the migrator scans
+// them (see v3_kongmesh.go). AccessRoleBinding is still skipped: nothing in it
+// changes shape in 3.0.
 var DefaultSkipKindsKubernetes = []string{
 	"Dataplane",
-	"AccessRole",
 	"AccessRoleBinding",
 	"ZoneEgress",
 	"ZoneIngress",
@@ -40,7 +44,6 @@ var DefaultSkipKindsKubernetes = []string{
 // rendered spec.template at creation time, so a template that used to produce a
 // silently-broken hostname now fails on apply.
 var DefaultSkipKindsUniversal = []string{
-	"AccessRole",
 	"AccessRoleBinding",
 	"Zone",
 	"Workload",
@@ -117,8 +120,9 @@ type Config struct {
 	Skip SkipKindsConfig `yaml:"skip"`
 }
 
-// SkipSet returns a skip set for the Kubernetes environment (default when the
-// deployment environment is not known, e.g. in the migrate pipeline).
+// SkipSet returns a skip set for the Kubernetes environment. It is the same as
+// SkipSetForEnv(""). The migrate pipeline does not use it: it picks the
+// environment per context directory (see migrator.skipPolicy).
 func (c *Config) SkipSet() map[string]bool {
 	return c.SkipSetForEnv("")
 }

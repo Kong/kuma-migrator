@@ -155,6 +155,10 @@ func ScanForDeprecations(raw []byte, target TargetVersion) (out []byte, warnings
 		warnings = append(warnings, warnMeshOPALegacyDataSource(obj, name, target)...)
 	case "MeshGlobalRateLimit":
 		warnings = append(warnings, warnMeshGlobalRateLimitRemoved(obj, name, target)...)
+	case "AccessRole":
+		fix(scanAccessRole(obj, name, target))
+	case "AccessAudit":
+		fix(scanAccessAudit(obj, name, target))
 	case "MeshHTTPRoute":
 		warnings = append(warnings, warnMeshHTTPRouteNoCatchAll(obj, name, target)...)
 		fix(fixRouteBackendRefsForV3(obj, name, kind, target))
@@ -1630,9 +1634,11 @@ func warnMeshOPATargetRefFields(obj map[string]interface{}, name string, target 
 	}
 	if len(present) > 0 {
 		msg := fmt.Sprintf(
-			"MeshOPA %q: spec.targetRef.{%s} %s use spec.targetRef.labels[\"kuma.io/display-name\"] instead.",
+			"MeshOPA %q: spec.targetRef.{%s} %s. For kind: MeshService with name: <svc>, the "+
+				"documented rewrite is kind: Dataplane with labels: {app: <svc>}; namespace and mesh "+
+				"are dropped.",
 			name, strings.Join(present, ","),
-			target.removalNote("3.0 removes these targetRef fields —"))
+			target.removalNote("select the proxies through labels instead"))
 
 		// Only `name` carries the scope-widening hazard; namespace/mesh are pruned.
 		for _, f := range present {
@@ -1727,21 +1733,26 @@ func warnMeshOPALegacyDataSource(obj map[string]interface{}, name string, target
 // policy is removed in 3.0. Leftover objects go inert rather than being rejected,
 // and Helm does not delete the CRD, so the resource can linger and look healthy
 // while enforcing nothing.
+//
+// Under v3 the pipeline keeps the document out of the apply tree (it goes to
+// ManualDir) and the report lists it under "Delete Before Upgrading to 3.0".
 func warnMeshGlobalRateLimitRemoved(_ map[string]interface{}, name string, target TargetVersion) []string {
 	if target.IsV3() {
 		return []string{fmt.Sprintf(
-			"MeshGlobalRateLimit %q: this Kong Mesh policy is REMOVED in 3.0, along with its CP "+
+			"MeshGlobalRateLimit %q: removed in 3.0 with no in-mesh replacement, together with its CP "+
 				"support, the rate-limit service in the Helm chart (ratelimit.*, global.ratelimit.*), "+
-				"the KMESH_GLOBAL_RATE_LIMIT_* env vars and the kmesh.globalRateLimit CP config. "+
-				"Leftover objects become inert rather than rejected, and Helm does not delete the "+
-				"CRD — the policy will still be listed while enforcing nothing. Remove it and drop "+
-				"the CRD manually (kubectl delete crd meshglobalratelimits.kuma.io). There is no "+
-				"in-mesh replacement; plan rate limiting at the gateway or with MeshRateLimit.",
-			name)}
+				"the KMESH_GLOBAL_RATE_LIMIT_* env vars and the kmesh.globalRateLimit CP config. Delete "+
+				"it before upgrading and remove the ratelimit.* / global.ratelimit.* Helm overrides. It "+
+				"is not part of any apply step: the copy is under %s/ and the report lists it under "+
+				"\"Delete Before Upgrading to 3.0\". A leftover object is not rejected, it just enforces "+
+				"nothing. Helm does not delete the CRD; remove it after upgrading with "+
+				"kubectl delete crd meshglobalratelimits.kuma.io. Plan rate limiting at the gateway or "+
+				"with MeshRateLimit.",
+			name, ManualDir)}
 	}
 	return []string{fmt.Sprintf(
-		"MeshGlobalRateLimit %q: this Kong Mesh policy works in 2.14 but is removed in 3.0, with no "+
-			"in-mesh replacement. Leftover objects go inert rather than being rejected, so plan the "+
-			"replacement before upgrading.",
+		"MeshGlobalRateLimit %q: works in 2.14, removed in 3.0 with no in-mesh replacement. Delete it "+
+			"before upgrading to 3.0: a leftover object is not rejected, it just enforces nothing. Plan "+
+			"rate limiting at the gateway or with MeshRateLimit.",
 		name)}
 }

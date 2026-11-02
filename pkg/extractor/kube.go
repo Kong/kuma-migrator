@@ -38,7 +38,7 @@ func ExtractViaKubectl(kubeContext, outputDir, meshFilter, outputFormat string) 
 
 	cpMode, zoneName := detectKubeCPMode(kubeContext)
 	dirLabel := cpModeDirectoryLabel(kubeContext, cpMode)
-	if err := WriteContextMeta(outputDir, dirLabel, "kubectl", kubeContext, cpMode, false); err != nil {
+	if err := WriteContextMeta(outputDir, dirLabel, "kubectl", kubeContext, cpMode, CPEnvKubernetes, false); err != nil {
 		ui.Warn(fmt.Sprintf("could not write context metadata: %v", err))
 	}
 	var zones []string

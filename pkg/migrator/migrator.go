@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/Kong/kuma-migrator/pkg/config"
+	"github.com/Kong/kuma-migrator/pkg/extractor"
 	"github.com/Kong/kuma-migrator/pkg/resource"
 	"github.com/Kong/kuma-migrator/pkg/ui"
 	"sigs.k8s.io/yaml"
@@ -22,8 +23,12 @@ type DocChange struct {
 	InputName      string   // resource name
 	InputNamespace string   // metadata.namespace (empty for cluster-scoped or Universal resources)
 	Scenario       Scenario // detected migration scenario
+	InputMesh      string   // mesh of the source object (Universal `mesh` or the kuma.io/mesh label); may be empty
 	Warnings       []string // per-document warnings
 	ErrMsg         string   // non-empty if transformation failed
+	// ManualRelPath is set under --to-latest v3 when the document was written to
+	// the ManualDir subtree instead of the apply tree (relative to outputDir).
+	ManualRelPath string
 }
 
 // FileReport captures the transformation results for a single YAML file.
@@ -37,7 +42,10 @@ type FileReport struct {
 	InputRelPath    string // input file path relative to inputDir
 	OutputRelPath   string   // primary output file path relative to outputDir (first doc, for stdout)
 	OutputRelPaths  []string // all output file paths relative to outputDir (all docs, for report)
-	HasError        bool
+	// ManualRelPaths are the files written under ManualDir (v3 only). They are
+	// not in OutputRelPaths, so no apply step lists them.
+	ManualRelPaths []string
+	HasError       bool
 	Changes         []DocChange
 	EnvVarHits      []EnvVarHit
 	AnnotHits       []AnnotationHit
@@ -128,7 +136,22 @@ func runMigration(inputDir, outputDir string, writeFiles bool, meshFilter string
 	if err != nil {
 		return nil, fmt.Errorf("load config: %w", err)
 	}
-	skipSet := cfg.SkipSet()
+	// The skip list depends on the CP environment of each context directory
+	// (see skipPolicy). Cache the metadata lookup per context.
+	skipK8s := cfg.SkipSetForEnv(extractor.CPEnvKubernetes)
+	skipUniversal := cfg.SkipSetForEnv(extractor.CPEnvUniversal)
+	envByContext := map[string]string{}
+	contextEnv := func(cpModeDir string) string {
+		if env, ok := envByContext[cpModeDir]; ok {
+			return env
+		}
+		env := ""
+		if meta := extractor.ReadContextMeta(inputDir, cpModeDir); meta != nil {
+			env = meta.Environment
+		}
+		envByContext[cpModeDir] = env
+		return env
+	}
 
 	report := &MigrationReport{
 		InputDir:  inputDir,
@@ -197,7 +220,8 @@ func runMigration(inputDir, outputDir string, writeFiles bool, meshFilter string
 		}
 
 		report.TotalFiles++
-		fr := processFile(path, outputDir, cpModeDir, meshDir, writeFiles, skipSet, opts)
+		skip := skipPolicy{env: contextEnv(cpModeDir), kubernetes: skipK8s, universal: skipUniversal}
+		fr := processFile(path, outputDir, cpModeDir, meshDir, writeFiles, skip, opts)
 		if rel, relErr := filepath.Rel(inputDir, path); relErr == nil {
 			fr.InputRelPath = filepath.ToSlash(rel)
 		}
@@ -266,6 +290,85 @@ const (
 	labelPartialError = "PARTIAL ERROR"
 )
 
+// ManualDir is the per-context subdirectory that holds, under --to-latest v3,
+// every document that must not be applied to a 3.0 control plane: originals
+// whose conversion failed (TrafficRoute, VirtualOutbound, MeshGatewayInstance, ...)
+// and objects whose kind 3.0 removes with no conversion (MeshGlobalRateLimit,
+// ZoneIngress, ZoneEgress). It sits next to the mesh-*/ and
+// global-scoped-resources/ directories:
+//
+//	<outputDir>/<ctx>/_manual/mesh-<mesh>/<sub>/<file>
+//	<outputDir>/<ctx>/_manual/global-scoped-resources/<sub>/<file>
+//	<outputDir>/_manual/<sub>/<file>                       (flat layout)
+//
+// The Apply Checklist never lists it: its kubectl steps apply leaf <sub>/
+// directories (kubectl -f on a directory is not recursive), and its kumactl
+// steps list files from FileReport.OutputRelPaths, which excludes these. The
+// report lists the files under "Delete Before Upgrading to 3.0" and
+// "Action Items -> Errors".
+const ManualDir = "_manual"
+
+// skipPolicy picks the skip list for a document.
+//
+// The environment recorded by extract in .kuma-migrator.json wins. When it is
+// absent (older extract output, /config unreadable, or no context directory),
+// the document shape decides: a document with `type` and no `kind` is Universal
+// format and gets the Universal list; anything else gets the Kubernetes list.
+// The shape is a reliable signal for kumactl Universal-format extracts. A
+// Universal CP extracted with --output-format kubernetes and no recorded
+// environment falls back to the Kubernetes list, which skips more, never less.
+//
+// An explicit per-environment `skip` list in the user config always wins over
+// the built-in defaults (config.SkipSetForEnv).
+type skipPolicy struct {
+	env        string // extractor.CPEnvKubernetes, extractor.CPEnvUniversal or ""
+	kubernetes map[string]bool
+	universal  map[string]bool
+}
+
+func (p skipPolicy) skips(kind string, universalShape bool) bool {
+	env := p.env
+	if env == "" && universalShape {
+		env = extractor.CPEnvUniversal
+	}
+	if env == extractor.CPEnvUniversal {
+		return p.universal[kind]
+	}
+	return p.kubernetes[kind]
+}
+
+// isUniversalShape reports whether a raw document is in Kuma's Universal format
+// (`type` instead of `kind`).
+func isUniversalShape(raw []byte) bool {
+	var obj map[string]interface{}
+	if err := yaml.Unmarshal(raw, &obj); err != nil {
+		return false
+	}
+	k, _ := obj["kind"].(string)
+	t, _ := obj["type"].(string)
+	return k == "" && t != ""
+}
+
+// probeMesh returns the mesh of a raw document: the Universal top-level `mesh`
+// field, else the kuma.io/mesh label.
+func probeMesh(raw []byte) string {
+	var obj map[string]interface{}
+	if err := yaml.Unmarshal(raw, &obj); err != nil {
+		return ""
+	}
+	if m, ok := obj["mesh"].(string); ok && m != "" {
+		return m
+	}
+	if meta, ok := obj["metadata"].(map[string]interface{}); ok {
+		if labels, ok := meta["labels"].(map[string]interface{}); ok {
+			if m, ok := labels[meshLabel].(string); ok {
+				return m
+			}
+		}
+	}
+	return ""
+}
+
 // isGatewayAPIOutputKind reports whether kind is a Gateway API output kind that must
 // be applied to zone clusters (not to the Global CP).
 func isGatewayAPIOutputKind(kind string) bool {
@@ -276,7 +379,14 @@ func isGatewayAPIOutputKind(kind string) bool {
 	return false
 }
 
-func processFile(inputPath, outputDir, cpModeDir, meshDir string, writeFile bool, skipSet map[string]bool, opts TransformOptions) FileReport {
+// outputDoc is one document to write, with the DocChange it came from.
+type outputDoc struct {
+	raw    []byte
+	change int  // index into FileReport.Changes
+	manual bool // v3: goes under ManualDir, not into the apply tree
+}
+
+func processFile(inputPath, outputDir, cpModeDir, meshDir string, writeFile bool, skip skipPolicy, opts TransformOptions) FileReport {
 	name := filepath.Base(inputPath)
 	fr := FileReport{FileName: name, CPModeDir: cpModeDir, OutputCPModeDir: cpModeDir, MeshDir: meshDir}
 
@@ -294,14 +404,15 @@ func processFile(inputPath, outputDir, cpModeDir, meshDir string, writeFile bool
 		return fr
 	}
 
-	var outputDocs [][]byte
+	v3 := opts.Target.IsV3()
+	var outputDocs []outputDoc
 	foundA, foundB, foundC, foundD, foundMesh, foundES, foundGW, foundOPA, foundSkipped := false, false, false, false, false, false, false, false, false
 
 	for _, doc := range docs {
 		kind, name2 := probeKindName(doc)
-		dc := DocChange{InputKind: kind, InputName: name2, InputNamespace: probeNamespace(doc)}
+		dc := DocChange{InputKind: kind, InputName: name2, InputNamespace: probeNamespace(doc), InputMesh: probeMesh(doc)}
 
-		if skipSet[kind] {
+		if skip.skips(kind, isUniversalShape(doc)) {
 			dc.Scenario = ScenarioSkipped
 			fr.Changes = append(fr.Changes, dc)
 			foundSkipped = true
@@ -311,12 +422,33 @@ func processFile(inputPath, outputDir, cpModeDir, meshDir string, writeFile bool
 		results, warnings, scenario, tErr := TransformDocumentWithOptions(doc, opts)
 		dc.Scenario = scenario
 		dc.Warnings = warnings
+		changeIdx := len(fr.Changes)
 		if tErr != nil {
 			dc.ErrMsg = tErr.Error()
 			fr.HasError = true
-			outputDocs = append(outputDocs, doc) // preserve original on error
+			// Preserve the original. Under v3 it goes to ManualDir: it is either a
+			// kind 3.0 removes or a document the migrator could not make valid, and
+			// the apply tree must only hold what a 3.0 CP accepts. Under v2 it stays
+			// in the apply tree: it came from the 2.x CP it is applied back to, so
+			// re-applying it unchanged is a no-op.
+			outputDocs = append(outputDocs, outputDoc{raw: doc, change: changeIdx, manual: v3})
 		} else {
-			outputDocs = append(outputDocs, results...)
+			for _, res := range results {
+				// v3: a result that is still a removed kind (MeshGlobalRateLimit,
+				// ZoneIngress, ZoneEgress pass through unconverted) is not applicable.
+				outKind, _ := probeKindName(res)
+				outputDocs = append(outputDocs, outputDoc{raw: res, change: changeIdx, manual: v3 && isRemovedInV3Kind(outKind)})
+			}
+		}
+		if v3 {
+			converted := tErr == nil && len(results) > 0
+			if converted {
+				outKind, _ := probeKindName(results[0])
+				converted = outKind != kind
+			}
+			if note := v3DeleteBeforeUpgradeNote(kind, name2, converted); note != "" {
+				dc.Warnings = append(dc.Warnings, note)
+			}
 		}
 
 		switch scenario {
@@ -352,11 +484,12 @@ func processFile(inputPath, outputDir, cpModeDir, meshDir string, writeFile bool
 
 	// Determine the primary subfolder from the first output document.
 	if len(outputDocs) > 0 {
-		kind, _ := probeKindName(outputDocs[0])
+		kind, _ := probeKindName(outputDocs[0].raw)
 		fr.Subfolder = resource.KindSubfolder(kind)
 	}
 
-	for _, doc := range outputDocs {
+	for _, od := range outputDocs {
+		doc := od.raw
 		kind, _ := probeKindName(doc)
 		sub := resource.KindSubfolder(kind)
 		// Compute output directory (context-first layout, mirrors extract output):
@@ -379,15 +512,26 @@ func processFile(inputPath, outputDir, cpModeDir, meshDir string, writeFile bool
 		} else {
 			dir = filepath.Join(outputDir, sub)
 		}
+		if od.manual {
+			dir = manualDirFor(outputDir, cpModeDir, dir)
+		}
 		fname := outputDocFilename(doc)
 
-		// Record output paths for display and apply checklist.
+		// Record output paths for display and apply checklist. Manual files are
+		// kept out of OutputRelPaths so no apply step lists them.
 		if rel, relErr := filepath.Rel(outputDir, filepath.Join(dir, fname)); relErr == nil {
 			relSlash := filepath.ToSlash(rel)
 			if fr.OutputRelPath == "" {
 				fr.OutputRelPath = relSlash
 			}
-			fr.OutputRelPaths = append(fr.OutputRelPaths, relSlash)
+			if od.manual {
+				fr.ManualRelPaths = append(fr.ManualRelPaths, relSlash)
+				if fr.Changes[od.change].ManualRelPath == "" {
+					fr.Changes[od.change].ManualRelPath = relSlash
+				}
+			} else {
+				fr.OutputRelPaths = append(fr.OutputRelPaths, relSlash)
+			}
 		}
 
 		if writeFile {
@@ -430,6 +574,21 @@ func processFile(inputPath, outputDir, cpModeDir, meshDir string, writeFile bool
 	}
 
 	return fr
+}
+
+// manualDirFor moves an apply-tree directory under ManualDir, keeping the rest
+// of its path: <outputDir>/<ctx>/<rest> -> <outputDir>/<ctx>/_manual/<rest>, or
+// <outputDir>/<rest> -> <outputDir>/_manual/<rest> for the flat layout.
+func manualDirFor(outputDir, cpModeDir, dir string) string {
+	base := outputDir
+	if cpModeDir != "" {
+		base = filepath.Join(outputDir, cpModeDir)
+	}
+	rest, err := filepath.Rel(base, dir)
+	if err != nil {
+		return filepath.Join(base, ManualDir)
+	}
+	return filepath.Join(base, ManualDir, rest)
 }
 
 // probeKindName extracts the kind and name from a raw YAML document without

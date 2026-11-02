@@ -228,7 +228,7 @@ spec:
 		want   string
 	}{
 		{TargetV2, "removed in 3.0"},
-		{TargetV3, "REMOVED in 3.0"},
+		{TargetV3, "Delete Before Upgrading to 3.0"},
 	} {
 		_, warnings := ScanForDeprecations([]byte(input), tc.target)
 		if len(warnings) == 0 || !strings.Contains(strings.Join(warnings, "\n"), tc.want) {
@@ -288,7 +288,7 @@ spec:
 `
 	_, warnings := ScanForDeprecations([]byte(input), TargetV2)
 	joined := strings.Join(warnings, "\n")
-	for _, want := range []string{"name", "namespace", "mesh", "kuma.io/display-name", "widen"} {
+	for _, want := range []string{"name", "namespace", "mesh", "kind: Dataplane", "labels: {app: <svc>}", "widen"} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("expected the v2 MeshOPA advisory to mention %q, got: %v", want, warnings)
 		}
