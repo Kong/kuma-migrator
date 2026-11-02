@@ -130,12 +130,15 @@ spec:
 	}
 
 	meta := gw["metadata"].(map[string]interface{})
-	ann, ok := meta["annotations"].(map[string]interface{})
-	if !ok {
-		t.Fatal("expected annotations for non-default mesh")
+	if _, ok := meta["annotations"]; ok {
+		t.Errorf("kuma.io/mesh must not be written as an annotation (3.0 ignores it): %v", meta["annotations"])
 	}
-	if ann["kuma.io/mesh"] != "prod" {
-		t.Errorf("expected annotation kuma.io/mesh=prod, got %v", ann["kuma.io/mesh"])
+	labels, ok := meta["labels"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected labels for non-default mesh")
+	}
+	if labels["kuma.io/mesh"] != "prod" {
+		t.Errorf("expected label kuma.io/mesh=prod, got %v", labels["kuma.io/mesh"])
 	}
 
 	spec := gw["spec"].(map[string]interface{})

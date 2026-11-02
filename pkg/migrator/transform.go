@@ -38,6 +38,9 @@ type TransformOptions struct {
 	// GatewayClasses resolves the GatewayClass a converted MeshGateway must name,
 	// which lives on the companion MeshGatewayInstance.
 	GatewayClasses GatewayClassIndex
+	// MeshIdentities records the meshes that have a MeshIdentity, which every
+	// MeshExternalService needs on 3.0 (see warnMESRequiresMeshIdentity).
+	MeshIdentities MeshIdentityIndex
 }
 
 // TransformDocumentWithOptions is TransformDocument with the cross-document
@@ -165,6 +168,7 @@ func TransformDocumentWithOptions(raw []byte, opts TransformOptions) ([][]byte, 
 		fixed, depWarns := ScanForDeprecations(doc, target)
 		docs[i] = fixed
 		warnings = append(warnings, depWarns...)
+		warnings = append(warnings, warnMESRequiresMeshIdentity(fixed, opts)...)
 	}
 
 	return docs, warnings, scenario, nil

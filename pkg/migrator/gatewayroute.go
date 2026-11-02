@@ -2,6 +2,8 @@ package migrator
 
 import (
 	"fmt"
+	"sort"
+	"strconv"
 	"strings"
 
 	"sigs.k8s.io/yaml"
@@ -255,12 +257,9 @@ func transformGWHTTPRoute(route meshGatewayRoute) ([][]byte, []string, error) {
 	if namespace != "" {
 		meta["namespace"] = namespace
 	}
-	// Carry mesh annotation forward.
-	meshName := meshNameFromGWRoute(route)
-	if meshName != "" {
-		meta["annotations"] = map[string]interface{}{
-			"kuma.io/mesh": meshName,
-		}
+	// Carry the mesh forward as a label (see meshLabelFromLabels).
+	if meshName := meshNameFromGWRoute(route); meshName != "" {
+		meta["labels"] = map[string]interface{}{meshLabel: meshName}
 	}
 
 	spec := map[string]interface{}{
@@ -284,7 +283,12 @@ func transformGWHTTPRoute(route meshGatewayRoute) ([][]byte, []string, error) {
 	if err != nil {
 		return nil, warnings, fmt.Errorf("marshal HTTPRoute: %w", err)
 	}
-	return [][]byte{b}, warnings, nil
+	grants, gw, err := referenceGrantsForRoute("HTTPRoute", name, namespace, rules)
+	warnings = append(warnings, gw...)
+	if err != nil {
+		return nil, warnings, err
+	}
+	return append([][]byte{b}, grants...), warnings, nil
 }
 
 // ---- TCP --------------------------------------------------------------------
@@ -316,9 +320,7 @@ func transformGWTCPRoute(route meshGatewayRoute) ([][]byte, []string, error) {
 		meta["namespace"] = namespace
 	}
 	if meshName := meshNameFromGWRoute(route); meshName != "" {
-		meta["annotations"] = map[string]interface{}{
-			"kuma.io/mesh": meshName,
-		}
+		meta["labels"] = map[string]interface{}{meshLabel: meshName}
 	}
 
 	spec := map[string]interface{}{
@@ -339,7 +341,124 @@ func transformGWTCPRoute(route meshGatewayRoute) ([][]byte, []string, error) {
 	if err != nil {
 		return nil, warnings, fmt.Errorf("marshal TCPRoute: %w", err)
 	}
-	return [][]byte{b}, warnings, nil
+	grants, gw, err := referenceGrantsForRoute("TCPRoute", name, namespace, rules)
+	warnings = append(warnings, gw...)
+	if err != nil {
+		return nil, warnings, err
+	}
+	return append([][]byte{b}, grants...), warnings, nil
+}
+
+// ---- ReferenceGrant ---------------------------------------------------------
+
+// referenceGrantAPIVersion is the Gateway API version ReferenceGrant is served
+// under on both the standard and experimental channels.
+const referenceGrantAPIVersion = "gateway.networking.k8s.io/v1beta1"
+
+// referenceGrantsForRoute builds one ReferenceGrant per backend namespace that
+// differs from the route's own namespace, covering every Service the route's
+// rules point at there (backendRefs and RequestMirror backendRefs).
+//
+// Gateway API requires a ReferenceGrant in the target namespace for any
+// cross-namespace backendRef, or the route reports ResolvedRefs=False /
+// RefNotPermitted and that backend is not programmed. This holds on both targets
+// for these routes: their parentRef is a Gateway, which Kuma 2.x's built-in
+// gateway reconciled with ReferenceGrant enforcement (kuma#4806, kuma#4944), and
+// which on 3.0 only a third-party gateway implementation reconciles — every
+// conformant one enforces it. (3.0 additionally extends the check to Kuma's own
+// GAMMA translation, kuma#18075.)
+//
+// When the route has no namespace (MeshGatewayRoute is cluster-scoped, so this
+// is the common case) the grant's from-namespace is unknown: the route lands in
+// whatever namespace it is applied to. That is reported instead of guessed.
+func referenceGrantsForRoute(routeKind, routeName, routeNS string, rules []interface{}) ([][]byte, []string, error) {
+	byNS := map[string]map[string]bool{}
+	for _, r := range rules {
+		rule, _ := r.(map[string]interface{})
+		refs, _ := rule["backendRefs"].([]interface{})
+		for _, f := range asSlice(rule["filters"]) {
+			fm, _ := f.(map[string]interface{})
+			if mirror, ok := fm["requestMirror"].(map[string]interface{}); ok {
+				if br, ok := mirror["backendRef"].(map[string]interface{}); ok {
+					refs = append(refs, br)
+				}
+			}
+		}
+		for _, ref := range refs {
+			rm, _ := ref.(map[string]interface{})
+			ns, _ := rm["namespace"].(string)
+			svc, _ := rm["name"].(string)
+			if ns == "" || svc == "" || ns == routeNS {
+				continue
+			}
+			if byNS[ns] == nil {
+				byNS[ns] = map[string]bool{}
+			}
+			byNS[ns][svc] = true
+		}
+	}
+	if len(byNS) == 0 {
+		return nil, nil, nil
+	}
+	namespaces := sortedMapKeys(byNS)
+
+	if routeNS == "" {
+		return nil, []string{fmt.Sprintf(
+			"%s %q has no namespace, but its backendRefs point into namespace(s) %s. Set "+
+				"metadata.namespace on the route, then create a ReferenceGrant in each backend namespace "+
+				"that differs from it (from: %s in the route's namespace, to: Service). Without the grant "+
+				"the backend is not programmed and the route reports RefNotPermitted.",
+			routeKind, routeName, strings.Join(namespaces, ", "), routeKind)}, nil
+	}
+
+	var docs [][]byte
+	var warnings []string
+	for _, ns := range namespaces {
+		services := sortedMapKeys(byNS[ns])
+		to := make([]interface{}, 0, len(services))
+		for _, svc := range services {
+			to = append(to, map[string]interface{}{"group": "", "kind": "Service", "name": svc})
+		}
+		grantName := fmt.Sprintf("%s-%s", routeNS, routeName)
+		grant := map[string]interface{}{
+			"apiVersion": referenceGrantAPIVersion,
+			"kind":       "ReferenceGrant",
+			"metadata":   map[string]interface{}{"name": grantName, "namespace": ns},
+			"spec": map[string]interface{}{
+				"from": []interface{}{map[string]interface{}{
+					"group":     "gateway.networking.k8s.io",
+					"kind":      routeKind,
+					"namespace": routeNS,
+				}},
+				"to": to,
+			},
+		}
+		b, err := yaml.Marshal(grant)
+		if err != nil {
+			return nil, warnings, fmt.Errorf("marshal ReferenceGrant: %w", err)
+		}
+		docs = append(docs, b)
+		warnings = append(warnings, fmt.Sprintf(
+			"%s %q (namespace %s) references Service(s) %s in namespace %s. Generated ReferenceGrant "+
+				"%s/%s to allow it — without it the backend is not programmed and the route reports "+
+				"RefNotPermitted. Apply it together with the route.",
+			routeKind, routeName, routeNS, strings.Join(services, ", "), ns, ns, grantName))
+	}
+	return docs, warnings, nil
+}
+
+func asSlice(v interface{}) []interface{} {
+	s, _ := v.([]interface{})
+	return s
+}
+
+func sortedMapKeys[V any](m map[string]V) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 // ---- parentRefs -------------------------------------------------------------
@@ -688,10 +807,17 @@ func convertGWSingleBackend(b gwBackend, routeName string, rIdx int) (map[string
 		ref["namespace"] = svcNS
 	}
 
-	// Extract port from the _svc_PORT segment.
+	// Extract port from the _svc_PORT segment. Gateway API types backendRefs[].port
+	// as int32 (1-65535); a string fails schema validation on every version.
 	port := svcPortFromTag(svcTag)
 	if port != "" {
-		ref["port"] = port
+		if n, err := strconv.Atoi(port); err == nil && n >= 1 && n <= 65535 {
+			ref["port"] = n
+		} else {
+			warnings = append(warnings, fmt.Sprintf(
+				"HTTPRoute %q rules[%d]: backend kuma.io/service=%q ends in %q, which is not a valid port "+
+					"number — set backendRefs[].port manually", routeName, rIdx, svcTag, port))
+		}
 	} else {
 		warnings = append(warnings, fmt.Sprintf(
 			"HTTPRoute %q rules[%d]: backend kuma.io/service=%q has no port in the svc tag — "+
