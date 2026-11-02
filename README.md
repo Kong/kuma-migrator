@@ -105,7 +105,7 @@ Full documentation: **[kong.github.io/kuma-migrator/docs](https://kong.github.io
 | Page | What it covers |
 |---|---|
 | [Installation](https://kong.github.io/kuma-migrator/docs/guides/installation/) | Homebrew, binaries, from source |
-| [Typical usage](https://kong.github.io/kuma-migrator/docs/guides/usage/) | End-to-end runs for Kubernetes, multizone, Kong Mesh, Konnect and Universal |
+| [Getting started](https://kong.github.io/kuma-migrator/docs/guides/getting-started/) | The three steps of a migration, then end-to-end runs for Kubernetes, multizone, Kong Mesh, Konnect and Universal |
 | [Upgrade plans](https://kong.github.io/kuma-migrator/docs/guides/upgrade-plans/) | Upgrade paths, which target to use, the sequence for 3.0, rollback |
 | [CLI reference](https://kong.github.io/kuma-migrator/docs/guides/cli/) | Every command, flag, and the config file |
 | [Extract](https://kong.github.io/kuma-migrator/docs/guides/extract/) | CP-mode rules, output layout, Konnect, Universal vs Kubernetes format |

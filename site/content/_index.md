@@ -20,7 +20,7 @@ less ./migrated/migration-report.md   # follow its Apply Checklist
 ```
 
 Add `--to-latest v3` to `migrate` to target Kuma / Kong Mesh 3.0. Start with
-[Typical usage](guides/usage.md) for your setup.
+[Getting started](guides/getting-started.md) for your setup.
 
 ## How the documentation is organised
 

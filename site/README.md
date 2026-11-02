@@ -79,11 +79,26 @@ title: mTLS and workload identity      # page <h1> and <title>
 description: One sentence for <meta description> and the section index card.
 order: 20                              # sort order inside the section (ascending)
 nav_title: mTLS & identity             # optional, shorter label for the sidebar
+aliases: [old-slug]                    # optional, former slugs in the same section
 ---
 ```
 
 Do not repeat the title as a `# heading` in the body; start at `##`. Each `##` becomes an entry in
 the on-page table of contents.
+
+`aliases` keeps old links working after a rename: each former slug gets a redirect page
+(`<meta http-equiv="refresh">`, `noindex`, the `#fragment` kept) that is left out of the
+sitemap and the search index.
+
+### Raw HTML
+
+HTML blocks are passed through, for layout only. Wrap Markdown in a `<div class="…">` with a blank
+line after the opening tag and before the closing one, so the Markdown inside is still parsed and
+its links still checked. Links written in raw HTML are **not** checked; keep them in Markdown.
+`guides/getting-started.md` uses this for its step cards (`story-step`, `story-art`, `kit`,
+`legend`, `setups`, `story-get`, styled in `static/style.css`). Its illustrations are SVGs under
+`docs/img/getting-started/`, each with its own light and dark palette, drawn by
+`site/art/getting_started.py` (edit it and re-run it rather than editing the SVGs).
 
 ### Links
 
@@ -178,7 +193,7 @@ Status meaning, per target:
 
 ## Section and slug map
 
-Guides (`/docs/guides/`): `architecture`, `installation`, `usage`, `upgrade-plans`, `cli`,
+Guides (`/docs/guides/`): `architecture`, `installation`, `getting-started` (alias `usage`), `upgrade-plans`, `cli`,
 `extract`, `migrate`, `target-version`, `apply`, `output-and-reports`, `examples`, `notes`.
 
 Topics (`/docs/topics/`): `meshes`, `mtls-identity`, `external-pki`, `meshservice`,

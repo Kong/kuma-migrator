@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Getting started – kuma-migrator docs</title>
+<meta name="description" content="A migration in three steps, extract, migrate and apply, followed by a walkthrough for each kind of deployment.">
+<link rel="canonical" href="https://kong.github.io/kuma-migrator/docs/guides/getting-started/">
+<link rel="icon" href="../../static/favicon.svg" type="image/svg+xml">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="kuma-migrator">
+<meta property="og:title" content="Getting started – kuma-migrator docs">
+<meta property="og:description" content="A migration in three steps, extract, migrate and apply, followed by a walkthrough for each kind of deployment.">
+<meta property="og:url" content="https://kong.github.io/kuma-migrator/docs/guides/getting-started/">
+<meta property="og:image" content="https://kong.github.io/kuma-migrator/assets/migration-overview.svg">
+<meta name="twitter:card" content="summary_large_image">
+
+<link rel="stylesheet" href="../../static/shared.css">
+<link rel="stylesheet" href="../../static/style.css">
+</head>
+<body data-root="../../">
+<a class="skip" href="#content">Skip to content</a>
+<header class="site-header">
+  <div class="bar">
+    <a class="brand" href="../../../"><img src="../../static/favicon.svg" width="28" height="28" alt=""><span>kuma-migrator</span></a>
+    <a class="docs-home" href="../../">Docs</a>
+    <nav class="top-nav" aria-label="Sections">
+      <a href="../" class="active" aria-current="true">Guides</a>
+      <a href="../../topics/">Topics</a>
+      <a href="../../policies/">Policies</a>
+      <a class="external" href="https://github.com/Kong/kuma-migrator">GitHub<svg class="ext-icon" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" focusable="false"><path d="M6 3H3.5A1.5 1.5 0 0 0 2 4.5v8A1.5 1.5 0 0 0 3.5 14h8a1.5 1.5 0 0 0 1.5-1.5V10M9 2h5v5M14 2 7 9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="visually-hidden"> (external site)</span></a>
+    </nav>
+    <!-- release-tag --><a class="release-badge" href="https://github.com/Kong/kuma-migrator/releases/latest" title="Latest release: v0.9.1">v0.9.1</a><!-- /release-tag -->
+    <div class="search">
+      <input id="search-input" type="search" placeholder="Search docs" aria-label="Search docs" autocomplete="off">
+      <ul id="search-results" hidden></ul>
+    </div>
+  </div>
+</header>
+
+<div class="layout">
+  <details class="nav-mobile">
+    <summary>Guides menu</summary>
+    <div class="nav-group"><ul><li><a href="../">Overview</a></li><li><a href="../installation/">Installation</a></li><li><a href="./" class="active" aria-current="page">Getting started</a></li><li><a href="../upgrade-plans/">Upgrade plans</a></li><li><a href="../cli/">CLI reference</a></li><li><a href="../extract/">Extract</a></li><li><a href="../migrate/">Migrate</a></li><li><a href="../target-version/">Target versions (--to-latest)</a></li><li><a href="../apply/">Apply</a></li><li><a href="../output-and-reports/">Output and reports</a></li><li><a href="../examples/">Examples</a></li><li><a href="../architecture/">Architecture</a></li><li><a href="../notes/">Notes and caveats</a></li></ul></div>
+
+  </details>
+  <aside class="sidebar" aria-label="Guides pages">
+    <p class="sidebar-section"><a href="../">Guides</a></p>
+    <div class="nav-group"><ul><li><a href="../">Overview</a></li><li><a href="../installation/">Installation</a></li><li><a href="./" class="active" aria-current="page">Getting started</a></li><li><a href="../upgrade-plans/">Upgrade plans</a></li><li><a href="../cli/">CLI reference</a></li><li><a href="../extract/">Extract</a></li><li><a href="../migrate/">Migrate</a></li><li><a href="../target-version/">Target versions (--to-latest)</a></li><li><a href="../apply/">Apply</a></li><li><a href="../output-and-reports/">Output and reports</a></li><li><a href="../examples/">Examples</a></li><li><a href="../architecture/">Architecture</a></li><li><a href="../notes/">Notes and caveats</a></li></ul></div>
+
+  </aside>
+  <main id="content">
+    <article class="doc">
+<p class="crumb"><a href="../">Guides</a></p>
+<h1>Getting started</h1>
+<p class="lede">A migration in three steps, extract, migrate and apply, followed by a walkthrough for each kind of deployment.</p>
+<div class="story-art story-hero">
+<p><img src="../../../img/getting-started/journey.svg" alt="A path from your mesh today, holding old-style resources, past three stops (extract, migrate, apply) to your mesh on 2.14 or 3.0"></p>
+</div>
+<p>Your mesh holds resources written for older Kuma and Kong Mesh APIs: legacy policies,
+<code>MeshSubset</code> selectors, <code>from[]</code> sections, fields that 3.0 drops. <code>kuma-migrator</code> rewrites them
+for the version you are moving to. You run two commands. The third step, applying the result,
+stays with you, and the report tells you exactly what to run.</p>
+<h2 id="before-you-start">Before you start</h2>
+<div class="kit">
+<ul>
+<li><strong>kuma-migrator installed.</strong> Homebrew, a release archive or a source build: see
+<a href="../installation/">Installation</a>.</li>
+<li><strong>Read access to the control plane.</strong> A <code>kubectl</code> context for Kubernetes, a <code>kumactl</code>
+context for Universal and Konnect. The tool only reads.</li>
+<li><strong>A target version.</strong> <code>--to-latest v2</code> (the default) keeps you on the latest 2.x line,
+<code>--to-latest v3</code> prepares the move to 3.0. See <a href="../target-version/">Target versions</a>.</li>
+</ul>
+</div>
+<div class="story-step">
+<h2 id="extract-what-runs-today">Extract what runs today</h2>
+<div class="story-art">
+<p><img src="../../../img/getting-started/extract.svg" alt="kuma-migrator reads your control plane through kubectl or kumactl and copies every resource into a folder tree on your machine. The control plane is only read."></p>
+</div>
+<p>Point <code>extract</code> at a control plane. It lists every Kuma resource, through <code>kubectl</code> on
+Kubernetes or <code>kumactl</code> on Universal and Konnect, and writes one YAML file per resource on your
+machine, sorted by control plane, mesh and kind. Nothing changes in the control plane.</p>
+<div class="code"><pre class="chroma" data-lang="bash"><code><span class="c1"># Kubernetes: a kubectl context</span>
+<span class="k-bin">kuma-migrator</span> <span class="k-sub">extract</span> <span class="k-flag">--kube-context</span> <span class="k-val">prod-eks</span> <span class="k-flag">--output-dir</span> <span class="k-val">./raw-policies</span>
+<span class="c1"># Universal or Konnect: a kumactl context</span>
+<span class="k-bin">kuma-migrator</span> <span class="k-sub">extract</span> <span class="k-flag">--kumactl-context</span> <span class="k-val">my-cp</span> <span class="k-flag">--output-dir</span> <span class="k-val">./raw-policies</span>
+</code></pre></div>
+<p class="story-get"><strong>You get</strong> <code>raw-policies/&lt;context&gt;-&lt;mode&gt;-ctx/mesh-&lt;mesh&gt;/…</code>, one file per resource</p>
+<p>Multizone? Run <code>extract</code> once per control plane, Global and each zone, into the same
+directory. Details: <a href="../extract/">Extract</a>.</p>
+</div>
+<div class="story-step">
+<h2 id="let-the-tool-rewrite-them">Let the tool rewrite them</h2>
+<div class="story-art">
+<p><img src="../../../img/getting-started/migrate.svg" alt="Old-style YAML files go into a machine with gears and come out as new-style files, with a report of ticks, warnings and errors. Glasses above the machine stand for the dry-run preview."></p>
+</div>
+<p>Start with a dry run: <code>migrate --dry-run</code> decides what to do with every file and writes only
+the plan. Read it. When it looks right, run <code>migrate</code> for real. Each document is converted to
+its successor, rewritten in place, copied unchanged, or set aside under <code>_manual/</code> when it
+cannot be converted safely.</p>
+<div class="code"><pre class="chroma" data-lang="bash"><code><span class="k-bin">kuma-migrator</span> <span class="k-sub">migrate</span> <span class="k-flag">--input-dir</span> <span class="k-val">./raw-policies</span> <span class="k-flag">--output-dir</span> <span class="k-val">./migrated</span> <span class="k-flag">--dry-run</span>
+<span class="k-cmd">less</span> ./migrated/migration-plan.md
+<span class="k-bin">kuma-migrator</span> <span class="k-sub">migrate</span> <span class="k-flag">--input-dir</span> <span class="k-val">./raw-policies</span> <span class="k-flag">--output-dir</span> <span class="k-val">./migrated</span>
+</code></pre></div>
+<p>Moving to 3.0? Add <code>--to-latest v3</code> to both commands, and write to a separate directory.</p>
+<p>Every file gets one line in the terminal:</p>
+<div class="legend">
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Mark</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><span class="lg lg-ok">✓</span> <code>LEGACY</code>, <code>SUBSET</code>, <code>RULES</code>, …</td>
+<td>Converted. The label names the <a href="../migrate/">scenario</a> that applied</td>
+</tr>
+<tr>
+<td><span class="lg lg-same">●</span> <code>ALREADY MIGRATED</code></td>
+<td>Already on the current API, copied unchanged</td>
+</tr>
+<tr>
+<td><span class="lg lg-scan">◆</span> <code>SCANNED</code></td>
+<td>Not a policy; the deprecation scan rewrote or flagged it</td>
+</tr>
+<tr>
+<td><span class="lg lg-skip">–</span> <code>SKIP</code></td>
+<td>Nothing to do</td>
+</tr>
+<tr>
+<td><span class="lg lg-warn">⚠</span> <code>MANUAL</code>, <code>PARTIAL ERROR</code></td>
+<td>Some or all documents went to <code>_manual/</code>: finish them by hand</td>
+</tr>
+<tr>
+<td><span class="lg lg-err">✗</span> <code>ERROR</code></td>
+<td>Not converted; the report says why and what to write instead</td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<p class="story-get"><strong>You get</strong> <code>migrated/</code> with the rewritten files, <code>migration-report.md</code> and <code>_manual/</code></p>
+<p>Details: <a href="../migrate/">Migrate</a>, <a href="../output-and-reports/">Output and reports</a>.</p>
+</div>
+<div class="story-step">
+<h2 id="apply-following-the-report">Apply, following the report</h2>
+<div class="story-art">
+<p><img src="../../../img/getting-started/apply.svg" alt="A person holds the report's Apply Checklist and applies the files to the control plane in order, Mesh last. A box marked _manual holds documents to finish by hand."></p>
+</div>
+<p><code>kuma-migrator</code> never writes to a control plane. Open <code>migrated/migration-report.md</code> and work
+down its <strong>Apply Checklist</strong>: one <code>kubectl</code> or <code>kumactl</code> command per directory or file, in an
+order that works, with <code>Mesh</code> objects last.</p>
+<div class="code"><pre class="chroma" data-lang="bash"><code><span class="k-manual">kubectl</span> <span class="k-flag">--context</span> <span class="k-val">prod-eks</span> <span class="k-manual-b">apply</span> <span class="k-flag">-f</span> <span class="k-val">./migrated/prod-eks-zone-ctx/mesh-default/resiliency/</span>
+<span class="k-manual">kubectl</span> <span class="k-flag">--context</span> <span class="k-val">prod-eks</span> <span class="k-manual-b">apply</span> <span class="k-flag">-f</span> <span class="k-val">./migrated/prod-eks-zone-ctx/mesh-default/routing/</span>
+<span class="c1"># … the rest of the checklist, then the Mesh:</span>
+<span class="k-manual">kubectl</span> <span class="k-flag">--context</span> <span class="k-val">prod-eks</span> <span class="k-manual-b">apply</span> <span class="k-flag">-f</span> <span class="k-val">./migrated/prod-eks-zone-ctx/mesh-default/mesh/</span>
+</code></pre></div>
+<p>Then:</p>
+<ul>
+<li>write by hand what the report lists under <strong>Kept Under <code>_manual/</code></strong>, using the reason
+given for each file;</li>
+<li>check traffic, then delete the old resources listed under <strong>Original Resources to Delete</strong>.</li>
+</ul>
+<p class="story-get"><strong>You get</strong> a mesh on the new APIs, ready for 2.14 or for the 3.0 upgrade</p>
+<p>Details: <a href="../apply/">Apply</a>. For a 3.0 upgrade, the checklist adds the steps to run before the
+Global control plane upgrade; see <a href="../upgrade-plans/">Upgrade plans</a>.</p>
+</div>
+<h2 id="walkthroughs-by-setup">Walkthroughs by setup</h2>
+<p>The same three steps on each kind of deployment, with real output. Pick yours:</p>
+<div class="setups">
+<ul>
+<li><a href="#kubernetes-single-zone"><strong>Kubernetes, single zone</strong></a>
+One cluster, <code>kubectl</code></li>
+<li><a href="#multizone-global-and-zones"><strong>Multizone</strong></a>
+A Global and its zones</li>
+<li><a href="#kong-mesh-self-hosted-through-kumactl"><strong>Kong Mesh, self-hosted</strong></a>
+Through <code>kumactl</code></li>
+<li><a href="#konnect"><strong>Konnect</strong></a>
+Hosted Global control plane</li>
+<li><a href="#universal"><strong>Universal</strong></a>
+VMs and <code>kumactl</code></li>
+</ul>
+</div>
+<p>The context names below are examples. The <code>migrate</code> outputs shown were produced by running
+the current release on input trees with the same layout; <code>extract</code> needs a live control plane
+and is shown as commands only.</p>
+<h3 id="kubernetes-single-zone">Kubernetes, single zone</h3>
+<p>One Kubernetes cluster running the control plane, extracted with <code>kubectl</code>.</p>
+<div class="code"><pre class="chroma" data-lang="bash"><code><span class="k-bin">kuma-migrator</span> <span class="k-sub">extract</span> <span class="k-flag">--kube-context</span> <span class="k-val">prod-eks</span> <span class="k-flag">--output-dir</span> <span class="k-val">./raw-policies</span>
+<span class="k-bin">kuma-migrator</span> <span class="k-sub">migrate</span> <span class="k-flag">--input-dir</span> <span class="k-val">./raw-policies</span> <span class="k-flag">--output-dir</span> <span class="k-val">./migrated</span> <span class="k-flag">--dry-run</span>
+<span class="k-cmd">less</span> ./migrated/migration-plan.md
+<span class="k-bin">kuma-migrator</span> <span class="k-sub">migrate</span> <span class="k-flag">--input-dir</span> <span class="k-val">./raw-policies</span> <span class="k-flag">--output-dir</span> <span class="k-val">./migrated</span>
+</code></pre></div>
+<p>What lands where:</p>
+<div class="code"><pre class="chroma" data-lang="text"><code>raw-policies/
+  prod-eks-zone-ctx/                <span class="o-dim">← KUMA_MODE=zone (single-zone since Kuma 2.6)</span>
+    .kuma-migrator.json             <span class="o-dim">← {"tool":"kubectl","cpMode":"zone","federated":false,…}</span>
+    mesh-default/
+      resiliency/ routing/ zero-trust/ observability/ mesh/
+migrated/
+  prod-eks-zone-ctx/mesh-default/…  <span class="o-dim">← same layout, files named &lt;Kind&gt;-[&lt;ns&gt;-]&lt;name&gt;.yaml</span>
+  migration-plan.md
+  migration-report.md
+</code></pre></div>
+<p>A single-zone control plane is a zone with no Global address, so <code>extract</code> reports
+<code>zone (…), not federated</code> and applies no origin filter: every resource is extracted, labelled
+or not. A control plane still configured with the older <code>standalone</code> mode is labelled
+<code>prod-eks-standalone-ctx</code> and is also extracted without an origin filter. Kuma 3.0 removes
+<code>standalone</code>: rename it to <code>zone</code> before upgrading. The directory name stays
+<code>-standalone-ctx</code>, so earlier extracts remain valid input, and a <code>--to-latest v3</code> report lists
+the rename as blocking (see <a href="../upgrade-plans/#control-plane-topology">Upgrade plans</a>).</p>
+<p>What to review in the report:</p>
+<ul>
+<li><strong>Action Items → Errors</strong>: documents that were not converted (for example <code>TrafficRoute</code>).</li>
+<li>Warnings on <code>Subset</code> conversions that use <code>app: &lt;service&gt;</code> as a guessed Pod label.</li>
+<li><strong>Workload Service Address Mappings</strong>: env vars that address a service by its
+<code>kuma.io/service</code> name.</li>
+</ul>
+<p>Apply with the commands from the report's Apply Checklist, <code>Mesh</code> last:</p>
+<div class="code"><pre class="chroma" data-lang="bash"><code><span class="k-manual">kubectl</span> <span class="k-flag">--context</span> <span class="k-val">prod-eks</span> <span class="k-manual-b">apply</span> <span class="k-flag">-f</span> <span class="k-val">./migrated/prod-eks-zone-ctx/mesh-default/resiliency/</span>
+<span class="k-manual">kubectl</span> <span class="k-flag">--context</span> <span class="k-val">prod-eks</span> <span class="k-manual-b">apply</span> <span class="k-flag">-f</span> <span class="k-val">./migrated/prod-eks-zone-ctx/mesh-default/routing/</span>
+<span class="k-manual">kubectl</span> <span class="k-flag">--context</span> <span class="k-val">prod-eks</span> <span class="k-manual-b">apply</span> <span class="k-flag">-f</span> <span class="k-val">./migrated/prod-eks-zone-ctx/mesh-default/zero-trust/</span>
+<span class="k-manual">kubectl</span> <span class="k-flag">--context</span> <span class="k-val">prod-eks</span> <span class="k-manual-b">apply</span> <span class="k-flag">-f</span> <span class="k-val">./migrated/prod-eks-zone-ctx/mesh-default/observability/</span>
+<span class="c1"># after every workload and policy is migrated:</span>
+<span class="k-manual">kubectl</span> <span class="k-flag">--context</span> <span class="k-val">prod-eks</span> <span class="k-manual-b">apply</span> <span class="k-flag">-f</span> <span class="k-val">./migrated/prod-eks-zone-ctx/mesh-default/mesh/</span>
+</code></pre></div>
+<p>Then delete the originals listed under <strong>Original Resources to Delete</strong>.</p>
+<h3 id="multizone-global-and-zones">Multizone: Global and zones</h3>
+<p>A Global control plane and two Zone control planes. Extract all three into the same
+directory; each gets its own context directory.</p>
+<div class="code"><pre class="chroma" data-lang="bash"><code><span class="k-bin">kuma-migrator</span> <span class="k-sub">extract</span> <span class="k-flag">--kube-context</span> <span class="k-val">global-prod</span>        <span class="k-flag">--output-dir</span> <span class="k-val">./raw-policies</span>
+<span class="k-bin">kuma-migrator</span> <span class="k-sub">extract</span> <span class="k-flag">--kube-context</span> <span class="k-val">zone-eu-west1-prod</span> <span class="k-flag">--output-dir</span> <span class="k-val">./raw-policies</span>
+<span class="k-bin">kuma-migrator</span> <span class="k-sub">extract</span> <span class="k-flag">--kube-context</span> <span class="k-val">zone-us-east1-prod</span> <span class="k-flag">--output-dir</span> <span class="k-val">./raw-policies</span>
+
+<span class="k-bin">kuma-migrator</span> <span class="k-sub">migrate</span> <span class="k-flag">--input-dir</span> <span class="k-val">./raw-policies</span> <span class="k-flag">--output-dir</span> <span class="k-val">./migrated</span> <span class="k-flag">--dry-run</span>
+<span class="k-bin">kuma-migrator</span> <span class="k-sub">migrate</span> <span class="k-flag">--input-dir</span> <span class="k-val">./raw-policies</span> <span class="k-flag">--output-dir</span> <span class="k-val">./migrated</span>
+</code></pre></div>
+<p>Use <code>--kumactl-context</code> for a Global control plane that runs on Universal (PostgreSQL store).
+On 3.0 that is the only supported setup for a Global control plane
+(<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#global-control-plane-on-kubernetes-is-no-longer-supported">Kuma <code>UPGRADE.md</code></a>).
+The <code>global-prod</code> control plane above is Kubernetes-native, so a <code>--to-latest v3</code> report on
+this tree opens with a blocking <strong>Control Plane Topology</strong> section for it (see
+<a href="../upgrade-plans/#control-plane-topology">Upgrade plans</a>).</p>
+<p>What each extraction gets:</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Context directory</th>
+<th>Contains</th>
+<th>Skipped, with the reason</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>global-prod-global-ctx</code></td>
+<td>Every policy created on the Global control plane, <code>Mesh</code> objects, global-scoped resources</td>
+<td>Policies with <code>kuma.io/origin: zone</code> (listed with their zone), <code>MeshGatewayInstance</code>, <code>MeshGatewayConfig</code></td>
+</tr>
+<tr>
+<td><code>zone-eu-west1-prod-zone-ctx</code></td>
+<td>Policies created on that zone, its <code>MeshGatewayInstance</code>/<code>MeshGatewayConfig</code>, gateways and routes created directly on the zone</td>
+<td>Everything synced from the Global control plane; resources with no <code>kuma.io/origin</code> label, listed after extraction</td>
+</tr>
+<tr>
+<td><code>zone-us-east1-prod-zone-ctx</code></td>
+<td>Same, for the other zone</td>
+<td>Same</td>
+</tr>
+</tbody>
+</table></div>
+<p>The end of the Global extraction lists what to fetch from the zones:</p>
+<div class="code"><pre class="chroma" data-lang="text"><code>  <span class="o-warn">⚠</span>  Zone-origin resources skipped on Global CP — extract from their zone instead:
+     MeshTimeout/my-timeout        →  zone: zone-eu-west1-prod
+</code></pre></div>
+<p>Output of <code>migrate --dry-run</code> on such a tree (Global and one zone, warnings shortened):</p>
+<div class="code"><pre class="chroma" data-lang="text"><code>  <span class="o-ok">✓</span>  MESH              default  default.yaml
+       <span class="o-dim">←  global-prod-global-ctx/mesh-default/mesh/default.yaml</span>
+       <span class="o-dim">→  global-prod-global-ctx/mesh-default/mesh/Mesh-default.yaml</span>
+  <span class="o-ok">✓</span>  LEGACY            default  timeout-default.yaml
+       <span class="o-dim">←  global-prod-global-ctx/mesh-default/resiliency/timeout-default.yaml</span>
+       <span class="o-dim">→  global-prod-global-ctx/mesh-default/resiliency/MeshTimeout-backend-timeout.yaml</span>
+  <span class="o-ok">✓</span>  SUBSET            default  meshretry.yaml
+       <span class="o-dim">←  zone-eu-west1-prod-zone-ctx/mesh-default/resiliency/meshretry.yaml</span>
+       <span class="o-dim">→  zone-eu-west1-prod-zone-ctx/mesh-default/resiliency/MeshRetry-demo-backend-retry.yaml</span>
+  <span class="o-ok">✓</span>  RULES             default  meshtimeout.yaml
+       <span class="o-dim">←  zone-eu-west1-prod-zone-ctx/mesh-default/resiliency/meshtimeout.yaml</span>
+       <span class="o-dim">→  zone-eu-west1-prod-zone-ctx/mesh-default/resiliency/MeshTimeout-demo-backend-inbound.yaml</span>
+</code></pre></div>
+<p>The Apply Checklist lists the Global context first, then each zone. Apply each context with
+its own <code>kubectl</code> context: resources from <code>global-prod-global-ctx</code> go to the Global control
+plane and are synced to the zones; resources from a zone context go back to that zone.
+Gateway API output in <code>global-scoped-resources/</code> goes to the Kubernetes cluster that runs the
+gateway. See <a href="../../topics/multizone/">Multizone</a>.</p>
+<h3 id="kong-mesh-self-hosted-through-kumactl">Kong Mesh, self-hosted, through kumactl</h3>
+<p>Use the Kong Mesh build of <code>kumactl</code>. Register the control plane once:</p>
+<div class="code"><pre class="chroma" data-lang="bash"><code><span class="k-manual">kumactl</span> <span class="k-manual-b">config</span> <span class="k-manual-b">control-planes</span> <span class="k-manual-b">add</span> <span class="se">\
+</span>  <span class="k-flag">--name</span> <span class="k-val">kong-mesh-global</span> <span class="se">\
+</span>  <span class="k-flag">--address</span> <span class="k-val">https://kong-mesh-global.example.com:5682</span> <span class="se">\
+</span>  <span class="k-flag">--auth-type</span> <span class="k-val">tokens</span> <span class="k-flag">--auth-conf</span> <span class="nv">token</span><span class="o">=</span><span class="s2">"</span><span class="nv">$KONG_MESH_ADMIN_TOKEN</span><span class="s2">"</span>
+</code></pre></div>
+<p>Extract and migrate:</p>
+<div class="code"><pre class="chroma" data-lang="bash"><code><span class="k-bin">kuma-migrator</span> <span class="k-sub">extract</span> <span class="k-flag">--kumactl-context</span> <span class="k-val">kong-mesh-global</span> <span class="k-flag">--output-dir</span> <span class="k-val">./raw-policies</span>
+<span class="k-bin">kuma-migrator</span> <span class="k-sub">migrate</span> <span class="k-flag">--input-dir</span> <span class="k-val">./raw-policies</span> <span class="k-flag">--output-dir</span> <span class="k-val">./migrated</span> <span class="k-flag">--dry-run</span>
+<span class="k-bin">kuma-migrator</span> <span class="k-sub">migrate</span> <span class="k-flag">--input-dir</span> <span class="k-val">./raw-policies</span> <span class="k-flag">--output-dir</span> <span class="k-val">./migrated</span>
+</code></pre></div>
+<p><code>extract</code> prints the environment it reads from <code>GET /config</code>. If it says <code>kubernetes</code>, the
+control plane stores resources as CRDs:</p>
+<ul>
+<li>re-run with <code>--output-format kubernetes</code>, or extract with <code>--kube-context</code> instead;</li>
+<li>apply with <code>kubectl</code> (see <a href="../apply/">Apply</a>). <code>kumactl</code> cannot create, update or delete resources
+that Kubernetes manages, so the report prints <code>kubectl</code> commands for such a context, says
+why, and names the kumactl context so you can point <code>kubectl</code> at the right cluster.</li>
+</ul>
+<p>Kong Mesh specifics show up in the same run: <code>OPAPolicy</code> becomes <code>MeshOPA</code>, <code>AccessRole</code> is
+scanned for the 3.0 type changes, and enterprise CA backends (<code>vault</code>, <code>acmpca</code>,
+<code>cert-manager</code>) are reported with the <code>MeshIdentity</code> provider that replaces them. See
+<a href="../../policies/meshopa/">MeshOPA</a> and <a href="../../topics/external-pki/">External PKI</a>.</p>
+<p>On Kong Mesh 3.0, <code>GET /config</code> needs the <code>VIEW_CONTROL_PLANE_METADATA</code> access type. Without
+it, <code>extract</code> continues in unknown mode: no origin filter and the Kubernetes skip list.</p>
+<h3 id="konnect">Konnect</h3>
+<p>Konnect hosts the Global control plane. Copy the <code>kumactl config control-planes add</code> command
+from the Konnect UI for the mesh control plane; it stores a personal access token as a header:</p>
+<div class="code"><pre class="chroma" data-lang="bash"><code><span class="k-manual">kumactl</span> <span class="k-manual-b">config</span> <span class="k-manual-b">control-planes</span> <span class="k-manual-b">add</span> <span class="se">\
+</span>  <span class="k-flag">--name</span> <span class="k-val">konnect-global-prod</span> <span class="se">\
+</span>  <span class="k-flag">--address</span> <span class="s2">"https://</span><span class="nv">$KONNECT_REGION</span><span class="s2">.api.konghq.com/v1/mesh/control-planes/</span><span class="nv">$CONTROL_PLANE_ID</span><span class="s2">/api"</span> <span class="se">\
+</span>  <span class="k-flag">--headers</span> <span class="s2">"authorization=Bearer </span><span class="nv">$KONNECT_TOKEN</span><span class="s2">"</span>
+</code></pre></div>
+<div class="code"><pre class="chroma" data-lang="bash"><code><span class="k-bin">kuma-migrator</span> <span class="k-sub">extract</span> <span class="k-flag">--kumactl-context</span> <span class="k-val">konnect-global-prod</span> <span class="k-flag">--output-dir</span> <span class="k-val">./raw-policies</span>
+<span class="k-bin">kuma-migrator</span> <span class="k-sub">migrate</span> <span class="k-flag">--input-dir</span> <span class="k-val">./raw-policies</span> <span class="k-flag">--output-dir</span> <span class="k-val">./migrated</span> <span class="k-flag">--dry-run</span>
+<span class="k-bin">kuma-migrator</span> <span class="k-sub">migrate</span> <span class="k-flag">--input-dir</span> <span class="k-val">./raw-policies</span> <span class="k-flag">--output-dir</span> <span class="k-val">./migrated</span>
+</code></pre></div>
+<p><code>extract</code> detects Konnect from the <code>api.konghq.com</code> address, treats it as a Global control
+plane, and reads meshes, zones and resources over HTTPS. The files are in Universal format.
+<code>.kuma-migrator.json</code> records <code>&quot;isKonnect&quot;: true</code>.</p>
+<p>Output of <code>migrate</code> on a Konnect tree (warnings shortened):</p>
+<div class="code"><pre class="chroma" data-lang="text"><code>  <span class="o-info">●</span>  ALREADY MIGRATED  default  MeshTrace-otel.yaml
+       <span class="o-dim">←  konnect-global-prod-global-ctx/mesh-default/observability/MeshTrace-otel.yaml</span>
+       <span class="o-dim">→  konnect-global-prod-global-ctx/mesh-default/observability/MeshTrace-otel.yaml</span>
+       <span class="o-warn">⚠</span>  MeshTrace "otel": an inline openTelemetry.endpoint is deprecated in Kuma 2.14 and removed in 3.0 — …
+  <span class="o-ok">✓</span>  LEGACY            default  Retry-backend-retry.yaml
+       <span class="o-dim">←  konnect-global-prod-global-ctx/mesh-default/resiliency/Retry-backend-retry.yaml</span>
+       <span class="o-dim">→  konnect-global-prod-global-ctx/mesh-default/resiliency/MeshRetry-backend-retry.yaml</span>
+  <span class="o-ok">✓</span>  EXTERNAL SERVICE  default  ExternalService-httpbin.yaml
+       <span class="o-dim">←  konnect-global-prod-global-ctx/mesh-default/routing/ExternalService-httpbin.yaml</span>
+       <span class="o-dim">→  konnect-global-prod-global-ctx/mesh-default/routing/MeshExternalService-httpbin.yaml</span>
+</code></pre></div>
+<p>The Apply Checklist lists one <code>kumactl apply</code> per file:</p>
+<div class="code"><pre class="chroma" data-lang="bash"><code><span class="k-manual">kumactl</span> <span class="k-manual-b">config</span> <span class="k-manual-b">control-planes</span> <span class="k-manual-b">switch</span> <span class="k-flag">--name</span> <span class="k-val">konnect-global-prod</span>
+<span class="k-manual">kumactl</span> <span class="k-manual-b">apply</span> <span class="k-flag">-f</span> <span class="k-val">migrated/konnect-global-prod-global-ctx/mesh-default/resiliency/MeshRetry-backend-retry.yaml</span>
+<span class="k-manual">kumactl</span> <span class="k-manual-b">apply</span> <span class="k-flag">-f</span> <span class="k-val">migrated/konnect-global-prod-global-ctx/mesh-default/routing/MeshExternalService-httpbin.yaml</span>
+<span class="k-manual">kumactl</span> <span class="k-manual-b">apply</span> <span class="k-flag">-f</span> <span class="k-val">migrated/konnect-global-prod-global-ctx/mesh-default/observability/MeshTrace-otel.yaml</span>
+</code></pre></div>
+<p>The files are in Universal format, like the input, so <code>kumactl apply</code> takes them as they are.</p>
+<p>Zones attached to Konnect run their own control planes. Extract each zone with
+<code>--kube-context</code> (or <code>--kumactl-context</code> for a Universal zone) into the same directory to pick
+up zone-origin policies and gateway instances.</p>
+<h3 id="universal">Universal</h3>
+<p>Control planes and data planes on VMs, extracted with <code>kumactl</code>. <code>extract</code> records
+<code>&quot;environment&quot;:&quot;universal&quot;</code>, so <code>Dataplane</code>, <code>ZoneIngress</code> and <code>ZoneEgress</code> are extracted and
+scanned instead of skipped.</p>
+<div class="code"><pre class="chroma" data-lang="bash"><code><span class="k-bin">kuma-migrator</span> <span class="k-sub">extract</span> <span class="k-flag">--kumactl-context</span> <span class="k-val">uni-global</span> <span class="k-flag">--output-dir</span> <span class="k-val">./raw-policies</span>
+<span class="k-bin">kuma-migrator</span> <span class="k-sub">migrate</span> <span class="k-flag">--input-dir</span> <span class="k-val">./raw-policies</span> <span class="k-flag">--output-dir</span> <span class="k-val">./migrated</span> <span class="k-flag">--dry-run</span>
+</code></pre></div>
+<div class="code"><pre class="chroma" data-lang="text"><code>  <span class="o-dim">–</span>  SKIP              ZoneIngress-zi-1.yaml: not a Kuma policy; copied unchanged
+       <span class="o-dim">←  uni-global-global-ctx/global-scoped-resources/other/ZoneIngress-zi-1.yaml</span>
+       <span class="o-dim">→  uni-global-global-ctx/global-scoped-resources/other/ZoneIngress-zi-1.yaml</span>
+  ◆  SCANNED           default  Dataplane-backend-01.yaml: not a policy; copied unchanged, see warnings
+       <span class="o-dim">←  uni-global-global-ctx/mesh-default/other/Dataplane-backend-01.yaml</span>
+       <span class="o-dim">→  uni-global-global-ctx/mesh-default/other/Dataplane-backend-01.yaml</span>
+       <span class="o-warn">⚠</span>  Dataplane "backend-01": transparentProxying.reachableServices uses legacy kuma.io/service names ([redis]). …
+  <span class="o-ok">✓</span>  LEGACY            default  CircuitBreaker-backend.yaml
+       <span class="o-dim">←  uni-global-global-ctx/mesh-default/resiliency/CircuitBreaker-backend.yaml</span>
+       <span class="o-dim">→  uni-global-global-ctx/mesh-default/resiliency/MeshCircuitBreaker-backend-cb.yaml</span>
+</code></pre></div>
+<p>No scenario applies to these kinds; the deprecation scan still runs on them. <code>SCANNED</code> means
+it flagged or rewrote the document, <code>SKIP</code> that it found nothing. Under <code>--to-latest v3</code> the
+same tree produces more: inbound <code>tags</code> move to Dataplane labels and <code>kuma.io/protocol</code> to
+<code>inbound[].protocol</code> (the Dataplane line then reads <code>rewritten by the deprecation scan</code>), and
+the <code>ZoneIngress</code> goes to <code>_manual/</code> as a kind 3.0 removes (labelled <code>MANUAL</code>).</p>
+<p>Universal Dataplanes are usually generated by <code>kuma-dp</code> from a template on each VM, not
+applied with <code>kumactl</code>. Apply the Dataplane changes to those templates. See
+<a href="../../topics/dataplanes/">Dataplanes</a>.</p>
+<h2 id="re-running">Re-running</h2>
+<p><code>extract</code> and <code>migrate</code> are safe to re-run. Use a fresh output directory per run and per
+target (<code>./migrated-v2</code>, <code>./migrated-v3</code>): <code>migrate</code> does not delete files a previous run left
+in the same directory.</p>
+
+    </article>
+    <nav class="pager" aria-label="Previous and next page">
+      <a class="prev" href="../installation/"><span>Previous</span>Installation</a>
+      <a class="next" href="../upgrade-plans/"><span>Next</span>Upgrade plans</a>
+    </nav>
+  </main>
+  <nav class="toc" aria-label="On this page">
+    <p class="toc-title">On this page</p>
+    <ul><li class="toc-l2"><a href="#before-you-start">Before you start</a></li><li class="toc-l2"><a href="#extract-what-runs-today">Extract what runs today</a></li><li class="toc-l2"><a href="#let-the-tool-rewrite-them">Let the tool rewrite them</a></li><li class="toc-l2"><a href="#apply-following-the-report">Apply, following the report</a></li><li class="toc-l2"><a href="#walkthroughs-by-setup">Walkthroughs by setup</a></li><li class="toc-l3"><a href="#kubernetes-single-zone">Kubernetes, single zone</a></li><li class="toc-l3"><a href="#multizone-global-and-zones">Multizone: Global and zones</a></li><li class="toc-l3"><a href="#kong-mesh-self-hosted-through-kumactl">Kong Mesh, self-hosted, through kumactl</a></li><li class="toc-l3"><a href="#konnect">Konnect</a></li><li class="toc-l3"><a href="#universal">Universal</a></li><li class="toc-l2"><a href="#re-running">Re-running</a></li></ul>
+  </nav>
+</div>
+<footer class="site-footer">
+  <p>
+    <a href="../../../">kuma-migrator</a> ·
+    <a href="https://github.com/Kong/kuma-migrator">Source</a> ·
+    <a href="https://github.com/Kong/kuma-migrator/releases">Releases</a> ·
+    <a href="https://github.com/Kong/kuma-migrator/issues">Issues</a> ·
+    <a href="https://github.com/Kong/kuma-migrator/blob/main/site/content/guides/getting-started.md">View source of this page</a>
+  </p>
+  <p>Apache-2.0 licensed. Part of Kong's <a href="https://konghq.com/products/kong-mesh">Kong Mesh</a> tooling.</p>
+</footer>
+<script src="../../static/search-index.js"></script>
+<script src="../../static/search.js"></script>
+<script src="../../static/copy.js"></script>
+</body>
+</html>

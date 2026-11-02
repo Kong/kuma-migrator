@@ -14,7 +14,7 @@ kinds, see the [topics](../topics/_index.md).
 | Guide | What it covers |
 |---|---|
 | [Installation](installation.md) | Homebrew, release archives, building from source, verifying a release |
-| [Typical usage](usage.md) | End-to-end runs for a single Kubernetes zone, multizone, self-hosted Kong Mesh, Konnect and Universal |
+| [Getting started](getting-started.md) | The three steps of a migration, illustrated, then end-to-end runs for a single Kubernetes zone, multizone, self-hosted Kong Mesh, Konnect and Universal |
 | [Upgrade plans](upgrade-plans.md) | Supported upgrade paths, which target to use when, the sequence for 3.0, rollback |
 
 ## Running the tool

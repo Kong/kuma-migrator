@@ -1,25 +1,164 @@
 ---
-title: Typical usage
-description: End-to-end walkthroughs for a single Kubernetes zone, a multizone deployment, self-hosted Kong Mesh, Konnect and Universal.
+title: Getting started
+description: A migration in three steps, extract, migrate and apply, followed by a walkthrough for each kind of deployment.
 order: 20
-nav_title: Typical usage
+aliases: [usage]
 ---
 
-Every walkthrough follows the same three steps:
+<div class="story-art story-hero">
 
-```text
-extract  →  migrate --dry-run, then migrate  →  apply (by hand, following the report)
+![A path from your mesh today, holding old-style resources, past three stops (extract, migrate, apply) to your mesh on 2.14 or 3.0](/img/getting-started/journey.svg)
+
+</div>
+
+Your mesh holds resources written for older Kuma and Kong Mesh APIs: legacy policies,
+`MeshSubset` selectors, `from[]` sections, fields that 3.0 drops. `kuma-migrator` rewrites them
+for the version you are moving to. You run two commands. The third step, applying the result,
+stays with you, and the report tells you exactly what to run.
+
+## Before you start
+
+<div class="kit">
+
+- **kuma-migrator installed.** Homebrew, a release archive or a source build: see
+  [Installation](installation.md).
+- **Read access to the control plane.** A `kubectl` context for Kubernetes, a `kumactl`
+  context for Universal and Konnect. The tool only reads.
+- **A target version.** `--to-latest v2` (the default) keeps you on the latest 2.x line,
+  `--to-latest v3` prepares the move to 3.0. See [Target versions](target-version.md).
+
+</div>
+
+<div class="story-step">
+
+## Extract what runs today
+
+<div class="story-art">
+
+![kuma-migrator reads your control plane through kubectl or kumactl and copies every resource into a folder tree on your machine. The control plane is only read.](/img/getting-started/extract.svg)
+
+</div>
+
+Point `extract` at a control plane. It lists every Kuma resource, through `kubectl` on
+Kubernetes or `kumactl` on Universal and Konnect, and writes one YAML file per resource on your
+machine, sorted by control plane, mesh and kind. Nothing changes in the control plane.
+
+```bash
+# Kubernetes: a kubectl context
+kuma-migrator extract --kube-context prod-eks --output-dir ./raw-policies
+# Universal or Konnect: a kumactl context
+kuma-migrator extract --kumactl-context my-cp --output-dir ./raw-policies
 ```
+
+<p class="story-get"><strong>You get</strong> <code>raw-policies/&lt;context&gt;-&lt;mode&gt;-ctx/mesh-&lt;mesh&gt;/…</code>, one file per resource</p>
+
+Multizone? Run `extract` once per control plane, Global and each zone, into the same
+directory. Details: [Extract](extract.md).
+
+</div>
+
+<div class="story-step">
+
+## Let the tool rewrite them
+
+<div class="story-art">
+
+![Old-style YAML files go into a machine with gears and come out as new-style files, with a report of ticks, warnings and errors. Glasses above the machine stand for the dry-run preview.](/img/getting-started/migrate.svg)
+
+</div>
+
+Start with a dry run: `migrate --dry-run` decides what to do with every file and writes only
+the plan. Read it. When it looks right, run `migrate` for real. Each document is converted to
+its successor, rewritten in place, copied unchanged, or set aside under `_manual/` when it
+cannot be converted safely.
+
+```bash
+kuma-migrator migrate --input-dir ./raw-policies --output-dir ./migrated --dry-run
+less ./migrated/migration-plan.md
+kuma-migrator migrate --input-dir ./raw-policies --output-dir ./migrated
+```
+
+Moving to 3.0? Add `--to-latest v3` to both commands, and write to a separate directory.
+
+Every file gets one line in the terminal:
+
+<div class="legend">
+
+| Mark | Meaning |
+|---|---|
+| <span class="lg lg-ok">✓</span> `LEGACY`, `SUBSET`, `RULES`, … | Converted. The label names the [scenario](migrate.md) that applied |
+| <span class="lg lg-same">●</span> `ALREADY MIGRATED` | Already on the current API, copied unchanged |
+| <span class="lg lg-scan">◆</span> `SCANNED` | Not a policy; the deprecation scan rewrote or flagged it |
+| <span class="lg lg-skip">–</span> `SKIP` | Nothing to do |
+| <span class="lg lg-warn">⚠</span> `MANUAL`, `PARTIAL ERROR` | Some or all documents went to `_manual/`: finish them by hand |
+| <span class="lg lg-err">✗</span> `ERROR` | Not converted; the report says why and what to write instead |
+
+</div>
+
+<p class="story-get"><strong>You get</strong> <code>migrated/</code> with the rewritten files, <code>migration-report.md</code> and <code>_manual/</code></p>
+
+Details: [Migrate](migrate.md), [Output and reports](output-and-reports.md).
+
+</div>
+
+<div class="story-step">
+
+## Apply, following the report
+
+<div class="story-art">
+
+![A person holds the report's Apply Checklist and applies the files to the control plane in order, Mesh last. A box marked _manual holds documents to finish by hand.](/img/getting-started/apply.svg)
+
+</div>
+
+`kuma-migrator` never writes to a control plane. Open `migrated/migration-report.md` and work
+down its **Apply Checklist**: one `kubectl` or `kumactl` command per directory or file, in an
+order that works, with `Mesh` objects last.
+
+```bash
+kubectl --context prod-eks apply -f ./migrated/prod-eks-zone-ctx/mesh-default/resiliency/
+kubectl --context prod-eks apply -f ./migrated/prod-eks-zone-ctx/mesh-default/routing/
+# … the rest of the checklist, then the Mesh:
+kubectl --context prod-eks apply -f ./migrated/prod-eks-zone-ctx/mesh-default/mesh/
+```
+
+Then:
+
+- write by hand what the report lists under **Kept Under `_manual/`**, using the reason
+  given for each file;
+- check traffic, then delete the old resources listed under **Original Resources to Delete**.
+
+<p class="story-get"><strong>You get</strong> a mesh on the new APIs, ready for 2.14 or for the 3.0 upgrade</p>
+
+Details: [Apply](apply.md). For a 3.0 upgrade, the checklist adds the steps to run before the
+Global control plane upgrade; see [Upgrade plans](upgrade-plans.md).
+
+</div>
+
+## Walkthroughs by setup
+
+The same three steps on each kind of deployment, with real output. Pick yours:
+
+<div class="setups">
+
+- [**Kubernetes, single zone**](#kubernetes-single-zone)
+  One cluster, `kubectl`
+- [**Multizone**](#multizone-global-and-zones)
+  A Global and its zones
+- [**Kong Mesh, self-hosted**](#kong-mesh-self-hosted-through-kumactl)
+  Through `kumactl`
+- [**Konnect**](#konnect)
+  Hosted Global control plane
+- [**Universal**](#universal)
+  VMs and `kumactl`
+
+</div>
 
 The context names below are examples. The `migrate` outputs shown were produced by running
 the current release on input trees with the same layout; `extract` needs a live control plane
 and is shown as commands only.
 
-Pick the target first: `--to-latest v2` (the default) produces output for a 2.x control plane,
-`--to-latest v3` for 3.0. See [Target versions](target-version.md) and, for a 3.0 upgrade,
-[Upgrade plans](upgrade-plans.md).
-
-## Kubernetes, single zone
+### Kubernetes, single zone
 
 One Kubernetes cluster running the control plane, extracted with `kubectl`.
 
@@ -72,7 +211,7 @@ kubectl --context prod-eks apply -f ./migrated/prod-eks-zone-ctx/mesh-default/me
 
 Then delete the originals listed under **Original Resources to Delete**.
 
-## Multizone: Global and zones
+### Multizone: Global and zones
 
 A Global control plane and two Zone control planes. Extract all three into the same
 directory; each gets its own context directory.
@@ -131,7 +270,7 @@ plane and are synced to the zones; resources from a zone context go back to that
 Gateway API output in `global-scoped-resources/` goes to the Kubernetes cluster that runs the
 gateway. See [Multizone](../topics/multizone.md).
 
-## Kong Mesh, self-hosted, through kumactl
+### Kong Mesh, self-hosted, through kumactl
 
 Use the Kong Mesh build of `kumactl`. Register the control plane once:
 
@@ -166,7 +305,7 @@ scanned for the 3.0 type changes, and enterprise CA backends (`vault`, `acmpca`,
 On Kong Mesh 3.0, `GET /config` needs the `VIEW_CONTROL_PLANE_METADATA` access type. Without
 it, `extract` continues in unknown mode: no origin filter and the Kubernetes skip list.
 
-## Konnect
+### Konnect
 
 Konnect hosts the Global control plane. Copy the `kumactl config control-planes add` command
 from the Konnect UI for the mesh control plane; it stores a personal access token as a header:
@@ -218,7 +357,7 @@ Zones attached to Konnect run their own control planes. Extract each zone with
 `--kube-context` (or `--kumactl-context` for a Universal zone) into the same directory to pick
 up zone-origin policies and gateway instances.
 
-## Universal
+### Universal
 
 Control planes and data planes on VMs, extracted with `kumactl`. `extract` records
 `"environment":"universal"`, so `Dataplane`, `ZoneIngress` and `ZoneEgress` are extracted and

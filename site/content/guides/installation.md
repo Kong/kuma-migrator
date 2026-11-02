@@ -99,4 +99,4 @@ Check the installed version:
 kuma-migrator version
 ```
 
-Next: [Typical usage](usage.md).
+Next: [Getting started](getting-started.md).

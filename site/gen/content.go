@@ -37,6 +37,9 @@ type FrontMatter struct {
 	Description string `yaml:"description"`
 	Order       int    `yaml:"order"`
 	NavTitle    string `yaml:"nav_title"`
+	// Aliases are former slugs of the page in the same section. Each gets a redirect page
+	// (noindex, not in the sitemap) so old links keep working after a rename.
+	Aliases []string `yaml:"aliases"`
 }
 
 // Heading is a rendered heading with its anchor.

@@ -8,7 +8,7 @@ The documentation moved to <https://kong.github.io/kuma-migrator/docs/>. Its sou
 | Page | What it covers |
 |---|---|
 | [Installation](https://kong.github.io/kuma-migrator/docs/guides/installation/) | Homebrew, release archives, building from source |
-| [Typical usage](https://kong.github.io/kuma-migrator/docs/guides/usage/) | End-to-end runs for Kubernetes, multizone, Kong Mesh, Konnect and Universal |
+| [Getting started](https://kong.github.io/kuma-migrator/docs/guides/getting-started/) | The three steps of a migration, then end-to-end runs for Kubernetes, multizone, Kong Mesh, Konnect and Universal |
 | [Upgrade plans](https://kong.github.io/kuma-migrator/docs/guides/upgrade-plans/) | Upgrade paths, which target to use, the sequence for 3.0, rollback |
 | [CLI reference](https://kong.github.io/kuma-migrator/docs/guides/cli/) | Every command, flag and the configuration file |
 | [Extract](https://kong.github.io/kuma-migrator/docs/guides/extract/) | Control plane modes, origin filtering, output layout, Konnect, Universal |

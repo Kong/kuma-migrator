@@ -314,6 +314,29 @@ func buildErr(t *testing.T, edits map[string]string) string {
 	return err.Error()
 }
 
+func TestAliasesAndRawHTML(t *testing.T) {
+	root := fixture(t)
+	writeFile(t, root, "site/content/guides/start.md", "---\ntitle: Getting started\naliases: [usage]\n---\n\n<div class=\"story\">\n\n## Step\n\nSee [CLI](cli.md).\n\n</div>\n")
+	if _, err := build(t, root); err != nil {
+		t.Fatal(err)
+	}
+	page := read(t, root, "docs/docs/guides/start/index.html")
+	mustContain(t, "page", page, `<div class="story">`, `<h2 id="step">Step</h2>`, `<a href="../cli/">CLI</a>`)
+	redirect := read(t, root, "docs/docs/guides/usage/index.html")
+	mustContain(t, "redirect", redirect,
+		`<meta http-equiv="refresh" content="0; url=../start/">`,
+		`<link rel="canonical" href="https://kong.github.io/kuma-migrator/docs/guides/start/">`,
+		`<meta name="robots" content="noindex">`,
+		`location.replace("../start/" + location.hash)`,
+	)
+	if sm := read(t, root, "docs/sitemap.xml"); strings.Contains(sm, "guides/usage/") {
+		t.Error("an alias must not be listed in the sitemap")
+	}
+	if idx := read(t, root, "docs/docs/static/search-index.js"); strings.Contains(idx, "guides/usage/") {
+		t.Error("an alias must not be in the search index")
+	}
+}
+
 func TestBuildFailures(t *testing.T) {
 	page := func(body string) string { return "---\ntitle: P\n---\n\n## H\n\n" + body + "\n" }
 	cases := []struct {
@@ -353,6 +376,10 @@ func TestBuildFailures(t *testing.T) {
 			`site/content/guides/p.md:7: code block language "nosuchlang" is not known to chroma`},
 		{"indented code block", map[string]string{"site/content/guides/p.md": page("para\n\n    indented\n")},
 			"site/content/guides/p.md:9: indented code block"},
+		{"alias collides with a page", map[string]string{"site/content/guides/p.md": "---\ntitle: P\naliases: [cli]\n---\n\n## H\n"},
+			`site/content/guides/p.md:1: front matter: alias "cli": /docs/guides/cli/ is already produced by site/content/guides/cli.md`},
+		{"invalid alias", map[string]string{"site/content/guides/p.md": "---\ntitle: P\naliases: [Old_Name]\n---\n\n## H\n"},
+			`alias "Old_Name" is not a valid slug`},
 		{"untagged fence in notes", map[string]string{"site/data/policies.yaml": "- kind: X\n  group: legacy\n  product: kuma\n  summary: s\n  v2:\n    status: error\n    notes: |\n      line one\n\n      ```\n      x\n      ```\n  v3: {status: removed}\n"},
 			"site/data/policies.yaml:10: code block without a language tag"},
 	}

@@ -13,6 +13,7 @@ import (
 	"github.com/yuin/goldmark/extension"
 	"github.com/yuin/goldmark/parser"
 	"github.com/yuin/goldmark/renderer"
+	"github.com/yuin/goldmark/renderer/html"
 	"github.com/yuin/goldmark/text"
 )
 
@@ -26,7 +27,13 @@ func newMarkdown() goldmark.Markdown {
 		goldmark.WithParserOptions(
 			parser.WithAutoHeadingID(),
 		),
-		goldmark.WithRendererOptions(renderer.WithNodeRenderers(newCodeRenderer())),
+		goldmark.WithRendererOptions(
+			renderer.WithNodeRenderers(newCodeRenderer()),
+			// Raw HTML blocks are allowed for page layout (wrappers around Markdown, such as
+			// the step cards in guides/getting-started.md). Content is authored in this
+			// repository, never taken from users.
+			html.WithUnsafe(),
+		),
 	)
 }
 

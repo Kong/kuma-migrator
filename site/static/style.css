@@ -157,6 +157,62 @@ blockquote.callout-v3 > p:first-child > strong:first-child { color: var(--old) }
 .card p { margin: 0; font-size: .9rem; color: var(--muted) }
 .cards-sections .card h2 { font-size: 1.2rem }
 
+/* ---- getting started story (guides/getting-started.md) ---- */
+.doc { counter-reset: step }
+.doc .story-art img { border: 0; border-radius: 0; background: none; width: 100%; display: block }
+.story-art { margin: .75rem 0 1.25rem }
+.story-hero { margin: .25rem 0 1.5rem }
+
+.kit ul { list-style: none; padding: 0; margin: 1rem 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: .75rem }
+.kit li { margin: 0; padding: .85rem 1rem; border: 1px solid var(--line); border-top: 3px solid var(--accent); border-radius: 10px; background: var(--bg-alt); font-size: .93rem }
+.doc .kit li + li { margin-top: 0 }
+.kit li strong { display: block; color: var(--accent); margin-bottom: .2rem }
+
+.story-step { counter-increment: step; position: relative; margin: 2.75rem 0 0; padding: 0 0 .5rem 3.6rem }
+.story-step:has(+ .story-step)::before {
+  content: ""; position: absolute; left: 1.2rem; top: 3.2rem; bottom: -2.5rem;
+  border-left: 2px dashed var(--line);
+}
+.doc .story-step > h2 { margin-top: 0; border: 0; padding: 0; font-size: 1.6rem; line-height: 2.5rem }
+.story-step > h2::before {
+  content: counter(step);
+  position: absolute; left: 0; top: 0;
+  width: 2.5rem; height: 2.5rem; border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--accent); color: var(--bg);
+  font-size: 1.25rem; font-weight: 800; letter-spacing: 0;
+}
+.story-get {
+  margin: 1.25rem 0; padding: .6rem .9rem;
+  border-left: 3px solid var(--new); border-radius: 0 8px 8px 0;
+  background: color-mix(in srgb, var(--new) 10%, transparent);
+  font-size: .95rem;
+}
+.story-get strong { color: var(--new); text-transform: uppercase; font-size: .75rem; letter-spacing: .06em; margin-right: .5rem }
+.story-get code { font-size: .85em }
+
+.legend td:first-child { white-space: nowrap }
+.lg { display: inline-block; width: 1.2rem; font-weight: 800 }
+.lg-ok   { color: var(--new) }
+.lg-same { color: var(--accent) }
+.lg-scan { color: var(--accent2) }
+.lg-skip { color: var(--muted) }
+.lg-warn { color: var(--manual) }
+.lg-err  { color: var(--old) }
+
+.setups ul { list-style: none; padding: 0; margin: 1rem 0 1.5rem; display: grid; grid-template-columns: repeat(auto-fill, minmax(10.5rem, 1fr)); gap: .75rem }
+.doc .setups li { margin: 0; position: relative; padding: .8rem 1rem; border: 1px solid var(--line); border-radius: 10px; color: var(--muted); font-size: .88rem; line-height: 1.45 }
+.setups li:hover { border-color: var(--accent) }
+.setups li a { display: block; text-decoration: none; font-size: 1rem; margin-bottom: .15rem }
+.setups li a::after { content: ""; position: absolute; inset: 0 } /* whole card clickable */
+
+@media (max-width: 40rem) {
+  .story-step { padding-left: 3rem }
+  .story-step:has(+ .story-step)::before { left: 1rem }
+  .story-step > h2::before { width: 2.1rem; height: 2.1rem; font-size: 1.05rem; top: .2rem }
+  .doc .story-step > h2 { font-size: 1.35rem }
+}
+
 /* ---- pager ---- */
 .pager { display: flex; justify-content: space-between; gap: 1rem; margin-top: 3rem; padding-top: 1.25rem; border-top: 1px solid var(--line) }
 .pager a { display: flex; flex-direction: column; text-decoration: none; font-weight: 600; max-width: 48% }

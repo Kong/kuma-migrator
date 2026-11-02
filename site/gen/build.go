@@ -391,6 +391,56 @@ func (s *Site) renderPages(out map[string][]byte) {
 			s.exec(out, "page", p.URL, v)
 		}
 	}
+	s.renderAliases(out)
+}
+
+// renderAliases writes a redirect page for each front matter alias.
+func (s *Site) renderAliases(out map[string][]byte) {
+	seen := map[string]string{}
+	for _, p := range s.pages {
+		for _, a := range p.FM.Aliases {
+			if p.Section == "" || p.IsIndex {
+				s.errorf("%s:1: front matter: aliases are only supported on section pages", p.File)
+				break
+			}
+			if !slugRe.MatchString(a) {
+				s.errorf("%s:1: front matter: alias %q is not a valid slug (lowercase letters, digits, '-')", p.File, a)
+				continue
+			}
+			url := p.Section + "/" + a + "/"
+			if prev, ok := s.urls[url]; ok {
+				s.errorf("%s:1: front matter: alias %q: /docs/%s is already produced by %s", p.File, a, url, prev)
+				continue
+			}
+			if prev, ok := seen[url]; ok {
+				s.errorf("%s:1: front matter: alias %q: /docs/%s is already an alias of %s", p.File, a, url, prev)
+				continue
+			}
+			seen[url] = p.File
+			out[url+"index.html"] = redirectPage(relURL(url, p.URL), docsURL+p.URL, p.FM.Title)
+		}
+	}
+}
+
+// redirectPage is a minimal page that sends the browser to target, keeping the #fragment.
+func redirectPage(target, canonical, title string) []byte {
+	t := template.HTMLEscapeString(target)
+	js, _ := json.Marshal(target)
+	return []byte(`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>` + template.HTMLEscapeString(title) + ` – kuma-migrator docs</title>
+<link rel="canonical" href="` + template.HTMLEscapeString(canonical) + `">
+<meta name="robots" content="noindex">
+<meta http-equiv="refresh" content="0; url=` + t + `">
+<script>location.replace(` + string(js) + ` + location.hash)</script>
+</head>
+<body>
+<p>This page moved to <a href="` + t + `">` + template.HTMLEscapeString(title) + `</a>.</p>
+</body>
+</html>
+`)
 }
 
 // ---- policies ----
