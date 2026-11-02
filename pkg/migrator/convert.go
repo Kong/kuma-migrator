@@ -77,6 +77,46 @@ func ParseKumaServiceTag(value string) (name, namespace string) {
 // Returns the converted TargetRef and an optional warning string (non-empty when a
 // Dataplane labels ref is emitted and the "app" label key is a best-guess).
 func ConvertTargetRef(ref TargetRef, policyNamespace string, topLevel bool) (TargetRef, string) {
+	return convertTargetRef(ref, policyNamespace, topLevel, false)
+}
+
+// ConvertTargetRefForTarget is ConvertTargetRef aware of the target major version.
+//
+// Under TargetV2 it behaves exactly like ConvertTargetRef and never errors.
+//
+// Under TargetV3 two 3.0 rules apply to every ref it generates:
+//   - Real resources (Dataplane, MeshService, …) are selected by labels only
+//     (UPGRADE.md "Real-resource policy selection now uses labels only"), so a
+//     generated ref never carries name/namespace. MeshService refs use
+//     kuma.io/display-name + k8s.kuma.io/namespace; top-level Dataplane refs use the
+//     best-guess "app" label and return the usual verification warning.
+//   - MeshSubset is gone everywhere. A tag-only MeshSubset becomes Dataplane+labels
+//     at the top level; in to[]/from[] it has no equivalent (3.0 accepts no tag
+//     selector there), so an error is returned.
+//
+// Refs that need no conversion (Mesh, an existing MeshService, …) are returned
+// unchanged; ScanForDeprecations rewrites leftover name/namespace on them.
+func ConvertTargetRefForTarget(ref TargetRef, policyNamespace string, topLevel bool, target TargetVersion) (TargetRef, string, error) {
+	if !target.IsV3() {
+		out, warn := convertTargetRef(ref, policyNamespace, topLevel, false)
+		return out, warn, nil
+	}
+	out, warn := convertTargetRef(ref, policyNamespace, topLevel, true)
+	if out.Kind == "MeshSubset" || out.Kind == "MeshServiceSubset" {
+		if topLevel && len(out.Tags) == 0 {
+			// A MeshSubset with no tags selects every proxy in the mesh.
+			return TargetRef{Kind: "Mesh"}, warn, nil
+		}
+		return out, warn, fmt.Errorf(
+			"targetRef kind %s with tags %v has no Kuma 3.0 equivalent in to[]/from[]: 3.0 accepts no "+
+				"tag selector there, only Mesh or a real resource (MeshService, MeshExternalService, "+
+				"MeshMultiZoneService, MeshHTTPRoute) selected by labels. Pick the real destination by hand, "+
+				"or re-run with --to-latest v2 to keep the MeshSubset", out.Kind, out.Tags)
+	}
+	return out, warn, nil
+}
+
+func convertTargetRef(ref TargetRef, policyNamespace string, topLevel bool, labelsOnly bool) (TargetRef, string) {
 	if ref.Kind != "MeshSubset" && ref.Kind != "MeshServiceSubset" {
 		// Normalise a MeshService ref that still carries the old Kuma-generated internal
 		// name format (e.g. "echo_demo_svc_8000" = service_namespace_svc_port).
@@ -94,9 +134,9 @@ func ConvertTargetRef(ref TargetRef, policyNamespace string, topLevel bool) (Tar
 				if ns == "" {
 					ns = policyNamespace
 				}
-				if policyNamespace != "" && policyNamespace != ns {
+				if labelsOnly || (policyNamespace != "" && policyNamespace != ns) {
 					labels, warn := buildLabels(name, ns, "", nil, topLevel)
-					return TargetRef{Kind: outputKind, Labels: labels}, warn
+					return TargetRef{Kind: outputKind, Labels: labels, SectionName: ref.SectionName}, warn
 				}
 				result := TargetRef{Kind: outputKind, Name: strPtr(name)}
 				if ns != "" {
@@ -152,7 +192,10 @@ func ConvertTargetRef(ref TargetRef, policyNamespace string, topLevel bool) (Tar
 			}
 			return TargetRef{Kind: "Dataplane", Labels: labels}, ""
 		}
-		// In to[]/from[] context: leave unchanged; the deprecation scanner will warn.
+		// In to[]/from[] context there is no service to point at, so the ref is left
+		// as MeshSubset. 2.14's shared TargetRef schema still lists the kind; under
+		// --to-latest v3 ConvertTargetRefForTarget turns this into an error, and
+		// ScanForDeprecations flags any MeshSubset left in spec.to[] (warnV3ToTargetRefKinds).
 		return ref, ""
 	}
 
@@ -194,7 +237,8 @@ func ConvertTargetRef(ref TargetRef, policyNamespace string, topLevel bool) (Tar
 
 	// Namespace scoping: use labels when policy namespace differs from target namespace.
 	// When policyNamespace is unknown (empty — Scenario A / Universal) keep name/namespace.
-	if policyNamespace != "" && policyNamespace != ns {
+	// Kuma 3.0 resolves real resources by labels only, so labelsOnly always takes this path.
+	if labelsOnly || (policyNamespace != "" && policyNamespace != ns) {
 		labels, warn := buildLabels(name, ns, "", nil, topLevel)
 		return TargetRef{Kind: outputKind, Labels: labels}, warn
 	}
@@ -250,24 +294,34 @@ func buildLabels(name, ns, zone string, extra map[string]string, topLevel bool) 
 // into a new TargetRef. topLevel and policyNamespace follow the same semantics as
 // ConvertTargetRef. Returns the TargetRef and an optional warning string.
 func ConvertSelectorToTargetRef(sel OldSelector, policyNamespace string, topLevel bool) (TargetRef, string) {
+	ref, warn, _ := ConvertSelectorToTargetRefForTarget(sel, policyNamespace, topLevel, TargetV2)
+	return ref, warn
+}
+
+// ConvertSelectorToTargetRefForTarget is ConvertSelectorToTargetRef aware of the
+// target major version. Under TargetV3 a selector with no kuma.io/service tag is
+// routed through ConvertTargetRefForTarget instead of being emitted as MeshSubset:
+// top-level it becomes Dataplane+labels, in to[]/from[] it is an error (see
+// ConvertTargetRefForTarget).
+func ConvertSelectorToTargetRefForTarget(sel OldSelector, policyNamespace string, topLevel bool, target TargetVersion) (TargetRef, string, error) {
 	tags := sel.Match
 	if len(tags) == 0 {
-		return TargetRef{Kind: "Mesh"}, ""
+		return TargetRef{Kind: "Mesh"}, "", nil
 	}
 
 	serviceValue, hasService := tags["kuma.io/service"]
 	if hasService && serviceValue == "*" {
-		return TargetRef{Kind: "Mesh"}, ""
+		return TargetRef{Kind: "Mesh"}, "", nil
 	}
 
-	if !hasService {
+	if !hasService && !target.IsV3() {
 		// Only non-service tags — MeshSubset workload selector, no service identity.
-		return TargetRef{Kind: "MeshSubset", Tags: tags}, ""
+		return TargetRef{Kind: "MeshSubset", Tags: tags}, "", nil
 	}
 
 	// Delegate via a synthetic MeshSubset so the full conversion rules apply.
 	synthetic := TargetRef{Kind: "MeshSubset", Tags: tags}
-	return ConvertTargetRef(synthetic, policyNamespace, topLevel)
+	return ConvertTargetRefForTarget(synthetic, policyNamespace, topLevel, target)
 }
 
 func strPtr(s string) *string { return &s }

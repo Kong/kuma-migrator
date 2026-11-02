@@ -325,7 +325,8 @@ spec:
   to:
     - targetRef:
         kind: MeshService
-        name: backend
+        labels:
+          kuma.io/display-name: backend
       rules:
         - default:
             backendRefs: []
