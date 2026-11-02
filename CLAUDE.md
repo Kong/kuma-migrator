@@ -464,6 +464,39 @@ Apply Checklist cannot apply them. The report adds a "Delete Before Upgrading to
 checklist step before the Global CP upgrade. v2 output is unchanged (no `_manual`). The kumactl
 type spellings in the delete commands (`v3DeleteCommand`) were written from memory — verify them.
 
+**Conversion rules that apply on both targets:**
+- A top-level reference to a service is `Dataplane` + `labels: {app, k8s.kuma.io/namespace}` (best-guess
+  `app`, warned) — never `Dataplane{name}`: a Dataplane name is the pod name. Selector labels are
+  built by `selectorLabelsFromTags`, which drops `kuma.io/*` tags that are not real Dataplane labels.
+- v2 legacy `TrafficPermission`/`FaultInjection` sources become `from[]` `MeshSubset{kuma.io/service}`
+  (the 2.7+ form), not `MeshService`.
+- The Subset scenario is map-based (`transformScenarioSubset`), so Universal input keeps
+  `type`/`name`/`mesh`. Any generated doc with an empty kind/type or name is an error.
+- Mesh `logging`/`tracing` produce **no** companion: on 2.x a TrafficLog/TrafficTrace activates a
+  backend, and its conversion carries the backend inline. `LegacyObservabilityIndex` (pre-pass)
+  names which backends were in use. `metrics` produces a `MeshMetric` for `enabledBackend` only.
+- Companions go to the system namespace from `resolveSystemNamespace`: config `systemNamespace:`,
+  else inferred from the input (`kong-mesh-system` / `kuma-system` / a Kong Mesh-only kind), else
+  `kuma-system`. Universal input gets Universal-format companions (`buildCompanion`).
+- Gateway API output: `GatewayRefIndex` (pre-pass) maps a `kuma.io/service` tag to the converted
+  Gateway's name, namespace and listener names, so route `parentRefs`/`sectionName` name a real
+  Gateway. The Gateway (and a namespace-less route) lives in the `MeshGatewayInstance`'s namespace.
+  `MeshGatewayConfig` is cluster-scoped (no namespace, no `parametersRef.namespace`).
+
+**Documents the target rejects** — `TransformDocumentWithOptions` returns `*RejectedByTargetError`
+(`rejected.go`) **with** the converted docs; `Rejected[].Index` names the rejected ones. Under v3:
+`spec.from` on MTP/MFI, a top-level kind other than `Mesh`/`Dataplane`, `name`/`namespace` on a
+real-resource ref, a `to[]` kind the 3.0 validator refuses. `processFile` writes the listed docs to
+`_manual/` and the rest to the apply tree, and reports the file as `PARTIAL ERROR`.
+
+**Report and checklist:** labels `SCANNED` (non-policy kind the scan rewrote or flagged) and
+`MANUAL` (sent to `_manual/` without an error) exist alongside `SKIP`. Under v3 the checklist runs,
+before the Global upgrade: the MeshIdentity cutover (when an input Mesh has `mtls`), then
+`meshServices.mode: Exclusive` per mesh (`kubectl patch` / `kumactl … | yq … | kumactl apply -f -`);
+the v3 `Mesh` files are applied only after the upgrade. `MeshOpenTelemetryBackend` lands in a
+`backends/` subfolder applied before policies. `tool=kumactl` + `environment=kubernetes` (not
+Konnect) gets `kubectl` commands (`resolveContextTool`). `MeshGatewayConfig` is a v3 removed kind.
+
 **Judgement calls worth knowing:**
 - Legacy `HealthCheck` `healthyPanicThreshold` under v3: the companion `MeshCircuitBreaker` must
   enable a detector (3.0's validator requires one and the threshold is ignored without outlier

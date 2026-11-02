@@ -441,7 +441,7 @@ func TransformMeshGateway(raw []byte, opts TransformOptions) ([][]byte, []string
 // ---- MeshGatewayInstance → GatewayClass + MeshGatewayConfig ----------------
 
 // TransformMeshGatewayInstance converts a MeshGatewayInstance into a Gateway API
-// GatewayClass (cluster-scoped) plus a Kuma MeshGatewayConfig (namespaced).
+// GatewayClass (cluster-scoped) plus a Kuma MeshGatewayConfig (cluster-scoped).
 //
 // That output is 2.x-only. Kuma 3.0 removes the built-in gateway API entirely and
 // its Gateway API integration is reduced to HTTPRoute (and, since kuma#18280,

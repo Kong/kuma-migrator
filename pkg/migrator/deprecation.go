@@ -324,7 +324,7 @@ func warnMeshServiceInFrom(obj map[string]interface{}, name, kind string) []stri
 		if tr["kind"] == "MeshService" {
 			warnings = append(warnings, fmt.Sprintf(
 				"%s %q: from[].targetRef.kind MeshService is deprecated in Kuma 2.7+ — "+
-					"use kind: Dataplane with labels instead.",
+					"use kind: MeshSubset with the kuma.io/service tag instead (UPGRADE.md 2.7).",
 				kind, name))
 			break
 		}
