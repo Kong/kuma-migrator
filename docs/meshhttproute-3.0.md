@@ -6,8 +6,9 @@ Where `MeshHTTPRoute` is heading in Kuma 3.0, what breaks on the way, and what `
 
 ---
 
-**Sources.** Everything below was verified against the kong-ama KB clone of `kumahq/kuma`
-at `master` (3.0-dev), HEAD `2bdad1995`, 2026-09-18 — `UPGRADE.md` §`Upgrade to 3.0.0`,
+**Sources.** Kuma 3.0.0 and 3.0.1 are released (Kong Mesh 3.0.0/3.0.1, 2026-10). The analysis
+below was first done against `kumahq/kuma` `master` HEAD `2bdad1995` (2026-09-18) and re-checked
+against the released 3.0.0 upgrade notes on 2026-11-02 — `UPGRADE.md` §`Upgrade to 3.0.0`,
 the Gateway API controllers under `pkg/plugins/runtime/k8s/controllers/gatewayapi/`, and the
 policy validators at `v2.14.4` vs `master`. Anything not verified is marked **unverified**.
 
@@ -90,6 +91,14 @@ From `pkg/plugins/policies/meshhttproute/api/v1alpha1/validation.go`:
 So a 2.x `MeshHTTPRoute` written as `targetRef: {kind: MeshService, name: backend}` needs its
 top-level ref rewritten to `Dataplane` + labels before 3.0 — the same expansion problem, and the
 same reason for warn-only treatment, as `warnDeprecatedTopLevelTargetRef`.
+
+**Labels only.** The released notes add a second rule: `spec.targetRef`, `spec.to[].targetRef`
+and route `backendRefs` select `Dataplane`, `MeshService`, `MeshExternalService`,
+`MeshMultiZoneService` and `MeshHTTPRoute` by `labels` only. A `to[]` ref or backendRef written
+as `{kind: MeshService, name: backend, namespace: demo}` must become
+`labels: {kuma.io/display-name: backend, k8s.kuma.io/namespace: demo}`. Under `--to-latest v3`
+the migrator does this rewrite for passthrough `MeshHTTPRoute`/`MeshTCPRoute` too, and converts a
+`MeshServiceSubset` backendRef whose only tag is `kuma.io/service` to `MeshService`.
 
 ### The narrowing is universal — full matrix
 
@@ -222,7 +231,9 @@ Two entries, both about who wins a tie:
 | catch-all advisory | lived in `TransformMeshHTTPRoute` (`route.go`) because `DetectScenario` always converted the kind away | Moved to `warnMeshHTTPRouteNoCatchAll` in `ScanForDeprecations` (v3 only), so it fires on the `MeshHTTPRoute` itself |
 | top-level `targetRef` on a `MeshHTTPRoute` | covered generically by `warnDeprecatedTopLevelTargetRef` | Confirmed correct for 3.0 by §3 — `Mesh`/`Dataplane` only |
 | `MeshGatewayInstance` under v3 | errors, points at the delegated-gateway replacement | Correct, and now backed by the CRD-removal entry. Worth naming `traffic.kuma.io/exclude-inbound-ports` and `kuma.io/ignore` explicitly in the error text |
-| `MeshGateway` as a `targetRef.kind` | listed as a known v3 gap, no scanner | Now confirmed removed (§2) — the gap can be closed with a real check |
+| `MeshGateway` as a `targetRef.kind` | listed as a known v3 gap, no scanner | Flagged under v3 by `warnDeprecatedTopLevelTargetRef`; `to[]` kinds are checked against the matrix above by `warnV3ToTargetRefKinds` |
+| route `backendRefs` | not scanned | Under v3: `name`/`namespace` → labels, `MeshServiceSubset` → `MeshService` where it only named `kuma.io/service`, other tags warned |
+| `HTTPRoute` from `MeshGatewayRoute` | `kuma.io/mesh` annotation, string `port` | `kuma.io/mesh` **label** (3.0 ignores the annotation), integer `port`, and a `ReferenceGrant` in the backend namespace when it differs from the route namespace (both targets: a Gateway-parented route always needed one) |
 
 ### Cross-check against kong-mesh-v3-readiness
 
@@ -234,7 +245,6 @@ automatically, in whichever direction the error runs.
 
 ## Open questions
 
-- Does Kong Mesh's `UPGRADE_km.md` add anything gateway- or route-specific on top of this?
 - `MeshGatewayRoute` still converts to Gateway API, which suits replacing the built-in gateway
   with one you run — the only option on 3.0. But `UPGRADE.md` names `MeshHTTPRoute`/`MeshTCPRoute`
   as its replacement, which is right when Kuma keeps routing. Should the tool generate that form

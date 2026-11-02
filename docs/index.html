@@ -337,8 +337,8 @@
       <tbody>
         <tr><td>Legacy</td><td><code>sources</code>/<code>destinations</code>/<code>selectors</code> policies → <code>targetRef</code>/<code>to</code>/<code>from</code>/<code>rules</code>, with the <code>conf</code> body rewritten to the successor's schema — except <code>TrafficRoute</code> (ambiguous HTTP vs TCP) and <code>VirtualOutbound</code> (no single successor), reported for manual migration</td></tr>
         <tr><td>Subset</td><td><code>MeshSubset</code> with service tags → <code>Dataplane</code>/<code>MeshService</code></td></tr>
-        <tr><td>Rules</td><td>Deprecated <code>from[]</code> → <code>rules[]</code>, for <code>MeshTimeout</code>/<code>MeshCircuitBreaker</code>/<code>MeshRateLimit</code>/<code>MeshAccessLog</code>/<code>MeshTLS</code> only (Kuma 2.10+) — <code>MeshTrafficPermission</code>/<code>MeshFaultInjection</code> use a different, SPIFFE-based <code>rules[]</code> shape and are <strong>not</strong> auto-converted</td></tr>
-        <tr><td>Mesh</td><td><code>Mesh</code> CRD observability → standalone <code>MeshMetric</code>/<code>MeshTrace</code>/<code>MeshAccessLog</code></td></tr>
+        <tr><td>Rules</td><td>Deprecated <code>from[]</code> → <code>rules[]</code>, for <code>MeshTimeout</code>/<code>MeshCircuitBreaker</code>/<code>MeshRateLimit</code>/<code>MeshAccessLog</code>/<code>MeshTLS</code> only (Kuma 2.10+) — <code>MeshTrafficPermission</code> uses a different, SPIFFE-based <code>rules[]</code> shape and is <strong>not</strong> auto-converted (<code>MeshFaultInjection</code> only under <code>v3</code>, when every source is <code>kind: Mesh</code>)</td></tr>
+        <tr><td>Mesh</td><td><code>Mesh</code> CRD observability and passthrough → standalone <code>MeshMetric</code>/<code>MeshTrace</code>/<code>MeshAccessLog</code>/<code>MeshPassthrough</code>; under <code>v3</code> also removes <code>mtls</code> and the <code>routing</code> fields 3.0 drops</td></tr>
         <tr><td>ExternalService</td><td><code>ExternalService</code> → <code>MeshExternalService</code></td></tr>
         <tr><td>GW</td><td><code>MeshGateway</code> and <code>MeshGatewayRoute</code> → Gateway API. Kuma 3.0 deletes the built-in gateway API outright, so under <code>v3</code> <code>MeshGatewayInstance</code> is reported rather than converted, and the source objects must be deleted before upgrading. <code>MeshHTTPRoute</code>/<code>MeshTCPRoute</code> are current policies on both lines and pass through unchanged</td></tr>
         <tr><td>OPAPolicy</td><td>Kong Mesh <code>OPAPolicy</code> → <code>MeshOPA</code></td></tr>
@@ -346,7 +346,7 @@
     </table>
 
     <p>
-      Why MTP/MFI's <code>from[]</code> is never auto-converted:
+      Why MTP's <code>from[]</code> is never auto-converted:
       <a href="https://github.com/Kong/kuma-migrator/blob/main/docs/meshtrafficpermission-modes.md">MeshTrafficPermission modes</a>.
       Full list: <a href="https://github.com/Kong/kuma-migrator/blob/main/docs/migration-paths.md">migration paths and deprecation warnings</a>.
     </p>
@@ -359,7 +359,8 @@
     <p class="lede">One output cannot serve both lines.</p>
     <p>
       <code>migrate</code> (including its <code>--dry-run</code> mode) takes <code>--to-latest v2</code>
-      (default, latest 2.x) or <code>v3</code>. 3.0 removes fields 2.14 still requires, and some 3.0 replacements
+      (default, latest 2.x) or <code>v3</code> (Kuma / Kong Mesh 3.0, checked against the released
+      3.0.0 upgrade notes). 3.0 removes fields 2.14 still requires, and some 3.0 replacements
       (<code>MeshOpenTelemetryBackend</code>, <code>SecureDataSource</code>) do not exist before
       2.14.
     </p>
@@ -369,8 +370,10 @@
         reports 3.0 removals as forward-looking advisories.
       </p>
       <p>
-        <strong><code>v3</code></strong> rewrites what it safely can and flags the rest — a v3
-        report carries a banner warning that the output must not be applied to a 2.x CP.
+        <strong><code>v3</code></strong> rewrites what it safely can and flags the rest. What 3.0
+        cannot accept goes to a separate <code>_manual/</code> subtree that no apply step uses, and
+        the report lists the objects to delete before the upgrade. A v3 report carries a banner
+        warning that the output must not be applied to a 2.x CP.
       </p>
     </div>
     <p>

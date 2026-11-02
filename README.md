@@ -64,15 +64,19 @@ kubectl apply -f ./migrated/zone-eu-west1-prod-zone-ctx/mesh-default/resiliency/
 ## Choosing a target: `--to-latest v2|v3`
 
 `migrate` (including its `--dry-run` mode) takes `--to-latest v2` (default, latest 2.x) or `v3`
-(3.0). One output cannot serve both lines: 3.0 removes fields 2.14 still requires, and some 3.0
-replacements (`MeshOpenTelemetryBackend`, `SecureDataSource`) do not exist before 2.14.
+(Kuma / Kong Mesh 3.0, checked against the released 3.0.0 upgrade notes). One output cannot serve
+both lines: 3.0 removes fields 2.14 still requires, and some 3.0 replacements
+(`MeshOpenTelemetryBackend`, `SecureDataSource`) do not exist before 2.14.
 
 ```bash
 kuma-migrator migrate --input-dir ./raw-policies --output-dir ./migrated --to-latest v3
 ```
 
 `v2` keeps the output applicable to a 2.x control plane and reports 3.0 removals as
-forward-looking advisories. `v3` rewrites what it safely can and flags the rest.
+forward-looking advisories. `v3` rewrites what it safely can (for example `Mesh.mtls` removal,
+labels-only `targetRef`s, inline OTel endpoints → `MeshOpenTelemetryBackend`), flags the rest,
+writes what 3.0 cannot accept to a separate `_manual/` subtree, and lists the objects to delete
+before the upgrade.
 See [Choosing a target version](docs/target-version.md).
 
 ## What it handles
@@ -81,10 +85,10 @@ See [Choosing a target version](docs/target-version.md).
 |---|---|
 | **Legacy** | `sources`/`destinations`/`selectors` policies → `targetRef`/`to`/`from`/`rules`, with the `conf` body rewritten to the successor's schema — except `TrafficRoute` (ambiguous HTTP vs TCP) and `VirtualOutbound` (no single successor), which have no mechanical conversion and are reported for manual migration |
 | **Subset** | `MeshSubset` with service tags → `Dataplane`/`MeshService` |
-| **Rules** | Deprecated `from[]` → `rules[]`, for `MeshTimeout`/`MeshCircuitBreaker`/`MeshRateLimit`/`MeshAccessLog`/`MeshTLS` only (Kuma 2.10+) — `MeshTrafficPermission`/`MeshFaultInjection` use a different, SPIFFE-identity-based `rules[]` shape and are **not** auto-converted; see [MeshTrafficPermission modes](docs/meshtrafficpermission-modes.md) |
-| **Mesh** | `Mesh` CRD observability → standalone `MeshMetric`/`MeshTrace`/`MeshAccessLog` |
+| **Rules** | Deprecated `from[]` → `rules[]`, for `MeshTimeout`/`MeshCircuitBreaker`/`MeshRateLimit`/`MeshAccessLog`/`MeshTLS` only (Kuma 2.10+) — `MeshTrafficPermission` uses a different, SPIFFE-identity-based `rules[]` shape and is **not** auto-converted (`MeshFaultInjection` only under `v3`, when every source is `kind: Mesh`); see [MeshTrafficPermission modes](docs/meshtrafficpermission-modes.md) |
+| **Mesh** | `Mesh` CRD observability and passthrough → standalone `MeshMetric`/`MeshTrace`/`MeshAccessLog`/`MeshPassthrough`; under `v3` also removes the fields 3.0 drops (`mtls`, `routing.*`) |
 | **ExternalService** | `ExternalService` → `MeshExternalService` |
-| **GW** | `MeshGateway` and route CRDs → Gateway API |
+| **GW** | `MeshGateway` and `MeshGatewayRoute` → Gateway API (with a `ReferenceGrant` for cross-namespace backends). `MeshHTTPRoute`/`MeshTCPRoute` pass through unchanged |
 | **OPAPolicy** | Kong Mesh `OPAPolicy` → `MeshOPA` |
 
 Alongside these it scans every output document for deprecated and removed fields across the 2.x

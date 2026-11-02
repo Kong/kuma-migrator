@@ -31,6 +31,25 @@ permissive to default-deny — so translating `from[]` → `rules[]` is a guided
 not a field mapping. See the [`meshtrafficpermission_experimental`](https://kuma.io/docs/latest/policies/meshtrafficpermission_experimental/)
 docs and [`MeshIdentity`](https://kuma.io/docs/latest/policies/meshidentity/) / [`MeshTrust`](https://kuma.io/docs/latest/policies/meshtrust/).
 
+## On Kuma 3.0
+
+3.0 removes `from[]` from `MeshTrafficPermission`. A policy that still carries it is rejected
+(`spec.from: unknown field`, or "policy must define rules" when `from[]` is all it has), and
+`Mesh.spec.mtls` no longer issues certificates, so the stable mode above has nothing to run on.
+The `MeshIdentity` + `rules[]` migration has to be finished on 2.14 before the upgrade.
+
+| Input | `--to-latest v2` | `--to-latest v3` |
+|---|---|---|
+| `MeshTrafficPermission` with `from[]` | warning (deprecated in 2.14) | warning: rejected by 3.0, rewrite to `rules[]` by hand |
+| Legacy `TrafficPermission` | converted to `MeshTrafficPermission` with `from[]` | **error**; original written to `_manual/`. Re-run with `v2` for the `from[]` form |
+| `MeshTrafficPermission` `rules[]` with empty `{}` entries in `allow`/`deny`/`allowWithShadowDeny` | warning | warning: each entry needs `spiffeID` or `sni` |
+| `Mesh.spec.mtls` | advisory: `MeshIdentity` migration required before 3.0 | field removed from the output, **blocking** warning |
+
+`MeshFaultInjection` is the exception: its `rules[]` with no `matches` means every client, so
+`from[]` entries that are all `kind: Mesh` (or a legacy `FaultInjection` whose sources are all
+`kuma.io/service: '*'`) are converted to `rules[]` under v3. Any narrower source still needs
+`rules[].matches[]` with SPIFFE IDs or SNI, written by hand.
+
 > **Note — MTP's `rules[]` is not the generic Rules API.** For most policies
 > (`MeshTimeout`, `MeshCircuitBreaker`, `MeshAccessLog`, …) `rules[]` has the shape
 > `rules: [{ matches: [...], default: {...} }]`, where `matches[]` carries `targetRef`/tag-style

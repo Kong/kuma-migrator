@@ -109,9 +109,14 @@ Any resource whose `kind` contains `"Insight"` (e.g. `ZoneInsight`, `DataplaneIn
 
 ### Default skip list
 
-The following kinds are skipped by default. The list is user-configurable via the [config file](#11-config-file).
+The following kinds are skipped by default, per environment. The list is user-configurable via the [config file](#11-config-file).
 
-`Dataplane`, `AccessRole`, `AccessRoleBinding`, `ZoneEgress`, `ZoneIngress`, `Zone`, `HostnameGenerator`, `Workload`
+| Environment | Skipped |
+|---|---|
+| Kubernetes | `Dataplane`, `AccessRoleBinding`, `ZoneEgress`, `ZoneIngress`, `Zone`, `Workload`, `Secret`, `GlobalSecret` |
+| Universal | `AccessRoleBinding`, `Zone`, `Workload`, `Secret`, `GlobalSecret` |
+
+`AccessRole` and `HostnameGenerator` are extracted and scanned. `extract` records the detected environment in `.kuma-migrator.json`, and `migrate` uses it to pick the same list per context directory (a Universal-shaped document gets the Universal list when nothing is recorded).
 
 ### MeshService auto-generated resources
 
@@ -256,6 +261,13 @@ When migrating resources from the `global/` input folder, Gateway API output kin
 - `spec.networking.outbound.passthrough` → standalone `MeshPassthrough` resource
 - Patches the `Mesh` CR to set `spec.meshServices.mode: Exclusive`
 
+**Under `--to-latest v3`** (Kuma 3.0 removes these fields from the `Mesh` schema):
+- `spec.mtls` is removed with a **blocking** warning: create a `MeshIdentity` (+ `MeshTrust`) for every proxy before upgrading, or the mesh serves plaintext on 3.0. A `PERMISSIVE` enabled backend becomes a companion `MeshTLS` with `rules[].default.mode: Permissive`
+- `routing.zoneEgress`, `routing.localityAwareLoadBalancing`, `routing.defaultForbidMeshExternalServiceAccess` and `skipCreatingInitialPolicies` are removed
+- `networking.outbound.passthrough: true` becomes a companion `MeshPassthrough` with `passthroughMode: All` (3.0's default for a transparent proxy no `MeshPassthrough` selects is `None`)
+- `meshServices.mode: Exclusive` is kept: 2.x zones read a missing field as `Disabled`, so it must be set before the Global CP upgrade. Drop it once every zone runs 3.0
+- These rewrites also apply to a `Mesh` that otherwise needs no migration
+
 ---
 
 ### Scenario — ExternalService
@@ -288,6 +300,9 @@ Five sub-scenarios, all labelled `[MIGRATED GW]`:
 - Listener `hostname: "*"` is invalid in Gateway API — field is omitted and a warning is emitted
 - `kuma.io/service`-encoded backend names (e.g. `backend_demo_svc_3001`) are parsed to extract `name`, `namespace`, and `port` for `backendRef`/`parentRef`
 - GAMMA mesh routing `parentRef` with `kind: Service` always includes the `port` field
+- `backendRefs[].port` is written as an integer
+- A backend in another namespace than the route gets a generated `ReferenceGrant` in the backend namespace; a route with no namespace gets a warning instead
+- The mesh is written as the `kuma.io/mesh` **label** on the generated `Gateway`/`HTTPRoute`/`TCPRoute` (3.0 ignores the annotation). `GatewayClass` is cluster-scoped and carries no mesh marking
 
 **Under `--to-latest v3`**:
 - Kuma 3.0 deletes the built-in gateway API in full — `MeshGateway`, `MeshGatewayRoute`, `MeshGatewayInstance` and `MeshGatewayConfig`, their Go/proto types, their CRDs and their KDS sync — and `MeshGateway` stops being a valid `targetRef.kind` for any policy
@@ -306,6 +321,11 @@ Five sub-scenarios, all labelled `[MIGRATED GW]`:
 - `spec.conf.agentConfig.inlineString` → `spec.default.agentConfig.inlineString`
 - `spec.targetRef` preserved as-is
 
+**Under `--to-latest v3`** (also applied to documents that arrive already as `MeshOPA`):
+- `targetRef.kind: MeshService` → `Dataplane`; `MeshSubset{tags}` → `Dataplane{labels}`; `name` → label; `namespace`/`mesh` removed
+- `agentConfig` / `appendPolicies[].rego` legacy `DataSource` → `SecureDataSource`
+- `OPAPolicy` is removed in Kong Mesh 3.0: the source object is listed under **Delete Before Upgrading to 3.0**
+
 ---
 
 ## 6. Deprecation Warnings & Auto-fixes
@@ -315,13 +335,15 @@ Five sub-scenarios, all labelled `[MIGRATED GW]`:
 | Field / Pattern | Version | Auto-fix | Action |
 |---|---|---|---|
 | `MeshMetric` `spec.default.sidecar.regex` | v2.7 | **Yes** | Rewritten to `sidecar.profiles.exclude[0]` with `type: Regex` |
-| `MeshHealthCheck` `healthyPanicThreshold` | v2.10 | No | Move value to `MeshCircuitBreaker.spec.default.outlierDetection` |
+| `MeshHealthCheck` `healthyPanicThreshold` (`spec.default` and `spec.to[].default`) | v2.10, removed 3.0 | v3 | Move value to `MeshCircuitBreaker` `outlierDetection.healthyPanicThreshold`. Under v3 the field is removed; legacy `HealthCheck` gets a companion `MeshCircuitBreaker` (which also enables a `totalFailures` detector) |
 | `MeshTrust` `spec.origin` | v2.13 | No | Remove field; now read-only at `status.origin` |
 | `MeshTrafficPermission`/`MeshFaultInjection` `from[].targetRef.kind: MeshService` | v2.7 | No | Replace with `kind: Dataplane` + labels |
 | `MeshTrafficPermission` `action: ALLOW`/`DENY`/`ALLOW_WITH_SHADOW_DENY` (uppercase) | KM 2.1 | No | Use `Allow` / `Deny` / `AllowWithShadowDeny` |
 | `MeshLoadBalancingStrategy` `hashPolicies[].type: SourceIP` | v2.10 | No | Replace with `Connection` |
 | `Dataplane` `transparentProxying.redirectPortInboundV6` | v2.9 | No | Remove field |
 | Any `Mesh*` policy `spec.targetRef.kind: MeshSubset` without service-identity tags | v2.10 | No | Replace with `kind: Dataplane` + labels |
+
+The table above lists the 2.x checks. The full list, including every Kuma / Kong Mesh 3.0 removal and what `--to-latest v3` rewrites, warns about or refuses, is in [docs/target-version.md](docs/target-version.md) and [docs/migration-paths.md](docs/migration-paths.md).
 
 ---
 
@@ -352,6 +374,8 @@ Detects deprecated boolean annotation values on any Kubernetes resource.
 
 **Prefix matched**: `kuma.io/` and `k8s.kuma.io/`
 
+**Where**: top-level `metadata.annotations` and pod templates (`spec.template.metadata.annotations`, and the CronJob `spec.jobTemplate` template). The deprecation scan also flags annotations removed in 3.0 (`kuma.io/ingress`, `kuma.io/egress`, `kuma.io/mesh`, `kuma.io/transparent-proxying-reachable-services`, `kuma.io/transparent-proxying-ebpf*`, virtual probes) under `--to-latest v3`.
+
 **Per hit, reports**: Kind, name, namespace, annotation key, old value, suggested new value.
 
 ---
@@ -362,7 +386,7 @@ Applied to every input and generated resource name.
 
 | Standard | Applied to | Rules |
 |---|---|---|
-| RFC 1035 (strict) | `Mesh`, `MeshService`, `MeshExternalService`, `MeshMultizoneService` | Must start with a letter; alphanumeric + hyphens only; max 63 chars |
+| RFC 1035 (strict) | `Mesh`, `Zone`, `MeshService`, `MeshExternalService`, `MeshMultiZoneService` | Lowercase only; must start with a letter; alphanumeric + hyphens only; max 63 chars. A hard error on 3.0 |
 | RFC 1123 (relaxed) | All other kinds | May start with digit; alphanumeric + hyphens; must not start or end with hyphen; max 63 chars |
 
 Violations produce a warning; the resource is still written.
@@ -400,6 +424,7 @@ Both `migration-plan.md` and `migration-report.md` share the same structure; pla
 | Action Items | ✓ | ✓ | Errors requiring manual intervention; workload address mapping table; deprecated annotation table |
 | Apply Checklist | ✓ (short) | ✓ (full) | See below |
 | Original Resources to Delete | ✓ (preview) | ✓ (full) | Resources whose kind changed; collapsible `kubectl delete` commands |
+| Delete Before Upgrading to 3.0 | ✓ (v3) | ✓ (v3) | Source objects of kinds 3.0 removes, their replacement status, `_manual/` path, and `kubectl`/`kumactl delete` commands |
 
 ### Apply Checklist (migrate mode)
 
@@ -408,16 +433,19 @@ Numbered steps produced in order:
 1. Fix errors (if any)
 2. Update workload env vars (if mappings found)
 3. Fix deprecated annotations (if found)
-4. Upgrade Global CP to target version
-5. Upgrade Zone CPs (max two minor versions per step — e.g. 2.7 → 2.9 → 2.11)
-6. Install Gateway API CRDs (if gateway migrations present; experimental channel if `TCPRoute` present)
-7. Apply Global CP policies (`resiliency/`, `routing/`, `zero-trust/`, `observability/`)
-8. Apply Gateway API resources to every Zone cluster from `all-zones/` (only if present)
-9. Apply Zone-origin policies
-10. Apply `Mesh` CRs last (enables `spec.meshServices.mode: Exclusive`)
-11. Verify traffic health
-12. Delete original policy files
-13. Plan next upgrade (if not yet at target version)
+4. Delete the resources 3.0 removes (`--to-latest v3` only, if any)
+5. Upgrade Global CP to target version
+6. Upgrade Zone CPs (max two minor versions per step — e.g. 2.7 → 2.9 → 2.11)
+7. Install Gateway API CRDs (if gateway migrations present; experimental channel if `TCPRoute` present)
+8. Apply Global CP policies (`resiliency/`, `routing/`, `zero-trust/`, `observability/`)
+9. Apply Gateway API resources to every Zone cluster from `global-scoped-resources/` (only if present)
+10. Apply Zone-origin policies
+11. Apply `Mesh` CRs last (enables `spec.meshServices.mode: Exclusive`)
+12. Verify traffic health
+13. Delete original policy files
+14. Plan next upgrade (if not yet at target version)
+
+Under `--to-latest v3`, documents that cannot be applied to 3.0 (errored conversions, `MeshGlobalRateLimit`, Universal `ZoneIngress`/`ZoneEgress`) are written to `<context>/_manual/` and never referenced by an apply step.
 
 ### Console output labels
 
@@ -451,8 +479,8 @@ Per-document inline markers: `[ERROR]`, `[WARN]`, `[WORKLOAD]`, `[ANNOTATION]`
 **Format**:
 ```yaml
 skip:
-  - SomeKind
-  - AnotherKind
+  kubernetes: [Dataplane, AccessRoleBinding, ZoneEgress, ZoneIngress, Zone, Workload, Secret, GlobalSecret]
+  universal:  [AccessRoleBinding, Zone, Workload, Secret, GlobalSecret]
 ```
 
-If the file is absent or `skip` is empty, the [default skip list](#default-skip-list) applies. Extra kinds in the config file are merged with the defaults.
+The legacy flat-list form (`skip: [Kind1, Kind2]`) applies to both environments. If the file is absent or `skip` is empty, the [default skip list](#default-skip-list) applies. An explicit `skip` block replaces the defaults; it is not merged with them.

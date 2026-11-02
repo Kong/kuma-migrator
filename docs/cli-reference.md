@@ -82,6 +82,10 @@ legacy flat-list form (`skip: [Kind1, Kind2]`) still works and applies to both e
 `.kuma-migrator.json`; without it, a Universal-format document (`type`, no `kind`) gets the
 `universal` list and anything else the `kubernetes` list.
 
+`AccessRole` is not in either default list: it is extracted and scanned for the Kong Mesh 3.0
+changes to `rules[].types` and `when[]` qualifiers (`AccessAudit` was never skipped).
+`AccessRoleBinding` stays skipped.
+
 > **An explicit `skip` block replaces the built-in defaults — it is not merged with them.** A
 > config file written against an older release will not pick up changes to those defaults. Omit
 > the block entirely to always track the built-in list.
