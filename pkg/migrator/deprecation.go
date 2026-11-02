@@ -114,7 +114,11 @@ func ScanForDeprecations(raw []byte, target TargetVersion) (out []byte, warnings
 	case "HostnameGenerator":
 		warnings = append(warnings, warnHostnameGeneratorTemplate(obj, name)...)
 	case "MeshExternalService":
+		if target.IsV3() {
+			fix(fixMESDataSourcesForV3(obj, name))
+		}
 		warnings = append(warnings, warnMeshExternalServiceDataSource(obj, name, target)...)
+		warnings = append(warnings, warnMESZoneLabel(obj, name, target)...)
 	case "MeshOPA":
 		if target.IsV3() {
 			fix(fixMeshOPATargetRefForV3(obj, name))
@@ -126,6 +130,9 @@ func ScanForDeprecations(raw []byte, target TargetVersion) (out []byte, warnings
 		warnings = append(warnings, warnMeshGlobalRateLimitRemoved(obj, name, target)...)
 	case "MeshHTTPRoute":
 		warnings = append(warnings, warnMeshHTTPRouteNoCatchAll(obj, name, target)...)
+		fix(fixRouteBackendRefsForV3(obj, name, kind, target))
+	case "MeshTCPRoute":
+		fix(fixRouteBackendRefsForV3(obj, name, kind, target))
 	}
 
 	// Generic checks applied to every Mesh* policy regardless of kind.
@@ -1420,28 +1427,23 @@ var legacyDataSourceKeys = []string{"inline", "inlineString", "secret"}
 // clientCert,clientKey} uses the legacy DataSource shape that 3.0 replaces with
 // SecureDataSource.
 //
-// This is warn-only rather than auto-converted even under v3 because the
-// conversion is not a pure rename: `inline` carried base64 and its successor
-// `insecureInline.value` carries plain text, so rewriting means decoding
-// credential material and re-emitting it in the clear. That is a decision for
-// the operator, not a silent transform.
+// Under v3, fixMESDataSourcesForV3 runs first and rewrites `inlineString` and
+// `secret`, so this only reports what is left: `inline`, which stays warn-only
+// because the conversion is not a pure rename — `inline` carried base64 and its
+// successor `insecureInline.value` carries plain text, so rewriting means
+// decoding credential material and re-emitting it in the clear. That is a
+// decision for the operator, not a silent transform.
+//
+// Under v2 every variant is reported as a forward-looking advisory; 2.14.6 and
+// later accept the new shape, so the rewrite can be done on 2.x.
 func warnMeshExternalServiceDataSource(obj map[string]interface{}, name string, target TargetVersion) []string {
-	tls, _ := obj["tls"].(map[string]interface{})
-	if tls == nil {
-		if spec, ok := obj["spec"].(map[string]interface{}); ok {
-			tls, _ = spec["tls"].(map[string]interface{})
-		}
-	}
-	if tls == nil {
-		return nil
-	}
-	verification, _ := tls["verification"].(map[string]interface{})
+	verification := mesTLSVerification(obj)
 	if verification == nil {
 		return nil
 	}
 
 	var warnings []string
-	for _, field := range []string{"caCert", "clientCert", "clientKey"} {
+	for _, field := range mesDataSourceFields {
 		ds, _ := verification[field].(map[string]interface{})
 		if ds == nil {
 			continue
@@ -1460,6 +1462,10 @@ func warnMeshExternalServiceDataSource(obj map[string]interface{}, name string, 
 				replacement = "type: InsecureInline + insecureInline.value"
 			} else {
 				replacement = "type: Secret + secretRef"
+			}
+			if !target.IsV3() {
+				extra += " Kuma 2.14.6 and later accept both shapes, so rewrite it on 2.14.6+ before " +
+					"upgrading the global control plane to 3.0."
 			}
 			warnings = append(warnings, fmt.Sprintf(
 				"MeshExternalService %q: spec.tls.verification.%s.%s uses the legacy DataSource shape, %s. "+

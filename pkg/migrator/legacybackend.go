@@ -26,7 +26,7 @@ import (
 // indexedDocPattern matches the kind/type line of the resources the pre-pass
 // indexes, in either layout. It is a cheap prefilter: without it the pre-pass
 // unmarshals every YAML file in the tree.
-var indexedDocPattern = regexp.MustCompile(`(?m)^\s*(kind|type)\s*:\s*["']?(Mesh|MeshGatewayInstance)["']?\s*$`)
+var indexedDocPattern = regexp.MustCompile(`(?m)^\s*(kind|type)\s*:\s*["']?(Mesh|MeshGatewayInstance|MeshIdentity)["']?\s*$`)
 
 // meshBackends holds the observability backends declared by one Mesh resource.
 type meshBackends struct {
@@ -46,6 +46,7 @@ type MeshBackendIndex map[string]*meshBackends
 func BuildTransformOptions(inputDir string, target TargetVersion) TransformOptions {
 	backends := MeshBackendIndex{}
 	classes := GatewayClassIndex{}
+	identities := MeshIdentityIndex{}
 
 	_ = filepath.WalkDir(inputDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
@@ -68,6 +69,9 @@ func BuildTransformOptions(inputDir string, target TargetVersion) TransformOptio
 			if serviceTag, className := parseGatewayClassEntry(doc); serviceTag != "" {
 				classes.add(serviceTag, className)
 			}
+			if mesh := parseMeshIdentityMesh(doc); mesh != "" {
+				identities[mesh] = true
+			}
 		}
 		return nil
 	})
@@ -78,6 +82,9 @@ func BuildTransformOptions(inputDir string, target TargetVersion) TransformOptio
 	}
 	if len(classes) > 0 {
 		opts.GatewayClasses = classes
+	}
+	if len(identities) > 0 {
+		opts.MeshIdentities = identities
 	}
 	return opts
 }

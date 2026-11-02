@@ -480,13 +480,14 @@ spec:
         inlineString: |
           -----BEGIN CERTIFICATE-----
 `
-	_, v3 := ScanForDeprecations([]byte(input), TargetV3)
+	// Under v3 inlineString is rewritten (see v3_mes_test.go for the shape).
+	out, v3 := ScanForDeprecations([]byte(input), TargetV3)
 	joinedV3 := strings.Join(v3, "\n")
-	if !strings.Contains(joinedV3, "caCert.inlineString") {
-		t.Errorf("expected inlineString to be flagged, got: %v", v3)
+	if !strings.Contains(joinedV3, "caCert.inlineString rewritten") {
+		t.Errorf("expected inlineString to be rewritten, got: %v", v3)
 	}
-	if !strings.Contains(joinedV3, "removed in 3.0") {
-		t.Errorf("v3 wording should state the removal is active, got: %v", v3)
+	if !strings.Contains(string(out), "InsecureInline") {
+		t.Errorf("expected SecureDataSource output under v3, got:\n%s", out)
 	}
 	// inlineString is already plain text, so the base64 caveat must NOT appear.
 	if strings.Contains(joinedV3, "base64") {
