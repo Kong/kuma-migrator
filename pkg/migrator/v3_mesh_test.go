@@ -181,6 +181,59 @@ func TestCABackendExtensionMap_Acmpca(t *testing.T) {
 	}
 }
 
+func mtlsMeshObj(typ string) map[string]interface{} {
+	return map[string]interface{}{"spec": map[string]interface{}{
+		"mtls": map[string]interface{}{
+			"enabledBackend": "ca-1",
+			"backends": []interface{}{
+				map[string]interface{}{"name": "ca-1", "type": typ},
+			},
+		},
+	}}
+}
+
+// The cutover text is backend-specific: builtin-only facts (a new CA is minted,
+// ca-builtin-* Secrets) must not appear for a provided or Kong Mesh backend.
+func TestWarnMeshMtlsBackends_TextPerBackendType(t *testing.T) {
+	for _, target := range []TargetVersion{TargetV2, TargetV3} {
+		for _, typ := range []string{"vault", "acmpca", "certmanager", "provided"} {
+			msg := strings.Join(warnMeshMtlsBackends(mtlsMeshObj(typ), "m", target), "\n")
+			for _, banned := range []string{"ca-builtin", "mints a new CA", "type builtin"} {
+				if strings.Contains(msg, banned) {
+					t.Errorf("%s/%s: builtin-only text %q present: %s", target, typ, banned, msg)
+				}
+			}
+		}
+
+		builtin := strings.Join(warnMeshMtlsBackends(mtlsMeshObj("builtin"), "m", target), "\n")
+		if !strings.Contains(builtin, "ca-builtin-cert") || !strings.Contains(builtin, "mints a new CA") ||
+			!strings.Contains(builtin, "spec.provider.bundled.ca.certificate") {
+			t.Errorf("%s/builtin: expected ca-builtin Secrets and Bundled CA reuse, got: %s", target, builtin)
+		}
+		if strings.Contains(builtin, "Extension") {
+			t.Errorf("%s/builtin: Extension provider must not be mentioned: %s", target, builtin)
+		}
+		if got := strings.Contains(builtin, "does not delete the ca-builtin Secrets"); got != target.IsV3() {
+			t.Errorf("%s/builtin: Secret-cleanup sentence present=%v, want %v", target, got, target.IsV3())
+		}
+
+		provided := strings.Join(warnMeshMtlsBackends(mtlsMeshObj("provided"), "m", target), "\n")
+		if !strings.Contains(provided, "conf.cert / conf.key") {
+			t.Errorf("%s/provided: expected provided-specific text, got: %s", target, provided)
+		}
+
+		vault := strings.Join(warnMeshMtlsBackends(mtlsMeshObj("vault"), "m", target), "\n")
+		if !strings.Contains(vault, "spec.provider.extension.name") || !strings.Contains(vault, "CA stays in the external system") {
+			t.Errorf("%s/vault: expected Extension mapping, got: %s", target, vault)
+		}
+
+		other := strings.Join(warnMeshMtlsBackends(mtlsMeshObj("custom-ca"), "m", target), "\n")
+		if !strings.Contains(other, "does not recognise") {
+			t.Errorf("%s/unknown type: expected unrecognised-type text, got: %s", target, other)
+		}
+	}
+}
+
 // ---- mtls PERMISSIVE → MeshTLS ----------------------------------------------------
 
 const permissiveMesh = `apiVersion: kuma.io/v1alpha1
