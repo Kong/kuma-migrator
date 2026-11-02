@@ -1,0 +1,95 @@
+# Known rejections of migrator output by real control planes. run.sh fails on any rejection
+# NOT listed here. Format: <target> <env> <path relative to the migrate output dir>
+#   target: v2 | v3 (apply rejected) | v2-ns | v3-ns (namespaced kind written without
+#           metadata.namespace) | v2-input (fixture rejected by 2.14)
+# Remove a line once the migrator bug behind it is fixed. Each group below states the cause.
+
+# BUG legacy conversion on Kubernetes: Mesh* output has no metadata.namespace. kubectl puts it
+# in the current namespace, where the Kuma webhooks do not run unless the namespace carries
+# kuma.io/sidecar-injection, and the CP gives the policy the workload-owner role (it then
+# only selects proxies of that namespace).
+v2-ns kubernetes k8s-zone-ctx/mesh-default/resiliency/MeshCircuitBreaker-cb-redis.yaml
+v2-ns kubernetes k8s-zone-ctx/mesh-default/resiliency/MeshFaultInjection-fi-backend.yaml
+v2-ns kubernetes k8s-zone-ctx/mesh-default/resiliency/MeshHealthCheck-hc-web.yaml
+v2-ns kubernetes k8s-zone-ctx/mesh-default/resiliency/MeshRateLimit-rl-backend.yaml
+v2-ns kubernetes k8s-zone-ctx/mesh-default/resiliency/MeshRetry-retry-all.yaml
+v2-ns kubernetes k8s-zone-ctx/mesh-default/resiliency/MeshTimeout-timeout-backend.yaml
+v2-ns kubernetes k8s-zone-ctx/mesh-default/zero-trust/MeshOPA-opa-backend.yaml
+v2-ns kubernetes k8s-zone-ctx/mesh-default/zero-trust/MeshTrafficPermission-allow-all-default.yaml
+v2-ns kubernetes k8s-zone-ctx/mesh-default/zero-trust/MeshTrafficPermission-frontend-to-backend.yaml
+v2-ns kubernetes k8s-zone-ctx/mesh-payments/zero-trust/MeshTrafficPermission-payments-all.yaml
+v2-ns kubernetes k8s-zone-ctx/mesh-default/observability/MeshAccessLog-log-all.yaml
+v2-ns kubernetes k8s-zone-ctx/mesh-default/observability/MeshAccessLog-log-backend.yaml
+v2-ns kubernetes k8s-zone-ctx/mesh-default/observability/MeshTrace-trace-all.yaml
+v2-ns kubernetes k8s-zone-ctx/mesh-default/mesh/MeshProxyPatch-custom-template.yaml
+v3-ns kubernetes k8s-zone-ctx/mesh-default/resiliency/MeshCircuitBreaker-cb-redis.yaml
+v3-ns kubernetes k8s-zone-ctx/mesh-default/resiliency/MeshCircuitBreaker-hc-web-panic-threshold.yaml
+v3-ns kubernetes k8s-zone-ctx/mesh-default/resiliency/MeshHealthCheck-hc-web.yaml
+v3-ns kubernetes k8s-zone-ctx/mesh-default/resiliency/MeshRateLimit-rl-backend.yaml
+v3-ns kubernetes k8s-zone-ctx/mesh-default/resiliency/MeshRetry-retry-all.yaml
+v3-ns kubernetes k8s-zone-ctx/mesh-default/resiliency/MeshTimeout-timeout-backend.yaml
+v3-ns kubernetes k8s-zone-ctx/mesh-default/zero-trust/MeshOPA-opa-backend.yaml
+v3-ns kubernetes k8s-zone-ctx/mesh-default/observability/MeshAccessLog-log-all.yaml
+v3-ns kubernetes k8s-zone-ctx/mesh-default/observability/MeshAccessLog-log-backend.yaml
+v3-ns kubernetes k8s-zone-ctx/mesh-default/observability/MeshTrace-trace-all.yaml
+v3-ns kubernetes k8s-zone-ctx/mesh-default/mesh/MeshProxyPatch-custom-template.yaml
+
+# BUG legacy conversion of Universal input is written in Kubernetes format
+# (apiVersion/kind/metadata); kumactl: invalid resource type "".
+v2 universal uni-zone-ctx/mesh-default/resiliency/MeshCircuitBreaker-cb-redis.yaml
+v2 universal uni-zone-ctx/mesh-default/resiliency/MeshFaultInjection-fi-backend.yaml
+v2 universal uni-zone-ctx/mesh-default/resiliency/MeshHealthCheck-hc-web.yaml
+v2 universal uni-zone-ctx/mesh-default/resiliency/MeshRateLimit-rl-backend.yaml
+v2 universal uni-zone-ctx/mesh-default/resiliency/MeshRetry-retry-all.yaml
+v2 universal uni-zone-ctx/mesh-default/resiliency/MeshTimeout-timeout-backend.yaml
+v2 universal uni-zone-ctx/mesh-default/zero-trust/MeshTrafficPermission-allow-all-default.yaml
+v2 universal uni-zone-ctx/mesh-default/zero-trust/MeshTrafficPermission-frontend-to-backend.yaml
+v2 universal uni-zone-ctx/mesh-payments/zero-trust/MeshTrafficPermission-payments-all.yaml
+v2 universal uni-zone-ctx/mesh-default/observability/MeshAccessLog-log-all.yaml
+v2 universal uni-zone-ctx/mesh-default/observability/MeshAccessLog-log-backend.yaml
+v2 universal uni-zone-ctx/mesh-default/observability/MeshTrace-trace-all.yaml
+v2 universal uni-zone-ctx/mesh-default/mesh/MeshProxyPatch-custom-template.yaml
+v3 universal uni-zone-ctx/mesh-default/resiliency/MeshCircuitBreaker-cb-redis.yaml
+v3 universal uni-zone-ctx/mesh-default/resiliency/MeshHealthCheck-hc-web.yaml
+v3 universal uni-zone-ctx/mesh-default/resiliency/MeshCircuitBreaker-hc-web-panic-threshold.yaml
+v3 universal uni-zone-ctx/mesh-default/resiliency/MeshRateLimit-rl-backend.yaml
+v3 universal uni-zone-ctx/mesh-default/resiliency/MeshRetry-retry-all.yaml
+v3 universal uni-zone-ctx/mesh-default/resiliency/MeshTimeout-timeout-backend.yaml
+v3 universal uni-zone-ctx/mesh-default/observability/MeshAccessLog-log-all.yaml
+v3 universal uni-zone-ctx/mesh-default/observability/MeshAccessLog-log-backend.yaml
+v3 universal uni-zone-ctx/mesh-default/observability/MeshTrace-trace-all.yaml
+v3 universal uni-zone-ctx/mesh-default/mesh/MeshProxyPatch-custom-template.yaml
+
+# BUG MeshGateway from a Universal context converted to a Gateway API Gateway and listed in
+# the kumactl checklist; Universal has no Gateway API.
+v2 universal uni-zone-ctx/global-scoped-resources/routing/Gateway-edge-gateway.yaml
+v3 universal uni-zone-ctx/global-scoped-resources/routing/Gateway-edge-gateway.yaml
+
+# BUG ProxyTemplate -> MeshProxyPatch keeps the lower-case legacy operation "addLast".
+v2 kubernetes k8s-zone-ctx/mesh-default/mesh/MeshProxyPatch-custom-template.yaml
+v3 kubernetes k8s-zone-ctx/mesh-default/mesh/MeshProxyPatch-custom-template.yaml
+
+# BUG HealthCheck -> MeshHealthCheck copies header names verbatim; the new schema requires
+# lower-case names in requestHeadersToAdd.
+v2 kubernetes k8s-zone-ctx/mesh-default/resiliency/MeshHealthCheck-hc-web.yaml
+v3 kubernetes k8s-zone-ctx/mesh-default/resiliency/MeshHealthCheck-hc-web.yaml
+
+# BUG FaultInjection -> MeshFaultInjection copies responseBandwidth.limit "50 mbps" verbatim;
+# the new schema requires kbps/Mbps/Gbps without a space.
+v2 kubernetes k8s-zone-ctx/mesh-default/resiliency/MeshFaultInjection-fi-backend.yaml
+
+# BUG v3: MeshLoadBalancingStrategy hashPolicies[].type SourceIP left in place (3.0 rejects it).
+v3 kubernetes k8s-zone-ctx/mesh-default/routing/MeshLoadBalancingStrategy-kong-mesh-system-ring-hash.yaml
+v3 universal uni-zone-ctx/mesh-default/routing/MeshLoadBalancingStrategy-ring-hash.yaml
+
+# BUG v3: MeshService spec.selector.dataplaneTags left in place (unknown field in 3.0).
+v3 kubernetes k8s-zone-ctx/mesh-default/routing/MeshService-kuma-demo-legacy-db.yaml
+v3 universal uni-zone-ctx/mesh-default/routing/MeshService-legacy-db.yaml
+
+# BUG v3: Universal Dataplane networking.outbound[].tags left in place (3.0 requires backendRef).
+v3 universal uni-zone-ctx/mesh-default/other/Dataplane-backend-1.yaml
+
+# BY DESIGN (warn-only): MeshExternalService TLS inline DataSource is not converted to
+# SecureDataSource because it is credential material. It stays in the apply tree.
+v3 kubernetes k8s-zone-ctx/mesh-default/routing/MeshExternalService-kong-mesh-system-example-api.yaml
+v3 universal uni-zone-ctx/mesh-default/routing/MeshExternalService-example-api.yaml
