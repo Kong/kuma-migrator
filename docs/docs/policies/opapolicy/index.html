@@ -99,6 +99,10 @@
 <td>top-level <code>mesh</code> (Kubernetes layout)</td>
 <td><code>metadata.labels[&quot;kuma.io/mesh&quot;]</code></td>
 </tr>
+<tr>
+<td>no namespace (<code>OPAPolicy</code> is cluster-scoped)</td>
+<td><code>metadata.namespace</code>: the control-plane namespace, so the CP gives the <code>MeshOPA</code> the <code>system</code> role (<a href="../../topics/legacy-policies/#namespace-on-kubernetes">Namespace on Kubernetes</a>)</td>
+</tr>
 </tbody>
 </table></div>
 <p>The output keeps the flat DataSource shape, which the 2.x <code>MeshOPA</code> accepts for all three
@@ -129,7 +133,7 @@ listed under &quot;Delete Before Upgrading to 3.0&quot;.</p>
 <ul class="link-list"><li><a href="../../topics/access-control/">Access control</a> — MeshTrafficPermission from[] versus SPIFFE rules[], MeshOPA, and the Kong Mesh RBAC changes in 3.0 — what kuma-migrator converts and what stays manual.</li></ul>
 
 <h2 id="source-files">Source files</h2>
-<ul class="link-list"><li><a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/opapolicy.go"><code>pkg/migrator/opapolicy.go</code></a></li></ul>
+<ul class="link-list"><li><a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/opapolicy.go"><code>pkg/migrator/opapolicy.go</code></a></li><li><a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/namespace.go"><code>pkg/migrator/namespace.go</code></a></li></ul>
 
     </article>
     <nav class="pager" aria-label="Previous and next page">

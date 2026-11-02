@@ -128,7 +128,9 @@
     notes: |
       Outbound shape. `interval`, `timeout`, `unhealthyThreshold`, `healthyThreshold`,
       `tcp.*`, `http.path` and `http.expectedStatuses` keep their paths.
-      `http.requestHeadersToAdd` is split into `{add, set}` (`append` unset means `add`).
+      `http.requestHeadersToAdd` is split into `{add, set}` (`append` unset means `add`). Header
+      names are lower-cased, with a warning: the `MeshHealthCheck` schema accepts lower-case
+      names only (`Accept` is rejected) and HTTP header names are case-insensitive.
 
       `healthyPanicThreshold` is copied to `to[].default.healthyPanicThreshold` and the scanner
       warns that it is deprecated since 2.10 and removed in 3.0: move it to a
@@ -263,6 +265,9 @@
       `kuma.io/protocol` are dropped from the `Dataplane` labels, with a warning. The single
       legacy `conf` becomes a one-element `default.http[]` list (`delay`, `abort`,
       `responseBandwidth`). Percentages are numbers when whole and strings when fractional.
+      `responseBandwidth.limit` is rewritten with the units `MeshFaultInjection` accepts
+      (`50 mbps` → `50Mbps`, `kbps`, `Gbps`), with a warning; a value that is not
+      `<integer><unit>` is copied and warned, because the control plane rejects it.
       The scanner then warns that `from[]` is deprecated in favour of `rules[]`.
   v3:
     status: converted
@@ -290,7 +295,8 @@
     notes: |
       Inbound policy: `destinations` → `spec.targetRef`, conf → `rules[].default`.
       `http.requests` + `http.interval` → `local.http.requestRate.{num,interval}`;
-      `http.onRateLimit.*` → `local.http.onRateLimit.*`.
+      `http.onRateLimit.*` → `local.http.onRateLimit.*`. Header names are lower-cased, with a
+      warning (the new schema accepts lower-case names only).
 
       The output uses `rules[]`, not `from[]`. A specific `sources` selector cannot be kept:
       the limit then applies to every client of the inbound, and a warning says so.
@@ -315,9 +321,12 @@
     output: [MeshProxyPatch]
     notes: |
       Selector shape: `selectors` → `spec.targetRef`. `conf.modifications` →
-      `spec.default.appendModifications`, with operations recased (`patch` → `Patch`,
-      `add` → `Add`). `httpFilter`, `networkFilter` and `virtualHost` have no plain `Add`, so
-      `add` becomes `AddLast` with a warning.
+      `spec.default.appendModifications`, with every operation recased to the
+      `MeshProxyPatch` enum: `add`, `remove`, `patch`, `addFirst`, `addLast`, `addBefore`,
+      `addAfter` → `Add`, `Remove`, `Patch`, `AddFirst`, `AddLast`, `AddBefore`, `AddAfter`.
+      `httpFilter` and `networkFilter` have no plain `Add`, so `add` there becomes `AddLast`
+      with a warning; `cluster`, `listener` and `virtualHost` keep `Add`. A positional
+      operation on a kind that does not accept it is warned.
 
       `conf.imports` and `conf.resources` have no `MeshProxyPatch` equivalent and are
       reported, not converted.
@@ -587,14 +596,18 @@
       `to[].default.outlierDetection.healthyPanicThreshold`.
   v3:
     status: rewritten
-    output: [MeshHealthCheck]
+    output: [MeshHealthCheck, MeshCircuitBreaker]
     notes: |
-      `to[].default.healthyPanicThreshold` is removed. The warning carries a ready-made
-      `MeshCircuitBreaker` (`<name>-panic-threshold`, with
-      `detectors.totalFailures.consecutive: 5` so the threshold takes effect) for you to apply.
-      For a `MeshHealthCheck` read from the input, the companion is printed in the warning
-      only; for one converted from a legacy [HealthCheck](policy:HealthCheck) it is written
-      as a file.
+      `to[].default.healthyPanicThreshold` is removed and moved to a companion
+      `MeshCircuitBreaker` named `<name>-panic-threshold`, written as its own file in the
+      input's format (Universal or Kubernetes) and namespace (the system namespace when the
+      `MeshHealthCheck` has none). It keeps the same `spec.targetRef` and `to[].targetRef`,
+      rewritten to labels like the `MeshHealthCheck`'s. Both 2.14 and 3.0 reject
+      `outlierDetection` without a detector, so the companion sets
+      `detectors.totalFailures.consecutive: 5`; that turns on outlier ejection for those
+      destinations, and the warning says so. If a `MeshCircuitBreaker` already covers them,
+      move the threshold into it and drop the companion. The same applies to a
+      `MeshHealthCheck` converted from a legacy [HealthCheck](policy:HealthCheck).
 
       Labels-only refs and control-plane label removal also apply. Allowed
       `to[].targetRef.kind`: `Mesh`, `MeshService`, `MeshExternalService`,
@@ -794,13 +807,15 @@
     notes: |
       - `to[].default.loadBalancer.{ringHash,maglev}.hashPolicies` → `to[].default.hashPolicies`
         (auto-fixed).
-      - `hashPolicies[].type: SourceIP` is reported; use `type: Connection` with
-        `connection.sourceIP: true`.
+      - `hashPolicies[].type: SourceIP` → `type: Connection` with `connection.sourceIP: true`
+        (auto-fixed, at either location). 2.14 accepts `SourceIP` but builds no Envoy hash
+        policy from it, so source-IP hashing starts to take effect once the output is applied;
+        the warning says so.
   v3:
     status: rewritten
     output: [MeshLoadBalancingStrategy]
     notes: |
-      v2 rewrites, plus:
+      v2 rewrites (3.0 removes `SourceIP` from the enum and rejects it), plus:
 
       - `to[].default.localityAwareness.crossZone` on an entry whose `targetRef.kind` is not
         `MeshMultiZoneService` is reported; 3.0 rejects it.
@@ -1001,6 +1016,7 @@
       | other `conf` fields | `spec.default.*`, with a warning |
       | `selectors[]` | `spec.targetRef` (`kuma.io/service: '*'` → `Mesh`); several selectors split into one `MeshOPA` each |
       | top-level `mesh` (Kubernetes layout) | `metadata.labels["kuma.io/mesh"]` |
+      | no namespace (`OPAPolicy` is cluster-scoped) | `metadata.namespace`: the control-plane namespace, so the CP gives the `MeshOPA` the `system` role ([Namespace on Kubernetes](../topics/legacy-policies.md#namespace-on-kubernetes)) |
 
       The output keeps the flat DataSource shape, which the 2.x `MeshOPA` accepts for all three
       keys (`inline` stays base64). A `policies[]` entry or `agentConfig` with none of the three
@@ -1021,7 +1037,7 @@
     - version: "3.0"
       change: Removed with its CRD. Leftover objects are rejected.
   topics: [access-control]
-  code: [pkg/migrator/opapolicy.go]
+  code: [pkg/migrator/opapolicy.go, pkg/migrator/namespace.go]
 
 - kind: MeshOPA
   group: kong-mesh
@@ -1192,10 +1208,19 @@
         `<name>_<namespace>_svc` tag Kuma gives it. Several matches pick the first and warn;
         none leaves `REPLACE-WITH-YOUR-GATEWAYCLASS` and warns.
       - `spec.selectors` has no Gateway API equivalent and is reported.
+
+      **Universal input** is copied unchanged, with an advisory that 3.0 removes the built-in
+      gateway: Universal has no Gateway API, so a `Gateway` could not be applied
+      (`kumactl apply`: `invalid resource type`).
   v3:
     status: converted
     output: [Gateway]
     notes: |
+      **Universal input** is rejected by the target and written to `_manual/` unchanged, with
+      the delegated-gateway steps for Universal: run your gateway on a `Dataplane` without
+      `kuma.io/gateway` and start `kuma-dp` with `--exclude-inbound-ports` covering its listen
+      ports. Kubernetes input:
+
       The listener block and `metadata.namespace` are converted as on v2, but
       `gatewayClassName` is always `REPLACE-WITH-YOUR-GATEWAYCLASS`: 3.0 has no Gateway or GatewayClass reconciler. Set it to
       the class of the gateway implementation you adopt, and rejoin the workload as a delegated
@@ -1210,7 +1235,7 @@
     - version: "3.0"
       change: Built-in gateway API removed (types, CRDs, KDS sync); `MeshGateway` is no longer a valid `targetRef.kind`.
   topics: [gateways]
-  code: [pkg/migrator/gateway.go]
+  code: [pkg/migrator/gateway.go, pkg/migrator/gateway_universal.go]
 
 - kind: MeshGatewayRoute
   group: gateway
@@ -1241,10 +1266,17 @@
       A warning states the alternative successor: if Kuma should keep routing this traffic,
       write a `MeshHTTPRoute`/`MeshTCPRoute`. Kuma never reconciles `TCPRoute`; only the
       gateway implementation you adopt does.
+
+      **Universal input** is copied unchanged with a 3.0 advisory: Universal has no Gateway
+      API.
   v3:
     status: converted
     output: [HTTPRoute, TCPRoute, ReferenceGrant]
     notes: |
+      **Universal input** is rejected by the target and written to `_manual/` unchanged, with
+      the same delegated-gateway guidance as [MeshGateway](policy:MeshGateway). Kubernetes
+      input:
+
       Same conversion. Generated routes carry `kuma.io/mesh` as a label and integer
       `backendRefs[].port`. 3.0 ignores HTTPRoutes whose parentRef is a `Gateway`, so only your
       gateway implementation reconciles them. Delete the source `MeshGatewayRoute` before
@@ -1253,7 +1285,7 @@
     - version: "3.0"
       change: Built-in gateway API removed. Cross-namespace Gateway API `backendRefs` require a `ReferenceGrant`.
   topics: [gateways]
-  code: [pkg/migrator/gatewayroute.go, pkg/migrator/gateway.go]
+  code: [pkg/migrator/gatewayroute.go, pkg/migrator/gateway.go, pkg/migrator/gateway_universal.go]
 
 - kind: MeshGatewayInstance
   group: gateway
@@ -1380,7 +1412,11 @@
         `constraints` are deleted. For `constraints` the warning lists the requirements and
         restrictions that stop being enforced (3.0 has no membership check) and the nearest
         control: dataplane tokens bound to the mesh and tags.
-      - The `meshServices` warning adds: drop the field once every zone runs 3.0.
+      - `meshServices.mode: Exclusive` is kept. A 3.0 control plane accepts it with the
+        deprecation warning "meshServices was removed in 3.0 and is ignored"; that is expected.
+        The field is needed while any zone runs 2.x (a 2.x zone reads a missing field as
+        `Disabled` and deletes its generated `MeshService`s). Drop it once every zone runs
+        3.0. See [Meshes](../topics/meshes.md#meshservices-on-30).
 
       Companion policies keep the format of the `Mesh`: Universal input gives Universal
       documents (`type`/`name`/`mesh`), Kubernetes input gives CRDs in the system namespace
@@ -1425,8 +1461,12 @@
         `reachableBackends` name refs → labels.
       - Control-plane-owned labels (e.g. `k8s.kuma.io/service-account`) removed.
 
-      Reported, not rewritten: `outbound[].tags` (the MeshService port is not in the manifest;
-      use `backendRef`), `advertisedAddress`, `redirectPortInbound`/`redirectPortOutbound`
+      - `outbound[].tags` → `backendRef` (`kind: MeshService`, labels, port) when the
+        `kuma.io/service` value is `<name>_<ns>_svc_<port>`. Otherwise the MeshService port is
+        not in the manifest: 3.0 rejects the Dataplane (`networking.outbound[0].backendRef:
+        must be defined`), so it is written to `_manual/` with the `backendRef` to fill in.
+
+      Reported, not rewritten: `advertisedAddress`, `redirectPortInbound`/`redirectPortOutbound`
       (removed in 3.1), `ipFamilyMode`, and transparent proxying without `reachableBackends`
       (no outbounds on 3.0).
   timeline:
@@ -1446,8 +1486,9 @@
     output: [MeshService]
     notes: |
       - `spec.ports[].protocol` → `appProtocol` (auto-fixed).
-      - `spec.selector.dataplaneTags` is reported: 3.0 drops it silently and the service
-        matches no proxies. Not rewritten on v2: on 2.14 a labels selector also matches
+      - `spec.selector.dataplaneTags` is reported: a 3.0 control plane rejects the
+        MeshService on write (`spec.selector.dataplaneTags: unknown field`), and one already
+        stored loses its selector and matches no proxies. Not rewritten on v2: on 2.14 a labels selector also matches
         same-named services synced from other zones.
       - Names that are not RFC 1035 labels are reported.
   v3:
@@ -1457,6 +1498,9 @@
       - `ports[].protocol` → `appProtocol`.
       - `selector.dataplaneTags` → `selector.dataplaneLabels.matchLabels`. The keys must exist
         as labels on the Dataplanes (Pod labels on Kubernetes, top-level labels on Universal).
+        A selector with a reserved `kuma.io/` key (such as `kuma.io/service`) or one that
+        conflicts with existing `matchLabels` is not converted; 3.0 rejects it as an unknown
+        field, so the MeshService is written to `_manual/`.
       - `identities[]` entries of `type: ServiceTag` removed; add `type: SpiffeID` entries if
         clients need them.
       - Control-plane-owned labels removed.
@@ -1488,8 +1532,11 @@
     notes: |
       - `inlineString` → `type: InsecureInline` + `insecureInline.value`; `secret` →
         `type: Secret` + `secretRef`. Apply while every control plane runs 2.14.6 or later.
-      - `inline` (base64) is reported only: converting means decoding credential material into
-        plain text, which is your decision.
+      - `inline` (base64) is not converted: that means decoding credential material into
+        plain text, which is your decision. 3.0 rejects the field
+        (`spec.tls.verification.caCert.inline: unknown field`), so the MeshExternalService is
+        written to `_manual/`; rewrite it as `type: Secret` + `secretRef` (or
+        `InsecureInline`) and apply it from there.
       - A `kuma.io/zone` label is reported: 3.0 removes per-zone routing and every zone's egress
         dials the endpoint directly.
       - A mesh with no `MeshIdentity` in the input set is reported: 3.0 builds the cluster only

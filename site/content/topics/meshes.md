@@ -24,7 +24,7 @@ behaviour each field configured has moved to a policy or to the control plane.
 | `routing.defaultForbidMeshExternalServiceAccess` | [MeshTrafficPermission](policy:MeshTrafficPermission) | Removed in 3.0 ([UPGRADE](https://github.com/kumahq/kuma/blob/master/UPGRADE.md#routingdefaultforbidmeshexternalserviceaccess-removed-from-the-mesh-schema)) |
 | `skipCreatingInitialPolicies` | none | Removed in 3.0: a new mesh gets no default policies at all, so a mesh without a `MeshRetry` does not retry ([UPGRADE](https://github.com/kumahq/kuma/blob/master/UPGRADE.md#meshes-no-longer-come-with-default-policies)) |
 | `constraints.dataplaneProxy` | none | Removed in 3.0 (`reserved` in `mesh.proto`). It refused data plane proxies whose tags matched no `requirements` entry or matched a `restrictions` entry ([data plane proxy membership](https://developer.konghq.com/mesh/configure-data-plane-proxy-membership/)); the 3.0 membership validator checks nothing. The nearest controls are dataplane tokens bound to the mesh and tags (`kumactl generate dataplane-token --mesh <mesh> --tag key=value`) and `MeshTrafficPermission` |
-| `meshServices.mode` | none | Has no effect on 3.0 zones, but must be `Exclusive` before the Global CP upgrade; 3.0 rejects any other mode ([UPGRADE](https://github.com/kumahq/kuma/blob/master/UPGRADE.md#meshservices-removed-from-the-mesh-schema)). See [MeshService](meshservice.md) |
+| `meshServices.mode` | none | Has no effect on 3.0 zones, but must be `Exclusive` before the Global CP upgrade; 3.0 rejects any other mode and accepts `Exclusive` with a deprecation warning ([UPGRADE](https://github.com/kumahq/kuma/blob/master/UPGRADE.md#meshservices-removed-from-the-mesh-schema)). See [MeshService](meshservice.md) and [meshServices on 3.0](#meshservices-on-30) |
 
 The `Mesh` CRD is `x-kubernetes-preserve-unknown-fields` and the control plane drops unknown
 `Mesh` fields silently, so a 2.x `Mesh` manifest still applies on 3.0. The removed fields
@@ -54,8 +54,23 @@ Companion policies are named `<mesh>-metrics`, `<mesh>-passthrough`, `<mesh>-tls
 | `routing.zoneEgress`, `routing.localityAwareLoadBalancing`, `routing.defaultForbidMeshExternalServiceAccess` | Kept, warning per field | Removed, with a note on what replaces each one |
 | `skipCreatingInitialPolicies` | Kept | Removed, with the retry note |
 | `constraints` | Kept, advisory: membership enforcement is lost on 3.0 | Removed, with a warning naming what is no longer enforced and the dataplane-token alternative |
-| `meshServices` | `mode: Exclusive` injected | `mode: Exclusive` injected, with the mixed-version note |
+| `meshServices` | `mode: Exclusive` injected | `mode: Exclusive` kept (or injected), with the mixed-version note. 3.0 accepts it with a deprecation warning, see [meshServices on 3.0](#meshservices-on-30) |
 | Name not an RFC 1035 label | Warning | Warning |
+
+### meshServices on 3.0
+
+The `--to-latest v3` `Mesh` keeps `meshServices.mode: Exclusive`. Applied to Kong Mesh 3.0.1 it
+is accepted with this warning (Kubernetes and Universal):
+
+```text
+Warning: meshServices was removed in 3.0 and is ignored: every mesh behaves as Exclusive. Drop the field before it is reserved again in a future release.
+```
+
+The warning is expected. The field stays because the Global CP syncs the `Mesh` to every zone,
+and a 2.x zone reads a missing `meshServices` as `Disabled` and deletes every generated
+`MeshService`. Drop `spec.meshServices` once every zone runs 3.0. Any other mode (`Everywhere`,
+`ReachableBackends`, `Disabled`) is rejected by 3.0:
+`spec.meshServices.mode: removed in 3.0 and every mesh behaves as Exclusive; remove the field or set it to Exclusive`.
 
 ### Logging and tracing
 

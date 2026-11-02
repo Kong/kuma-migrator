@@ -451,7 +451,7 @@ instead of `metadata`. All migrate-side parsing must normalise these:
 | Rules | New-style Mesh* with deprecated `from[]` (Kuma 2.10+) | `rules[]` |
 | Mesh | `Mesh` CRD with embedded observability | standalone companion CRDs |
 | ExternalService | `ExternalService` | `MeshExternalService` |
-| GW | `MeshGateway`, `MeshGatewayInstance`, `MeshGatewayRoute` | Gateway API CRDs. **`MeshHTTPRoute`/`MeshTCPRoute` are NOT in this scenario** — they are current policies on 2.x and 3.0 and pass through unchanged |
+| GW | `MeshGateway`, `MeshGatewayInstance`, `MeshGatewayRoute` | Gateway API CRDs (Kubernetes input only — a Universal `MeshGateway`/`MeshGatewayRoute` passes through on v2 and is `RejectedByTargetError` on v3, `gateway_universal.go`: Universal has no Gateway API). **`MeshHTTPRoute`/`MeshTCPRoute` are NOT in this scenario** — they are current policies on 2.x and 3.0 and pass through unchanged |
 | OPAPolicy | Kong Mesh `OPAPolicy` | `MeshOPA` |
 
 ## Legacy policy conversion (ScenarioLegacy)
@@ -503,12 +503,28 @@ about every input leaf no move consumed. Highlights (full table in
 - `Retry`: `tcp.maxConnectAttempts`→`maxConnectAttempt` (singular), `retryOn` enum
   recased, `retriableMethods`→`retryOn: [HttpMethod*]`, grpc `cancelled`→`Canceled`;
   `retriableStatusCodes` has **no equivalent** (dropped, warned)
-- `HealthCheck`: `http.requestHeadersToAdd` → `{add,set}` split (`append` unset ⇒ `add`)
-- `FaultInjection`: single conf → one-element `default.http[]`
-- `RateLimit`: `http.{requests,interval}`→`local.http.requestRate.{num,interval}`
-- `ProxyTemplate`: `modifications`→`appendModifications`, operations recased;
-  `httpFilter`/`networkFilter`/`virtualHost` have no plain `Add` → `AddLast` (warned);
-  `imports`/`resources` have no equivalent
+- `HealthCheck`: `http.requestHeadersToAdd` → `{add,set}` split (`append` unset ⇒ `add`);
+  header names lower-cased (`headerNames`; the common `HeaderName` schema is lower-case only,
+  real manifests carry `Accept`/`Content-Type`)
+- `FaultInjection`: single conf → one-element `default.http[]`; `responseBandwidth.limit`
+  → `<n>kbps|Mbps|Gbps` (`normalizeBandwidthLimit`: legacy accepted `50 mbps`, the new
+  `BandwidthRegex` is `^(\d*)\s?([GMk]+bps)$`)
+- `RateLimit`: `http.{requests,interval}`→`local.http.requestRate.{num,interval}`;
+  `onRateLimit.headers` names lower-cased
+- `ProxyTemplate`: `modifications`→`appendModifications`, every operation recased
+  (`addFirst`/`addLast`/`addBefore`/`addAfter` included — `convertProxyPatchOperation`).
+  `cluster`/`listener`/`virtualHost` accept `Add`/`Remove`/`Patch`; `httpFilter`/`networkFilter`
+  accept `Remove`/`Patch`/`AddFirst`/`AddBefore`/`AddAfter`/`AddLast`, so a filter `add` →
+  `AddLast` (warned); `imports`/`resources` have no equivalent
+
+**Namespace on Kubernetes** (`namespace.go`): Legacy, Subset and OPAPolicy output that is a
+namespaced Mesh* kind with no `metadata.namespace` gets `resolveSystemNamespace(opts, "")`
+(`setMissingSystemNamespace`, run before the post-passes, which read the namespace). The legacy
+CRDs and `OPAPolicy` are cluster-scoped, so there is nothing to carry over; without a namespace
+`kubectl apply` puts the policy in the caller's namespace, where `ComputePolicyRole` gives it
+`workload-owner`/`consumer` and it selects only that namespace. The system namespace always yields
+`system`. A warning is added only when the namespace is the `kuma-system` fallback.
+Selectors are still converted with an empty policy namespace.
 
 Percentages are emitted as numbers when whole and strings when fractional — the new
 schemas type them `anyOf: [integer, string]`.
@@ -607,7 +623,12 @@ against `KumactlArg` at v2.14.5: `healthcheck`, `zoneegress`, `proxytemplate` ar
 **Documents the target rejects** — `TransformDocumentWithOptions` returns `*RejectedByTargetError`
 (`rejected.go`) **with** the converted docs; `Rejected[].Index` names the rejected ones. Under v3:
 `spec.from` on MTP/MFI, a top-level kind other than `Mesh`/`Dataplane`, `name`/`namespace` on a
-real-resource ref, a `to[]` kind the 3.0 validator refuses. `processFile` writes the listed docs to
+real-resource ref, a `to[]` kind the 3.0 validator refuses, and removed fields a v3 rewrite left
+in place for lack of information (`v3UnconvertedFieldReasons`): a `Dataplane` tag-based outbound
+with no `backendRef` (service tag not `<name>_<ns>_svc_<port>`), a `MeshService`
+`selector.dataplaneTags` (reserved key or conflict), a `MeshExternalService` TLS DataSource still
+in the flat shape (base64 `inline` is never decoded). Each was confirmed rejected by Kong Mesh
+3.0.1. A Universal `MeshGateway`/`MeshGatewayRoute` is also returned this way (unchanged source). `processFile` writes the listed docs to
 `_manual/` and the rest to the apply tree, and reports the file as `PARTIAL ERROR`.
 
 **Report and checklist:** labels `SCANNED` (non-policy kind the scan rewrote or flagged) and
@@ -621,9 +642,17 @@ order is required: on 2.14 a `MeshIdentity` in a mesh that is not `Exclusive` st
 Konnect) gets `kubectl` commands (`resolveContextTool`). `MeshGatewayConfig` is a v3 removed kind.
 
 **Judgement calls worth knowing:**
-- Legacy `HealthCheck` `healthyPanicThreshold` under v3: the companion `MeshCircuitBreaker` must
-  enable a detector (3.0's validator requires one and the threshold is ignored without outlier
-  detection), so it sets `detectors.totalFailures.consecutive: 5`. That turns on outlier ejection.
+- `healthyPanicThreshold` under v3 (legacy `HealthCheck` via `splitHealthyPanicThreshold`, any
+  other `MeshHealthCheck` via `splitPanicThresholdDocsForV3` in `TransformDocumentWithOptions`):
+  the companion `MeshCircuitBreaker` `<name>-panic-threshold` is written as a document in the
+  input's layout and namespace (else the system namespace) and goes through the same post-pass
+  (labels-form refs). It must enable a detector (2.14 and 3.0 both reject `outlierDetection`
+  without one, and the threshold is ignored without outlier detection), so it sets
+  `detectors.totalFailures.consecutive: 5`. That turns on outlier ejection.
+- v3 `Mesh` output keeps `meshServices.mode: Exclusive`. Kong Mesh 3.0.1 accepts it with the
+  warning "meshServices was removed in 3.0 and is ignored … Drop the field before it is reserved
+  again"; any other mode is rejected. Kept because a 2.x zone reads a missing field as `Disabled`
+  during the mixed-version window; drop it once every zone runs 3.0.
 - `reachableBackends` name→labels and `MeshService` `dataplaneTags` rewrites are v3-only: on 2.14 a
   labels selector matches same-named services synced from other zones, which widens selection.
 
@@ -759,11 +788,11 @@ the TCPRoute caveat.
 ## Deprecation Warnings (all implemented via `ScanForDeprecations`)
 
 - `MeshMetric sidecar.regex` → auto-fixed to `sidecar.profiles.exclude` (v2.7)
-- `MeshHealthCheck healthyPanicThreshold` → warn, move to `MeshCircuitBreaker` (v2.10)
+- `MeshHealthCheck healthyPanicThreshold` → warn, move to `MeshCircuitBreaker` (v2.10); under v3 removed and written to a companion `MeshCircuitBreaker` document (see **Judgement calls**)
 - `MeshTrust spec.origin` → warn, deprecated in favour of `status.origin` (v2.13)
 - `MeshTrafficPermission`/`MeshFaultInjection` `from[].targetRef.kind: MeshService` → warn (v2.7)
 - `MeshTrafficPermission action: ALLOW/DENY` → warn, use `Allow`/`Deny` (Kong Mesh 2.1)
-- `MeshLoadBalancingStrategy hashPolicies[].type: SourceIP` → warn, use `Connection` (v2.10)
+- `MeshLoadBalancingStrategy hashPolicies[].type: SourceIP` → **auto-fixed on both targets** to `type: Connection` + `connection.sourceIP: true` (`fixSourceIPHashPolicy`, both hashPolicies locations). Deprecated v2.10, rejected by 3.0; 2.14 accepts `SourceIP` but its xds builder only handles `Connection`, so a `SourceIP` entry produced no Envoy hash policy — the warning says hashing starts to take effect
 - `Dataplane transparentProxying.redirectPortInboundV6` → warn, field removed (v2.9)
 - `Dataplane transparentProxying.reachableServices` → warn, names must be updated to MeshService display names in Exclusive mode (v2.10)
 - `kuma.io/*` annotation `yes`/`no` → scanner, use `true`/`false` (v2.9)
@@ -793,7 +822,7 @@ the TCPRoute caveat.
 
   **Do not prefix-match `prometheus.metrics.kuma.io/`**: the `aggregate-<name>-(port|path|enabled|address)` family is *not* deprecated, so a prefix match flags working manifests.
 - `Dataplane networking.inbound[].tags` → warn **under v3 only**, removed in 3.0 and dropped **silently** (proto `reserved` + `AllowUnknownFields`), so the manifest applies cleanly and simply loses the tags; anything selecting on them stops matching with nothing logged. `warnDataplaneInboundTags`.
-- `MeshExternalService spec.tls.verification.{caCert,clientCert,clientKey}.{inline,inlineString,secret}` → warn, 3.0 replaces `DataSource` with `SecureDataSource` (`type` + `insecureInline.value` / `secretRef`). Under v3, `inlineString` and `secret` are **auto-converted** (`fixMESDataSourcesForV3`, no decoding involved); `inline` stays warn-only: it was base64 and `insecureInline.value` is plain text, so rewriting means decoding credential material and re-emitting it in the clear — an operator decision. 2.14.6+ accepts both shapes. `warnMeshExternalServiceDataSource`.
+- `MeshExternalService spec.tls.verification.{caCert,clientCert,clientKey}.{inline,inlineString,secret}` → warn, 3.0 replaces `DataSource` with `SecureDataSource` (`type` + `insecureInline.value` / `secretRef`). Under v3, `inlineString` and `secret` are **auto-converted** (`fixMESDataSourcesForV3`, no decoding involved); `inline` stays warn-only: it was base64 and `insecureInline.value` is plain text, so rewriting means decoding credential material and re-emitting it in the clear — an operator decision. Under v3 a document still carrying it is `RejectedByTargetError` (3.0.1: `spec.tls.verification.caCert.inline: unknown field`) and goes to `_manual/`. 2.14.6+ accepts both shapes. `warnMeshExternalServiceDataSource`.
 - `MeshOPA spec.targetRef.{name,namespace,mesh}` → removed in 3.0. **Auto-converted under v3**: `name` → a display-name label (preserving scope), `namespace`/`mesh` dropped. Dropping `name` instead is what causes 3.0's silent scope-widening, where the rego starts evaluating requests it never saw. Refuses to overwrite a conflicting existing display-name label. `fixMeshOPATargetRefForV3` in `opapolicy.go`, `warnMeshOPATargetRefFields` in `deprecation.go`.
 - `MeshOPA spec.targetRef.kind: MeshService` → no longer valid in 3.0 (only `Mesh`/`Dataplane`). **Auto-converted under v3**: `kind` → `Dataplane`, and this runs *before* the `name`/`namespace`/`mesh` fixes above so the display-name label lands under the correct key for the final kind — `labels["app"]` (Dataplane's convention), not `labels["kuma.io/display-name"]` (MeshService's). Same functions as above.
 - `MeshOPA spec.default.agentConfig` / `spec.default.appendPolicies[].rego` legacy flat `DataSource` (`secret`/`inline`/`inlineString`) → 3.0 requires the discriminated `SecureDataSource` (`type` + `insecureInline.value` / `secretRef.{kind,name}`); the old shape is rejected at write time. **Auto-converted under v3** (`fixMeshOPADataSourcesForV3` in `opapolicy.go`) — unlike `MeshExternalService`'s TLS `DataSource` (left to the operator because it's credential material), rego/agent-config text is not a credential, so decoding the base64 `inline` variant is safe to do automatically. `warnMeshOPALegacyDataSource` carries the v2 advisory. Both MeshOPA v3 fixes are wired into `ScanForDeprecations`'s `MeshOPA` case as well as `TransformOPAPolicy`, so a document that arrives already as `kind: MeshOPA` (bypassing `TransformOPAPolicy` entirely, since `DetectScenario` only routes `kind: OPAPolicy` there) still gets fixed, not just warned about.

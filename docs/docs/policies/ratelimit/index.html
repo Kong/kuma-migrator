@@ -73,7 +73,8 @@
     <p class="outputs">Output: <a href="../meshratelimit/"><code>MeshRateLimit</code></a></p>
     <div class="notes"><p>Inbound policy: <code>destinations</code> → <code>spec.targetRef</code>, conf → <code>rules[].default</code>.
 <code>http.requests</code> + <code>http.interval</code> → <code>local.http.requestRate.{num,interval}</code>;
-<code>http.onRateLimit.*</code> → <code>local.http.onRateLimit.*</code>.</p>
+<code>http.onRateLimit.*</code> → <code>local.http.onRateLimit.*</code>. Header names are lower-cased, with a
+warning (the new schema accepts lower-case names only).</p>
 <p>The output uses <code>rules[]</code>, not <code>from[]</code>. A specific <code>sources</code> selector cannot be kept:
 the limit then applies to every client of the inbound, and a warning says so.</p>
 </div>

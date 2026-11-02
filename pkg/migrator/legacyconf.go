@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -465,6 +466,7 @@ func convertHealthCheckConf(conf map[string]interface{}, name string) (map[strin
 
 	if v, ok := m.get("http.requestHeadersToAdd"); ok {
 		m.markUsed("http.requestHeadersToAdd")
+		headers := headerNames{}
 		var add, set []interface{}
 		for _, item := range toSlice(v) {
 			entry, ok := item.(map[string]interface{})
@@ -477,7 +479,7 @@ func convertHealthCheckConf(conf map[string]interface{}, name string) (map[strin
 			}
 			hv := map[string]interface{}{}
 			if k, ok := header["key"]; ok {
-				hv["name"] = k
+				hv["name"] = headers.name(k)
 			}
 			if val, ok := header["value"]; ok {
 				hv["value"] = val
@@ -497,6 +499,8 @@ func convertHealthCheckConf(conf map[string]interface{}, name string) (map[strin
 				set = append(set, hv)
 			}
 		}
+		warnings = append(warnings, headers.warnings("HealthCheck", "MeshHealthCheck", name,
+			"conf.http.requestHeadersToAdd")...)
 		if len(add) > 0 {
 			m.set("http.requestHeadersToAdd.add", add)
 		}
@@ -522,21 +526,62 @@ func convertFaultInjectionConf(conf map[string]interface{}, name string) (map[st
 	fault.moveWith("abort.percentage", "abort.percentage", normalizePercentage)
 	fault.move("abort.httpStatus", "abort.httpStatus")
 	fault.moveWith("responseBandwidth.percentage", "responseBandwidth.percentage", normalizePercentage)
-	fault.move("responseBandwidth.limit", "responseBandwidth.limit")
+	var warnings []string
+	fault.moveWith("responseBandwidth.limit", "responseBandwidth.limit", func(v interface{}) interface{} {
+		limit, w := normalizeBandwidthLimit(v, name)
+		warnings = append(warnings, w...)
+		return limit
+	})
 
 	// Mirror consumption onto m so unmapped() reports against the same source.
 	for p := range fault.used {
 		m.markUsed(p)
 	}
 
+	warnings = append(warnings, warnUnmapped(m, "FaultInjection", "MeshFaultInjection", name)...)
 	body := fault.result()
 	if body == nil {
-		return nil, warnUnmapped(m, "FaultInjection", "MeshFaultInjection", name)
+		return nil, warnings
 	}
 	return map[string]interface{}{
-			"http": []interface{}{body},
-		},
-		warnUnmapped(m, "FaultInjection", "MeshFaultInjection", name)
+		"http": []interface{}{body},
+	}, warnings
+}
+
+// legacyBandwidth reads the legacy FaultInjection limit. The 2.14 legacy
+// validator matched `\d*\s?[gmk]bps` (lower-case units, unanchored); the
+// MeshFaultInjection validator (validators.BandwidthRegex, 2.14 and master)
+// matches `^(\d*)\s?([GMk]+bps)$` and converts with ConvertBandwidthToKbps, which
+// only knows kbps, Mbps and Gbps. So "50 mbps" — valid on FaultInjection — is
+// rejected as "must be in kbps/Mbps/Gbps units".
+var legacyBandwidth = regexp.MustCompile(`^\s*(\d+)\s*([gGmMkK])bps\s*$`)
+
+var bandwidthUnits = map[string]string{"k": "kbps", "m": "Mbps", "g": "Gbps"}
+
+// normalizeBandwidthLimit rewrites a legacy bandwidth limit as <digits><unit>
+// with the unit spelled kbps/Mbps/Gbps. A value it cannot parse is copied
+// unchanged with a warning, since the control plane will reject it.
+func normalizeBandwidthLimit(v interface{}, policyName string) (interface{}, []string) {
+	s, ok := v.(string)
+	if !ok {
+		return v, []string{fmt.Sprintf(
+			"FaultInjection %q: conf.responseBandwidth.limit %v is not a string; MeshFaultInjection needs "+
+				"a value such as 50Mbps — copied unchanged, fix it before applying.", policyName, v)}
+	}
+	match := legacyBandwidth.FindStringSubmatch(s)
+	if match == nil {
+		return s, []string{fmt.Sprintf(
+			"FaultInjection %q: conf.responseBandwidth.limit %q is not <integer><kbps|mbps|gbps> — copied "+
+				"unchanged; MeshFaultInjection rejects anything but kbps/Mbps/Gbps units "+
+				"(for example 50Mbps), so fix it before applying.", policyName, s)}
+	}
+	out := match[1] + bandwidthUnits[strings.ToLower(match[2])]
+	if out == s {
+		return s, nil
+	}
+	return out, []string{fmt.Sprintf(
+		"FaultInjection %q: conf.responseBandwidth.limit %q written as %q — MeshFaultInjection accepts "+
+			"only the units kbps, Mbps and Gbps.", policyName, s, out)}
 }
 
 // ---- RateLimit → MeshRateLimit -----------------------------------------------
@@ -568,8 +613,10 @@ func convertRateLimitConf(conf map[string]interface{}, name string) (map[string]
 
 	m.move("http.onRateLimit.status", "local.http.onRateLimit.status")
 
+	var warnings []string
 	if v, ok := m.get("http.onRateLimit.headers"); ok {
 		m.markUsed("http.onRateLimit.headers")
+		headers := headerNames{}
 		var add, set []interface{}
 		for _, item := range toSlice(v) {
 			entry, ok := item.(map[string]interface{})
@@ -578,7 +625,7 @@ func convertRateLimitConf(conf map[string]interface{}, name string) (map[string]
 			}
 			hv := map[string]interface{}{}
 			if k, ok := entry["key"]; ok {
-				hv["name"] = k
+				hv["name"] = headers.name(k)
 			}
 			if val, ok := entry["value"]; ok {
 				hv["value"] = val
@@ -596,6 +643,8 @@ func convertRateLimitConf(conf map[string]interface{}, name string) (map[string]
 				set = append(set, hv)
 			}
 		}
+		warnings = append(warnings, headers.warnings("RateLimit", "MeshRateLimit", name,
+			"conf.http.onRateLimit.headers")...)
 		if len(add) > 0 {
 			m.set("local.http.onRateLimit.headers.add", add)
 		}
@@ -604,28 +653,38 @@ func convertRateLimitConf(conf map[string]interface{}, name string) (map[string]
 		}
 	}
 
-	return m.result(), warnUnmapped(m, "RateLimit", "MeshRateLimit", name)
+	warnings = append(warnings, warnUnmapped(m, "RateLimit", "MeshRateLimit", name)...)
+	return m.result(), warnings
 }
 
 // ---- ProxyTemplate → MeshProxyPatch ------------------------------------------
 
-// legacyProxyPatchOperation maps the legacy lowercase modification operations to
-// the MeshProxyPatch enum. httpFilter/networkFilter/virtualHost use a different
-// enum from cluster/listener: they accept AddFirst/AddBefore/AddAfter/AddLast
-// rather than a bare Add, so a legacy "add" on those cannot be mapped without
-// knowing where in the chain the filter belongs.
+// legacyProxyPatchOperation maps the legacy ProxyTemplate modification
+// operations (kuma api/mesh/v1alpha1/proxy_template_operations.go at v2.14:
+// add, addFirst, addLast, addBefore, addAfter, remove, patch), keyed in lower
+// case, to the PascalCase MeshProxyPatch enum.
 var legacyProxyPatchOperation = map[string]string{
-	"add":    "Add",
-	"remove": "Remove",
-	"patch":  "Patch",
+	"add":       "Add",
+	"remove":    "Remove",
+	"patch":     "Patch",
+	"addfirst":  "AddFirst",
+	"addlast":   "AddLast",
+	"addbefore": "AddBefore",
+	"addafter":  "AddAfter",
 }
 
-// proxyPatchFilterKinds are the modification kinds whose operation enum has no
-// plain "Add".
-var proxyPatchFilterKinds = map[string]bool{
-	"httpFilter":    true,
-	"networkFilter": true,
-	"virtualHost":   true,
+// proxyPatchOperations lists the operations each MeshProxyPatch modification
+// kind accepts (kubebuilder enums in meshproxypatch/api/v1alpha1 at v2.14 and on
+// master). cluster, listener and virtualHost take a plain Add; the two filter
+// kinds replace it with the positional AddFirst/AddBefore/AddAfter/AddLast.
+// The legacy ProxyTemplate validator enforced the same split, so a valid legacy
+// manifest only needs its operation recased.
+var proxyPatchOperations = map[string]map[string]bool{
+	"cluster":       {"Add": true, "Remove": true, "Patch": true},
+	"listener":      {"Add": true, "Remove": true, "Patch": true},
+	"virtualHost":   {"Add": true, "Remove": true, "Patch": true},
+	"networkFilter": {"Remove": true, "Patch": true, "AddFirst": true, "AddBefore": true, "AddAfter": true, "AddLast": true},
+	"httpFilter":    {"Remove": true, "Patch": true, "AddFirst": true, "AddBefore": true, "AddAfter": true, "AddLast": true},
 }
 
 func convertProxyTemplateConf(conf map[string]interface{}, name string) (map[string]interface{}, []string) {
@@ -693,24 +752,7 @@ func convertProxyTemplateModification(mod map[string]interface{}, policyName str
 			copied[k] = v
 		}
 		if op, ok := copied["operation"].(string); ok {
-			mapped, known := legacyProxyPatchOperation[strings.ToLower(op)]
-			switch {
-			case !known:
-				warnings = append(warnings, fmt.Sprintf(
-					"ProxyTemplate %q: modifications[%d].%s.operation %q is not a known operation — "+
-						"copied unchanged, verify it against the MeshProxyPatch schema.",
-					policyName, idx, kind, op))
-			case mapped == "Add" && proxyPatchFilterKinds[kind]:
-				// MeshProxyPatch replaced Add with positional variants for filters.
-				copied["operation"] = "AddLast"
-				warnings = append(warnings, fmt.Sprintf(
-					"ProxyTemplate %q: modifications[%d].%s used operation \"add\", which MeshProxyPatch "+
-						"splits into AddFirst/AddBefore/AddAfter/AddLast. Converted to AddLast — change it "+
-						"if this filter has to run earlier in the chain.",
-					policyName, idx, kind))
-			default:
-				copied["operation"] = mapped
-			}
+			copied["operation"], warnings = convertProxyPatchOperation(op, kind, policyName, idx, warnings)
 		}
 		out[kind] = copied
 	}
@@ -719,6 +761,82 @@ func convertProxyTemplateModification(mod map[string]interface{}, policyName str
 		return nil, warnings
 	}
 	return out, warnings
+}
+
+// convertProxyPatchOperation recases one legacy operation for the MeshProxyPatch
+// modification kind it sits under. It returns the operation to write and the
+// warnings slice with anything that could not be mapped exactly appended.
+func convertProxyPatchOperation(op, kind, policyName string, idx int, warnings []string) (string, []string) {
+	mapped, known := legacyProxyPatchOperation[strings.ToLower(op)]
+	allowed, knownKind := proxyPatchOperations[kind]
+	switch {
+	case !known:
+		return op, append(warnings, fmt.Sprintf(
+			"ProxyTemplate %q: modifications[%d].%s.operation %q is not a ProxyTemplate operation — "+
+				"copied unchanged, verify it against the MeshProxyPatch schema.",
+			policyName, idx, kind, op))
+	case !knownKind || allowed[mapped]:
+		return mapped, warnings
+	case mapped == "Add":
+		// A filter has no plain Add; the positional variants replaced it.
+		return "AddLast", append(warnings, fmt.Sprintf(
+			"ProxyTemplate %q: modifications[%d].%s used operation \"add\", which MeshProxyPatch "+
+				"splits into AddFirst/AddBefore/AddAfter/AddLast. Converted to AddLast — change it "+
+				"if this filter has to run earlier in the chain.",
+			policyName, idx, kind))
+	default:
+		return mapped, append(warnings, fmt.Sprintf(
+			"ProxyTemplate %q: modifications[%d].%s.operation %q is not accepted on a MeshProxyPatch %s "+
+				"modification (allowed: %s) — written as %q, which the control plane rejects; pick an "+
+				"allowed operation.",
+			policyName, idx, kind, op, kind, strings.Join(sortedKeys(allowed), ", "), mapped))
+	}
+}
+
+// headerNamePattern is the schema every header name in the new policies must
+// match (common_api.HeaderName, api/common/v1alpha1/header.go at v2.14 and on
+// master): lower-case RFC 7230 token characters only. The legacy policies took
+// any case, and "Accept" or "Content-Type" are what real manifests carry.
+var headerNamePattern = regexp.MustCompile("^[a-z0-9!#$%&'*+\\-.^_`|~]+$")
+
+// headerNames lower-cases legacy header names for the new HeaderName schema and
+// records what it changed. HTTP header names are case-insensitive (RFC 9110
+// §5.1) and Envoy lower-cases them on the wire, so the rename keeps behaviour.
+type headerNames struct {
+	renamed []string
+	invalid []string
+}
+
+func (h *headerNames) name(v interface{}) interface{} {
+	s, ok := v.(string)
+	if !ok {
+		return v
+	}
+	lower := strings.ToLower(s)
+	if lower != s {
+		h.renamed = append(h.renamed, fmt.Sprintf("%q → %q", s, lower))
+	}
+	if !headerNamePattern.MatchString(lower) {
+		h.invalid = append(h.invalid, strconv.Quote(s))
+	}
+	return lower
+}
+
+func (h *headerNames) warnings(kind, newKind, policyName, path string) []string {
+	var out []string
+	if len(h.renamed) > 0 {
+		out = append(out, fmt.Sprintf(
+			"%s %q: %s header name(s) lower-cased (%s) — %s accepts lower-case header names only; "+
+				"HTTP header names are case-insensitive, so the behaviour is unchanged.",
+			kind, policyName, path, strings.Join(h.renamed, ", "), newKind))
+	}
+	if len(h.invalid) > 0 {
+		out = append(out, fmt.Sprintf(
+			"%s %q: %s header name(s) %s contain characters a header name cannot have; %s "+
+				"rejects them (pattern %s) — fix the name before applying.",
+			kind, policyName, path, strings.Join(h.invalid, ", "), newKind, headerNamePattern.String()))
+	}
+	return out
 }
 
 // ---- helpers -----------------------------------------------------------------

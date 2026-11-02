@@ -123,8 +123,13 @@ spec:
 	if got := at(t, to, "default", "connectionTimeout"); got != "10s" {
 		t.Errorf("to[0].default.connectionTimeout = %v, want 10s (from spec.conf)", got)
 	}
-	if len(warnings) != 0 {
-		t.Errorf("unexpected warnings: %v", warnings)
+	// The legacy CRD is cluster-scoped; the namespaced successor goes in the
+	// system namespace (kuma-system here: nothing in the input names another).
+	if got := at(t, out, "metadata", "namespace"); got != "kuma-system" {
+		t.Errorf("metadata.namespace = %v, want kuma-system", got)
+	}
+	if len(warnings) != 1 || !strings.Contains(warnings[0], "metadata.namespace set to kuma-system") {
+		t.Errorf("want only the default-namespace warning, got: %v", warnings)
 	}
 }
 

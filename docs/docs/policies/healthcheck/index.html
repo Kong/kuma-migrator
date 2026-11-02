@@ -73,7 +73,9 @@
     <p class="outputs">Output: <a href="../meshhealthcheck/"><code>MeshHealthCheck</code></a></p>
     <div class="notes"><p>Outbound shape. <code>interval</code>, <code>timeout</code>, <code>unhealthyThreshold</code>, <code>healthyThreshold</code>,
 <code>tcp.*</code>, <code>http.path</code> and <code>http.expectedStatuses</code> keep their paths.
-<code>http.requestHeadersToAdd</code> is split into <code>{add, set}</code> (<code>append</code> unset means <code>add</code>).</p>
+<code>http.requestHeadersToAdd</code> is split into <code>{add, set}</code> (<code>append</code> unset means <code>add</code>). Header
+names are lower-cased, with a warning: the <code>MeshHealthCheck</code> schema accepts lower-case
+names only (<code>Accept</code> is rejected) and HTTP header names are case-insensitive.</p>
 <p><code>healthyPanicThreshold</code> is copied to <code>to[].default.healthyPanicThreshold</code> and the scanner
 warns that it is deprecated since 2.10 and removed in 3.0: move it to a
 <code>MeshCircuitBreaker</code> <code>outlierDetection.healthyPanicThreshold</code>.</p>

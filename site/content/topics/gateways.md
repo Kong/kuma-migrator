@@ -106,6 +106,7 @@ entries accept only the three service kinds (no `Mesh`). The full per-policy mat
 | `MeshGatewayInstance` | `GatewayClass` (named after the instance, `controllerName: gateways.kuma.io/controller`) + `MeshGatewayConfig` carrying `replicas`, `serviceType`, `tags` minus `kuma.io/service`. Both cluster-scoped: no namespace on the `MeshGatewayConfig` or the `parametersRef` | **Error**. Original written to `_manual/`. The message lists the settings to carry over to your own `Deployment`/`Service` and the delegated-gateway annotations |
 | `MeshGatewayRoute` (HTTP) | `HTTPRoute` whose `parentRefs` name the converted `Gateway` (resolved through the `MeshGateway` selecting the route's `kuma.io/service` tag) and, from the other selector tags, its listener as `sectionName`. The route is placed in the Gateway's namespace. `kuma.io/mesh` as a **label**, integer `port`. A backend in another namespace gets a `ReferenceGrant`; a route whose namespace stays unknown gets a warning instead | Same, plus the delete-before-upgrade advisory and a note that Kuma 3.0 ignores Gateway-parented routes (your gateway implementation reconciles them) |
 | `MeshGatewayRoute` (TCP) | `TCPRoute` | Same |
+| Universal `MeshGateway`, `MeshGatewayRoute` | Copied unchanged (valid on 2.14), with an advisory that 3.0 removes them. Universal has no Gateway API, so no `Gateway`/`HTTPRoute`/`TCPRoute` is generated | **Rejected by target**: the original goes to `_manual/`, with the delegated-gateway steps for Universal (a `Dataplane` without `kuma.io/gateway`, `kuma-dp --exclude-inbound-ports` over the listen ports) and a note to delete the objects before upgrading |
 | `MeshHTTPRoute`, `MeshTCPRoute` | Copied unchanged (Passthrough) and scanned | `targetRef`/`to[]`/`backendRefs` `name`/`namespace` → labels; a `MeshServiceSubset` backendRef whose only tag is `kuma.io/service` → `MeshService`; other tags warned. Advisory when a `MeshHTTPRoute` has no catch-all rule (`404` change). Warning when a `MeshHTTPRoute` `backendRefs[]` entry names a `port`/`sectionName` that the `MeshService` in the input does not have (matched by port name or number, never `targetPort`); a `MeshService` missing from the input is noted once per run |
 | Policy with top-level `targetRef.kind: MeshGateway` | Copied (valid on 2.14 for system-role policies) | Warning: rejected on 3.0, re-target the gateway's own proxies with `kind: Dataplane` + labels |
 | `Dataplane` `networking.gateway` (any type) | Copied | Block removed; non-`kuma.io/` gateway tags moved to `Dataplane` labels |
@@ -113,6 +114,10 @@ entries accept only the three service kinds (no `Mesh`). The full per-policy mat
 Code: [`gateway.go`](https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/gateway.go),
 [`gatewayroute.go`](https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/gatewayroute.go),
 [`v3_gateway.go`](https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/v3_gateway.go).
+
+The Gateway API conversions apply to Kubernetes input only. On Universal there is no API server
+to store a `Gateway` or `HTTPRoute`, and `kumactl apply` rejects them
+(`invalid resource type`).
 
 ### Why MeshHTTPRoute is not converted to HTTPRoute
 

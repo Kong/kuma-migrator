@@ -78,13 +78,17 @@
   </section>
   <section class="target-card">
     <header><span class="target-label">--to-latest v3 (3.0)</span> <span class="status status-rewritten">rewritten</span></header>
-    <p class="outputs">Output: <a href="./"><code>MeshHealthCheck</code></a></p>
-    <div class="notes"><p><code>to[].default.healthyPanicThreshold</code> is removed. The warning carries a ready-made
-<code>MeshCircuitBreaker</code> (<code>&lt;name&gt;-panic-threshold</code>, with
-<code>detectors.totalFailures.consecutive: 5</code> so the threshold takes effect) for you to apply.
-For a <code>MeshHealthCheck</code> read from the input, the companion is printed in the warning
-only; for one converted from a legacy <a href="../healthcheck/">HealthCheck</a> it is written
-as a file.</p>
+    <p class="outputs">Output: <a href="./"><code>MeshHealthCheck</code></a>, <a href="../meshcircuitbreaker/"><code>MeshCircuitBreaker</code></a></p>
+    <div class="notes"><p><code>to[].default.healthyPanicThreshold</code> is removed and moved to a companion
+<code>MeshCircuitBreaker</code> named <code>&lt;name&gt;-panic-threshold</code>, written as its own file in the
+input's format (Universal or Kubernetes) and namespace (the system namespace when the
+<code>MeshHealthCheck</code> has none). It keeps the same <code>spec.targetRef</code> and <code>to[].targetRef</code>,
+rewritten to labels like the <code>MeshHealthCheck</code>'s. Both 2.14 and 3.0 reject
+<code>outlierDetection</code> without a detector, so the companion sets
+<code>detectors.totalFailures.consecutive: 5</code>; that turns on outlier ejection for those
+destinations, and the warning says so. If a <code>MeshCircuitBreaker</code> already covers them,
+move the threshold into it and drop the companion. The same applies to a
+<code>MeshHealthCheck</code> converted from a legacy <a href="../healthcheck/">HealthCheck</a>.</p>
 <p>Labels-only refs and control-plane label removal also apply. Allowed
 <code>to[].targetRef.kind</code>: <code>Mesh</code>, <code>MeshService</code>, <code>MeshExternalService</code>,
 <code>MeshMultiZoneService</code>.</p>

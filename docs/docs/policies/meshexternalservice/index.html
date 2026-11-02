@@ -83,8 +83,11 @@ reported.</p>
     <div class="notes"><ul>
 <li><code>inlineString</code> → <code>type: InsecureInline</code> + <code>insecureInline.value</code>; <code>secret</code> →
 <code>type: Secret</code> + <code>secretRef</code>. Apply while every control plane runs 2.14.6 or later.</li>
-<li><code>inline</code> (base64) is reported only: converting means decoding credential material into
-plain text, which is your decision.</li>
+<li><code>inline</code> (base64) is not converted: that means decoding credential material into
+plain text, which is your decision. 3.0 rejects the field
+(<code>spec.tls.verification.caCert.inline: unknown field</code>), so the MeshExternalService is
+written to <code>_manual/</code>; rewrite it as <code>type: Secret</code> + <code>secretRef</code> (or
+<code>InsecureInline</code>) and apply it from there.</li>
 <li>A <code>kuma.io/zone</code> label is reported: 3.0 removes per-zone routing and every zone's egress
 dials the endpoint directly.</li>
 <li>A mesh with no <code>MeshIdentity</code> in the input set is reported: 3.0 builds the cluster only

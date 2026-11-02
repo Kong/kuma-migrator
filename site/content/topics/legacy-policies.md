@@ -71,16 +71,37 @@ and any input field no converter consumes is reported.
 | `Timeout` | `connectTimeout` → `connectionTimeout`; `tcp.idleTimeout` → `idleTimeout`; no `grpc` section (folds into `http`) |
 | `CircuitBreaker` | `thresholds.*` → `connectionLimits.*`; the rest under `outlierDetection`; detectors renamed (`totalErrors` → `totalFailures`, `gatewayErrors` → `gatewayFailures`, `localErrors` → `localOriginFailures`, `standardDeviation` → `successRate`, `failure` → `failurePercentage`) |
 | `Retry` | `tcp.maxConnectAttempts` → `maxConnectAttempt`; `retryOn` values recased (`gateway_error` → `GatewayError`); `retriableMethods` → `retryOn: [HttpMethodGet, …]`; gRPC `cancelled` → `Canceled`; `retriableStatusCodes` has no equivalent (dropped, warned) |
-| `HealthCheck` | `http.requestHeadersToAdd` → `{add, set}` (`append` unset means `add`); `tcp.send`/`receive` stay base64 |
-| `FaultInjection` | The single conf becomes a one-element `default.http[]` |
-| `RateLimit` | `http.{requests, interval}` → `local.http.requestRate.{num, interval}`; emitted as `rules[]` (a specific `sources` selector is lost and warned) |
+| `HealthCheck` | `http.requestHeadersToAdd` → `{add, set}` (`append` unset means `add`); header names lower-cased (warned); `tcp.send`/`receive` stay base64 |
+| `FaultInjection` | The single conf becomes a one-element `default.http[]`; `responseBandwidth.limit` units rewritten to `kbps`/`Mbps`/`Gbps` (`50 mbps` → `50Mbps`, warned) |
+| `RateLimit` | `http.{requests, interval}` → `local.http.requestRate.{num, interval}`; `onRateLimit.headers` names lower-cased (warned); emitted as `rules[]` (a specific `sources` selector is lost and warned) |
 | `TrafficLog` | `conf.backend` resolved against `Mesh.logging.backends` and inlined as `default.backends[]` |
 | `TrafficTrace` | Backend resolved against `Mesh.tracing.backends`; its `sampling` → `default.sampling.overall` |
-| `ProxyTemplate` | `modifications` → `appendModifications`; operations recased; `httpFilter`/`networkFilter`/`virtualHost` `add` → `AddLast` (warned); `imports` and `resources` have no equivalent |
+| `ProxyTemplate` | `modifications` → `appendModifications`; operations recased (`addLast` → `AddLast`, `patch` → `Patch`, …); `httpFilter`/`networkFilter` `add` → `AddLast` (warned); `imports` and `resources` have no equivalent |
 | `TrafficPermission` | No conf; one `from[]` entry with `action: Allow` per source |
 
 Percentages stay numbers when whole and become strings when fractional, as the new schemas type
 them `anyOf: [integer, string]`.
+
+Three value formats are stricter on the new kinds, and the converters rewrite them:
+
+| Field | Legacy accepts | New kind requires | Rewrite |
+|---|---|---|---|
+| `ProxyTemplate` `operation` | `add`, `addFirst`, `addLast`, `addBefore`, `addAfter`, `patch`, `remove` | PascalCase enum: `Add`/`Remove`/`Patch` on `cluster`, `listener`, `virtualHost`; `AddFirst`/`AddBefore`/`AddAfter`/`AddLast`/`Remove`/`Patch` on `httpFilter`, `networkFilter` | Recased. A filter `add` becomes `AddLast` (warned) |
+| Header names (`HealthCheck`, `RateLimit`) | any case | Lower-case RFC 7230 token characters only ([`header.go`](https://github.com/kumahq/kuma/blob/master/api/common/v1alpha1/header.go)) | Lower-cased (HTTP header names are case-insensitive), warned. A name with a character no header can have is warned as rejected |
+| `FaultInjection` `responseBandwidth.limit` | `50 mbps` (lower-case `kbps`/`mbps`/`gbps`) | `kbps`, `Mbps` or `Gbps` | `50 mbps` → `50Mbps`, warned. A value that is not `<integer><unit>` is copied and warned |
+
+## Namespace on Kubernetes
+
+The legacy CRDs are cluster-scoped; their successors are namespaced. A converted policy is written
+with `metadata.namespace` set to the control-plane namespace: the `systemNamespace` config value,
+else the namespace other input documents show (`kong-mesh-system` or `kuma-system`), else
+`kuma-system` with a warning. In that namespace the control plane always computes
+`kuma.io/policy-role: system`, so the policy applies mesh-wide as the legacy one did. Without a
+namespace, `kubectl apply` stores it in the current namespace, where it gets a
+`workload-owner`/`consumer` role and only selects that namespace's proxies
+([`compute.go`](https://github.com/kumahq/kuma/blob/master/pkg/core/resources/labels/compute.go)).
+The same applies to `OPAPolicy` → `MeshOPA` and to a `MeshSubset` policy written without a
+namespace.
 
 ## What kuma-migrator does
 

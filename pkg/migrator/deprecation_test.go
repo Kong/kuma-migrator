@@ -391,33 +391,93 @@ spec:
 	}
 }
 
+// Regression for the e2e run against Kong Mesh 3.0.1:
+//
+//	spec.to[0].default.hashPolicies[1].type: Unsupported value: "SourceIP": supported values:
+//	"Header", "Cookie", "Connection", "QueryParameter", "FilterState"
+//
+// The input is the e2e fixture: hashPolicies under the deprecated ringHash location,
+// which fixHashPoliciesPath moves first.
 func TestScanForDeprecations_SourceIPHashPolicy(t *testing.T) {
-	input := `apiVersion: kuma.io/v1alpha1
-kind: MeshLoadBalancingStrategy
-metadata:
-  name: lb-strategy
+	input := `type: MeshLoadBalancingStrategy
+name: ring-hash
+mesh: default
 spec:
   targetRef:
     kind: Mesh
   to:
-    - targetRef:
-        kind: MeshService
-        name: backend
-      default:
-        loadBalancer:
-          type: RingHash
+  - targetRef:
+      kind: MeshService
+      labels:
+        kuma.io/display-name: backend
+    default:
+      loadBalancer:
+        type: RingHash
+        ringHash:
+          hashFunction: MurmurHash2
           hashPolicies:
-            - type: SourceIP
+          - type: Header
+            header:
+              name: x-session
+          - type: SourceIP
 `
-	_, warnings := ScanForDeprecations([]byte(input), TargetV2)
-	found := false
-	for _, w := range warnings {
-		if strings.Contains(w, "SourceIP") && strings.Contains(w, "Connection") {
-			found = true
+	for _, target := range []TargetVersion{TargetV2, TargetV3} {
+		out, warnings := ScanForDeprecations([]byte(input), target)
+		var obj map[string]interface{}
+		if err := yaml.Unmarshal(out, &obj); err != nil {
+			t.Fatal(err)
+		}
+		def := obj["spec"].(map[string]interface{})["to"].([]interface{})[0].(map[string]interface{})["default"].(map[string]interface{})
+		hps := def["hashPolicies"].([]interface{})
+		hp := hps[1].(map[string]interface{})
+		if hp["type"] != "Connection" {
+			t.Errorf("%s: hashPolicies[1].type = %v, want Connection", target, hp["type"])
+		}
+		conn, _ := hp["connection"].(map[string]interface{})
+		if conn["sourceIP"] != true {
+			t.Errorf("%s: hashPolicies[1].connection = %v, want {sourceIP: true}", target, hp["connection"])
+		}
+		if hps[0].(map[string]interface{})["type"] != "Header" {
+			t.Errorf("%s: Header policy changed: %v", target, hps[0])
+		}
+		if !strings.Contains(string(out), "type: Connection") || strings.Contains(string(out), "SourceIP") {
+			t.Errorf("%s: output still carries SourceIP:\n%s", target, out)
+		}
+		if !hasWarning(warnings, "spec.to[0].default.hashPolicies[1] type SourceIP rewritten") {
+			t.Errorf("%s: expected rewrite warning naming the entry, got: %v", target, warnings)
 		}
 	}
-	if !found {
-		t.Errorf("expected SourceIP → Connection deprecation warning, got: %v", warnings)
+}
+
+func TestScanForDeprecations_SourceIPHashPolicy_KeepsExistingConnection(t *testing.T) {
+	input := `apiVersion: kuma.io/v1alpha1
+kind: MeshLoadBalancingStrategy
+metadata:
+  name: lb
+spec:
+  targetRef:
+    kind: Mesh
+  to:
+  - targetRef:
+      kind: Mesh
+    default:
+      hashPolicies:
+      - type: SourceIP
+        terminal: true
+        connection:
+          sourceIP: false
+`
+	out, _ := ScanForDeprecations([]byte(input), TargetV3)
+	var obj map[string]interface{}
+	if err := yaml.Unmarshal(out, &obj); err != nil {
+		t.Fatal(err)
+	}
+	hp := obj["spec"].(map[string]interface{})["to"].([]interface{})[0].(map[string]interface{})["default"].(map[string]interface{})["hashPolicies"].([]interface{})[0].(map[string]interface{})
+	if hp["type"] != "Connection" || hp["terminal"] != true {
+		t.Errorf("hash policy = %v, want type Connection with terminal kept", hp)
+	}
+	if hp["connection"].(map[string]interface{})["sourceIP"] != true {
+		t.Errorf("connection.sourceIP = %v, want true (SourceIP means hash on the source IP)", hp["connection"])
 	}
 }
 

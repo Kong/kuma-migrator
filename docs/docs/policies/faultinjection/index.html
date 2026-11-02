@@ -77,6 +77,9 @@
 <code>kuma.io/protocol</code> are dropped from the <code>Dataplane</code> labels, with a warning. The single
 legacy <code>conf</code> becomes a one-element <code>default.http[]</code> list (<code>delay</code>, <code>abort</code>,
 <code>responseBandwidth</code>). Percentages are numbers when whole and strings when fractional.
+<code>responseBandwidth.limit</code> is rewritten with the units <code>MeshFaultInjection</code> accepts
+(<code>50 mbps</code> → <code>50Mbps</code>, <code>kbps</code>, <code>Gbps</code>), with a warning; a value that is not
+<code>&lt;integer&gt;&lt;unit&gt;</code> is copied and warned, because the control plane rejects it.
 The scanner then warns that <code>from[]</code> is deprecated in favour of <code>rules[]</code>.</p>
 </div>
   </section>
