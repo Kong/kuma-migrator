@@ -52,13 +52,31 @@ but `cmd/migrate.go`'s `RunE` is the only caller and picks between them based on
 
 Two mutually-exclusive modes, both write one YAML file per resource:
 
-**`--kube-context`** — queries the kube API server for all `kuma.io/v1alpha1` CRDs, fetches
-every instance with `kubectl get <kind> -o yaml`. Insight kinds are excluded via `isInsightKind`.
+**`--kube-context`** — queries the kube API server for all `kuma.io/v1alpha1` CRDs, lists
+every instance with one `kubectl get <plural> -A -o json` per CRD and writes each list item
+through `writeResourceObject` (no per-object `kubectl get`). Insight kinds are excluded via
+`isInsightKind`.
 
 **`--kumactl-context`** — resolves the context from `~/.kumactl/config` (or `$KUMACTL_CONFIG`),
 calls `GET <cpURL>/_resources` to discover all writable resource types, lists mesh names (via
 direct HTTP for Konnect, `kumactl get meshes -o yaml` for self-hosted CPs), then calls
-`kumactl get <path> [--mesh <mesh>] -o yaml` for each type × mesh combination.
+`kumactl get <list-arg> [--mesh <mesh>] -o yaml` for each type × mesh combination.
+Every spawned kumactl goes through `kumactlArgs`, which prepends `--config-file $KUMACTL_CONFIG`
+when that variable is set (kumactl has no env var for its config path and otherwise reads
+`~/.kumactl/config`, so the context extract resolved would not be the one kumactl used).
+`execKumactl` (package var) is the runner; tests substitute a fake.
+
+**kumactl subcommand ≠ API path.** `/_resources` returns `ResourceTypeDescription` (2.14:
+`name`, `path`, `scope`, `readOnly`, `shortName`, …) — no kumactl field. kumactl registers
+`get` subcommands under the descriptor's `KumactlListArg` (`app/kumactl/cmd/get/get_resources.go`),
+which equals `WsPath` for every 2.14 Kuma and Kong Mesh type **except `HealthCheck`**
+(`health-checks` vs `healthchecks`). `kumactlListArgOverrides` maps it. Every
+`get <type>` subcommand declares `--mesh`, so `unknown flag: --mesh` (or usage text on stdout,
+`isKumactlUsage`) means **the subcommand does not exist** — never a scope problem
+(`isUnknownSubcommand`). The old "retry once globally" fallback misread exactly that and wrote
+nothing for HealthCheck. Now `dumpKumactlResources` warns once per type and reads it from the
+CP API (`fetchResourcesHTTP`: `<cpURL>[/meshes/<mesh>]/<path>`, follows `next`, refuses a
+`next` on another scheme/host so the token stays on the CP).
 
 The `readOnly` field from `/_resources` is intentionally **ignored**. When the CP API server
 is configured with `ApiServer.ReadOnly=true` (common on self-hosted Global CPs), every type
@@ -72,7 +90,7 @@ Both modes detect the CP at runtime into a `CPInfo` (`detectKumactlCPInfo`: `GET
 
 | CP mode | Filter applied |
 |---|---|
-| `zone`, federated | Only `kuma.io/origin: zone` kept (`zoneOriginDecision`); `origin: global` skipped silently; no label → kept for gateway-local kinds, otherwise skipped **and recorded** (`ZoneOriginSkip{NoOriginLabel: true}`) |
+| `zone`, federated | `kuma.io/origin: global` skipped (counted, `extractNotes.GlobalCopies`); `origin: zone` **and unlabelled** kept (`zoneOriginDecision`); unlabelled ones counted per kind as info (`extractNotes.KeptUnlabelled`) |
 | `zone`, not federated | All resources extracted (no origin filter) — `originFilterMode` passes `""` |
 | `global` | Resources with `kuma.io/origin: zone` **skipped** — these are zone-created policies synced read-only to the Global CP. The user is told which zone to target (via `kuma.io/zone` label). Resources with `origin: global` or no label are extracted normally. |
 | `standalone` / unknown | All resources extracted (no origin filter) |
@@ -81,18 +99,44 @@ Both modes detect the CP at runtime into a `CPInfo` (`detectKumactlCPInfo`: `GET
 zone mode + non-empty Global address + non-empty zone name (`isFederatedZone`). The Helm chart
 always renders `KUMA_MULTIZONE_ZONE_GLOBAL_ADDRESS` in zone mode, **empty** when
 `controlPlane.kdsGlobalAddress` is unset, so the value is checked, not the variable's presence.
-`/config`'s `globalAddress` is `omitempty`. Why no filter on a non-federated zone: Kuma 2.7+
-labels every zone-created resource `kuma.io/origin: zone` whether or not the zone is federated
-(`labels.Compute`, webhook defaulter / API server), but objects created on ≤2.6 and never
-updated carry no label — the old zone filter silently dropped them on a single-zone CP. Note a
+`/config`'s `globalAddress` is `omitempty`. Note a
 2.x `kuma-cp` started with `KUMA_MODE=standalone` rewrites it to `zone` at startup
 (`app/kuma-cp/cmd/run.go`), so `/config` reports `zone`; only the kubectl path sees `standalone`.
 
-Origin skips are accumulated into `[]ZoneOriginSkip` and printed after `ExtractDone` by
-`printZoneOriginSkips`: zone-origin skips on a Global CP (with the zone to target) and, in a
-separate section (`printNoOriginSkips`), unlabelled resources skipped on a federated zone (with
-their mesh and what to do). Resources excluded by `--mesh` are not recorded.
-Unknown mode falls back to extracting everything.
+**Why an unlabelled resource on a zone is local** (verified on 2.14.5 and a real 2.14.7 CP, where
+the old "only `origin: zone`" rule dropped 22 objects): the only thing that marks a synced copy
+is `kuma.io/origin: global`, and the KDS global→zone mapper sets it unconditionally
+(`pkg/kds/context/context.go`, `DefaultContext` `globalMappers`). `kuma.io/origin: zone` is set
+by `labels.Compute` in the defaulting webhook, and the Helm chart registers that webhook
+(`mesh.defaulter.kuma-admission.kuma.io` in `cp-webhooks-and-secrets.yaml`) for `meshes`,
+`dataplanes`, `meshgateways`, zone proxies/insights and `plugins.policies` (new-style Mesh*)
+only. Legacy policies, `ExternalService`, `ProxyTemplate`, `MeshGatewayRoute`,
+`MeshGatewayInstance`, `OPAPolicy`, `AccessRole`, `AccessAudit` are **never** labelled on
+Kubernetes, nor are pre-2.7 objects. The old `gatewayLocalKinds` exception list is gone (no
+longer needed).
+
+What the filters did is collected in `*extractNotes` (`ZoneOriginSkips`, `GlobalCopies`,
+`KeptUnlabelled`, `Generated`; nil-safe methods) and printed after `ExtractDone` by
+`printExtractNotes`: info lines for kept-unlabelled, global copies and CP-generated counts, then
+`printZoneOriginSkips` (Global CP, with the zone to target). Resources excluded by `--mesh` are
+not counted. Unknown mode falls back to extracting everything.
+
+**CP-generated resources** are skipped in every mode (`isCPGenerated`): `kuma.io/managed-by` in
+`cpGeneratedManagedBy` = `k8s-controller` (MeshService from a k8s Service, MeshZoneAddress,
+Workload), `meshservice-generator` (Universal MeshService from Dataplane inbounds),
+`workload-generator`. The old `kuma.io/env: kubernetes` test was wrong: `labels.Compute` sets
+`kuma.io/env` on **every** MeshService created on a zone (ProvidedByZoneFlag), so it dropped
+hand-written ones too.
+
+**Server-written fields are stripped** before writing (`stripServerSideFields`, both paths):
+`status`; `metadata.{resourceVersion,uid,creationTimestamp,generation,selfLink,managedFields,ownerReferences,deletionTimestamp,deletionGracePeriodSeconds}`;
+annotation `kubectl.kubernetes.io/last-applied-configuration`; Universal `creationTime`,
+`modificationTime`, `kri`. `ownerReferences` decision: dropped, all of them. Kuma's
+`OwnerReferenceMutator` re-adds the Mesh owner on create with the *target* Mesh's UID; a copied
+ref carries the source cluster's UID, which on any other cluster (or after Mesh recreation) gets
+the object garbage-collected, and 3.0 rejects a Mesh owner that disagrees with the mesh. Labels
+(incl. CP-computed `kuma.io/*`) and user annotations are kept. Output is re-marshalled, so keys
+come out sorted.
 
 `runKubectl` (package var in `kube.go`) is the kubectl runner for the kubectl path; tests
 substitute a fake (`federation_test.go`).
@@ -103,6 +147,15 @@ The kumactl path also reads the `environment` field from `GET <cpURL>/config`
 
 **`--mesh <name>` filter**: when set, only the named mesh is iterated for Mesh-scoped resources.
 Global-scoped resources (no mesh association) are always extracted regardless of this flag.
+A `Mesh` counts as belonging to itself, so `--mesh default` keeps only `Mesh/default`.
+
+**Resource mesh** (`resourceMesh`, used when the caller did not fetch per mesh): a `Mesh` → its
+own name; else the `kuma.io/mesh` label; else the top-level `mesh` field (Universal, and the
+Kubernetes CRDs of legacy kinds such as `MeshGatewayRoute`/`TrafficPermission`, which store it
+there and carry no label). Before this, `Mesh` objects landed in `global-scoped-resources/mesh/`
+and cluster-scoped legacy kinds in `global-scoped-resources/`. `migrate` reads both layouts:
+`isKindSubfolder`/meshDir detection is path-based and the Apply Checklist orders `Mesh` last by
+the `mesh` subfolder name, not its parent.
 
 **Output directory layout** — context-first: context+mode label at the top level, mesh name
 (prefixed with `mesh-`) underneath, kind subfolder last. Global-scoped resources go into a
@@ -131,11 +184,11 @@ Key files: `pkg/extractor/kube.go`, `pkg/extractor/kumactl.go`, `pkg/extractor/e
 `pkg/extractor/cpmode.go`.
 
 The `--mesh` flag and `--output-format` flag are threaded through:
-- `ExtractViaKumactl(contextName, outputDir, meshFilter, outputFormat string)` — filters `loopMeshes`; passes outputFormat down; accumulates `[]ZoneOriginSkip` and calls `printZoneOriginSkips` after `ExtractDone`
+- `ExtractViaKumactl(contextName, outputDir, meshFilter, outputFormat string)` — filters `loopMeshes`; passes outputFormat down; accumulates `*extractNotes` and calls `printExtractNotes` after `ExtractDone`
 - `ExtractViaKubectl(kubeContext, outputDir, meshFilter, outputFormat string)` — same accumulation; outputFormat accepted but unused (kubectl always returns K8s format)
-- `dumpKumactlResources(..., meshName, meshFilter, outputFormat string, skips *[]ZoneOriginSkip)` — passes all to `writeResourceFiles`
-- `dumpCRDInstances(..., cpModeDir, meshFilter string, skips *[]ZoneOriginSkip)` — reads mesh from `kuma.io/mesh` label; applies zone-origin filter inline before per-resource YAML fetch
-- `writeResourceFiles(data, outputDir, skipSet, cpMode, cpModeDir, meshName, meshFilter, outputFormat string, skips *[]ZoneOriginSkip)` — skip if `meshFilter != "" && meshName != "" && meshName != meshFilter`; applies `universalToKubernetes` conversion when `outputFormat == "kubernetes"` and resource lacks `kind`
+- `dumpKumactlResources(..., meshName, meshFilter, outputFormat string, notes *extractNotes)` — passes all to `writeResourceFiles`
+- `dumpCRDInstances(..., cpModeDir, meshFilter string, notes *extractNotes)` — one list call, each item to `writeResourceObject` with `meshName=""` (mesh read from the object)
+- `writeResourceFiles` → `writeSingleResourceDoc` → `writeResourceObject(obj, outputDir, skipSet, cpMode, cpModeDir, meshName, meshFilter, outputFormat string, notes *extractNotes)` — the single place for list expansion, `universalToKubernetes`, skip list, CP-generated, origin and mesh filters, stripping, and path
 - Path computed as `<outputDir>/<cpModeDir>/mesh-<meshName>/<sub>` (or `<cpModeDir>/global-scoped-resources/<sub>` for global-scoped)
 
 `ZoneOriginSkip` struct (in `extractor.go`): `Kind`, `Name`, `ZoneName` (value of `kuma.io/zone` label, empty when absent).
@@ -252,10 +305,9 @@ object moved on).
   `authenticatedGet(<base>/zones)` directly; for self-hosted CPs they fall back to
   `kumactl --context <ctx> get meshes/zones -o yaml`. The kumactl CLI path fails on Konnect
   because the context is not registered in the local kumactl installation.
-- **Scope fallback**: `/_resources` sometimes reports resource types as Mesh-scoped but kumactl
-  rejects `--mesh` for them ("unknown flag: --mesh"). `isUnknownMeshFlag(err)` detects this
-  and retries the extraction globally (breaking out of the mesh loop). This check only applies
-  to the kumactl CLI path; Konnect uses direct HTTP and does not trigger it.
+- **Unknown kumactl subcommand**: "unknown flag: --mesh" from kumactl is a wrong subcommand,
+  not a scope mismatch (see **kumactl subcommand ≠ API path** above). It only applies to the
+  kumactl CLI path; Konnect uses direct HTTP.
 - **Universal list format**: kumactl on self-hosted CPs (not Konnect) may return
   `{total: N, items: [...]}` JSON with no top-level `kind`. `writeSingleResourceDoc` detects
   this and recurses into `items`. Konnect list endpoints also return this format (the

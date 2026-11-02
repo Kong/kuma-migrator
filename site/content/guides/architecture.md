@@ -40,8 +40,8 @@ resource.
 | Detect mode | `KUMA_MODE` and `KUMA_MULTIZONE_ZONE_NAME` on `kuma-control-plane` (`kuma-system`) or `kong-mesh-control-plane` (`kong-mesh-system`) | `GET <cp>/config`; Konnect (`api.konghq.com`) is always `global` |
 | Detect environment | always `kubernetes` | `environment` from `GET <cp>/config` |
 | Discover types | `kuma.io/v1alpha1` CRDs | `GET <cp>/_resources`; `readOnly` ignored |
-| List meshes | `kuma.io/mesh` label of each resource | `kumactl get meshes`; Konnect: `GET <base>/meshes` |
-| Fetch | `kubectl get <kind> -o yaml` | `kumactl get <type> [--mesh <m>] -o yaml`; Konnect: `GET <base>/meshes/<m>/<type>` |
+| List meshes | `kuma.io/mesh` label, else top-level `mesh` field, of each resource; a `Mesh` is its own mesh | `kumactl get meshes`; Konnect: `GET <base>/meshes` |
+| Fetch | `kubectl get <plural> -A -o json`, one call per CRD | `kumactl [--config-file $KUMACTL_CONFIG] get <list-arg> [--mesh <m>] -o yaml` (`kumactlListArg`); API fallback when `kumactl` has no subcommand; Konnect: `GET <base>/meshes/<m>/<type>` |
 | Format | Kubernetes | Universal, or Kubernetes with `--output-format kubernetes` (`universalToKubernetes`) |
 
 Mode and filtering live in
@@ -51,9 +51,16 @@ Mode and filtering live in
 | Mode | Directory label | Origin filter |
 |---|---|---|
 | `global` | `<context>-global-ctx` | drop `kuma.io/origin: zone` (recorded as `ZoneOriginSkip` and printed with the zone to target); drop `MeshGatewayInstance`, `MeshGatewayConfig` |
-| `zone` | `<context>-zone-ctx` | keep `kuma.io/origin: zone`; keep gateway kinds without an origin label; drop the rest |
+| `zone`, federated | `<context>-zone-ctx` | drop `kuma.io/origin: global`; keep the rest (unlabelled ones counted) |
+| `zone`, not federated | `<context>-zone-ctx` | none |
 | `standalone` | `<context>-standalone-ctx` | none |
 | unknown | `<context>-unknown-ctx` | none |
+
+In every mode, `writeResourceObject` (shared by both paths) also drops resources labelled
+`kuma.io/managed-by` with a value the control plane writes (`k8s-controller`,
+`meshservice-generator`, `workload-generator`), and strips server-written fields
+(`stripServerSideFields`: `status`, `resourceVersion`, `uid`, `ownerReferences`, …) before
+writing.
 
 Each context directory gets a `.kuma-migrator.json` (`ContextMeta`: `tool`, `context`,
 `cpMode`, `isKonnect`, `environment`), written before any resource. `migrate` reads it back

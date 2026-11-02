@@ -79,7 +79,7 @@ it never writes to the control plane.</p>
 </tr>
 <tr>
 <td>Listing</td>
-<td><code>kubectl get &lt;kind&gt; -o yaml</code> per CRD</td>
+<td><code>kubectl get &lt;plural&gt; -A -o json</code> per CRD</td>
 <td><code>kumactl get &lt;type&gt; [--mesh &lt;mesh&gt;] -o yaml</code> per type and mesh</td>
 </tr>
 <tr>
@@ -112,9 +112,83 @@ it never writes to the control plane.</p>
 <p>Both paths exclude kinds whose name contains <code>Insight</code>, and kinds in the skip list (see
 <a href="../cli/#configuration-file">Configuration file</a>).</p>
 <p>The <code>--kumactl-context</code> path resolves the context from <code>~/.kumactl/config</code> (or
-<code>$KUMACTL_CONFIG</code>). It ignores the <code>readOnly</code> flag that <code>/_resources</code> returns: a control plane
-with <code>ApiServer.ReadOnly=true</code> reports every type as read-only, which would extract nothing.
-<code>extract</code> never writes through that API, so the flag does not apply to it.</p>
+<code>$KUMACTL_CONFIG</code>). When <code>$KUMACTL_CONFIG</code> is set, every <code>kumactl</code> call gets
+<code>--config-file $KUMACTL_CONFIG</code>: <code>kumactl</code> itself only reads <code>~/.kumactl/config</code>. It ignores the
+<code>readOnly</code> flag that <code>/_resources</code> returns: a control plane with <code>ApiServer.ReadOnly=true</code>
+reports every type as read-only, which would extract nothing. <code>extract</code> never writes through
+that API, so the flag does not apply to it.</p>
+<h3 id="generated-resources">Generated resources</h3>
+<p>Resources the control plane generates and reconciles itself are skipped in every mode and
+counted after extraction. They carry a <code>kuma.io/managed-by</code> label:</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Value</th>
+<th>Resource</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>k8s-controller</code></td>
+<td><code>MeshService</code> generated from a Kubernetes <code>Service</code>; <code>MeshZoneAddress</code>; <code>Workload</code></td>
+</tr>
+<tr>
+<td><code>meshservice-generator</code></td>
+<td><code>MeshService</code> generated from Dataplane inbounds on Universal</td>
+</tr>
+<tr>
+<td><code>workload-generator</code></td>
+<td><code>Workload</code> on Universal</td>
+</tr>
+</tbody>
+</table></div>
+<p>A hand-written <code>MeshService</code> has no such label and is extracted. The <code>kuma.io/env</code> label does
+not tell the two apart: Kuma sets it on every <code>MeshService</code> created on a zone.</p>
+<h3 id="server-written-fields">Server-written fields</h3>
+<p><code>extract</code> drops the fields the server writes, so each file can be applied again as it is:</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Format</th>
+<th>Dropped</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>both</td>
+<td><code>status</code></td>
+<td>computed by the control plane; <code>migrate</code> does not read it</td>
+</tr>
+<tr>
+<td>Kubernetes</td>
+<td><code>metadata.resourceVersion</code></td>
+<td>a stale value makes <code>kubectl apply</code> fail with a conflict</td>
+</tr>
+<tr>
+<td>Kubernetes</td>
+<td><code>metadata.uid</code>, <code>creationTimestamp</code>, <code>generation</code>, <code>selfLink</code>, <code>managedFields</code>, <code>deletionTimestamp</code>, <code>deletionGracePeriodSeconds</code></td>
+<td>owned by the API server</td>
+</tr>
+<tr>
+<td>Kubernetes</td>
+<td><code>metadata.ownerReferences</code></td>
+<td>Kuma's mutating webhook adds the <code>Mesh</code> owner on create, with the UID of the <code>Mesh</code> in the target cluster. A copied reference carries the source cluster's UID: anywhere else, the garbage collector deletes the object as orphaned. Kuma 3.0 also rejects a <code>Mesh</code> owner that disagrees with the resource's mesh</td>
+</tr>
+<tr>
+<td>Kubernetes</td>
+<td>annotation <code>kubectl.kubernetes.io/last-applied-configuration</code></td>
+<td>written by client-side <code>kubectl apply</code></td>
+</tr>
+<tr>
+<td>Universal</td>
+<td><code>creationTime</code>, <code>modificationTime</code>, <code>kri</code></td>
+<td>computed by the control plane</td>
+</tr>
+</tbody>
+</table></div>
+<p>Labels and other annotations are kept, including the <code>kuma.io/*</code> labels the control plane
+computes: the zone filter and <code>migrate</code> read them.</p>
 <p>Code: <a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/extractor/kube.go"><code>pkg/extractor/kube.go</code></a>,
 <a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/extractor/kumactl.go"><code>pkg/extractor/kumactl.go</code></a>.</p>
 <h2 id="output-layout">Output layout</h2>
@@ -130,6 +204,7 @@ with <code>ApiServer.ReadOnly=true</code> reports every type as read-only, which
       other/
     mesh-prod/
       resiliency/
+      mesh/Mesh-prod.yaml          <span class="o-dim">← a Mesh goes under its own directory</span>
     global-scoped-resources/       <span class="o-dim">← resources with no mesh (Zone, HostnameGenerator, …)</span>
       other/
   &lt;context&gt;-zone-ctx/              <span class="o-dim">← a Zone control plane</span>
@@ -186,6 +261,11 @@ control plane topology (<code>cpMode</code>, <code>environment</code>, <code>sto
 <p>Extract one mesh only:</p>
 <div class="code"><pre class="chroma" data-lang="bash"><code><span class="k-bin">kuma-migrator</span> <span class="k-sub">extract</span> <span class="k-flag">--kumactl-context</span> <span class="k-val">global-cp</span> <span class="k-flag">--output-dir</span> <span class="k-val">./raw-policies</span> <span class="k-flag">--mesh</span> <span class="k-val">default</span>
 </code></pre></div>
+<p>The mesh of a resource is its <code>kuma.io/mesh</code> label, or the top-level <code>mesh</code> field: Universal
+format stores it there, and so do the Kubernetes CRDs of the legacy kinds (<code>TrafficPermission</code>,
+<code>MeshGatewayRoute</code>, …), which carry no label. A <code>Mesh</code> belongs to itself and is written to
+<code>mesh-&lt;name&gt;/mesh/</code>; <code>--mesh</code> keeps only that mesh's <code>Mesh</code>. <code>migrate</code> also reads the older
+layout, where <code>Mesh</code> files sit under <code>global-scoped-resources/mesh/</code>.</p>
 <p>Running <code>extract</code> against several control planes with the same <code>--output-dir</code> is supported:
 each control plane gets its own <code>&lt;context&gt;-&lt;mode&gt;-ctx/</code> directory.</p>
 <h2 id="control-plane-modes">Control plane modes</h2>
@@ -211,8 +291,8 @@ also depends on whether the zone is federated, that is, connected to a Global co
 <tr>
 <td><code>zone</code>, federated</td>
 <td><code>&lt;context&gt;-zone-ctx</code></td>
-<td><code>kuma.io/origin: zone</code>, plus gateway kinds with no origin label (<code>MeshGateway</code>, <code>MeshGatewayInstance</code>, <code>MeshGatewayConfig</code>, <code>MeshGatewayRoute</code>, <code>MeshHTTPRoute</code>, <code>MeshTCPRoute</code>)</td>
-<td><code>kuma.io/origin: global</code> (already captured from the Global control plane); other resources with no origin label, listed after extraction</td>
+<td><code>kuma.io/origin: zone</code> and resources with no origin label (created on the zone, counted after extraction)</td>
+<td><code>kuma.io/origin: global</code> (copies synced from the Global control plane; extract them there), counted after extraction</td>
 </tr>
 <tr>
 <td><code>zone</code>, not federated</td>
@@ -269,8 +349,8 @@ Extracted 83 resource(s) to ./raw-policies
 <h3 id="zone-control-planes">Zone control planes</h3>
 <p>Zone control planes hold what the Global control plane does not:</p>
 <ul>
-<li>policies created on the zone (<code>kuma.io/origin: zone</code>): producer policies, namespace-scoped
-consumer policies, anything applied directly to the zone cluster;</li>
+<li>resources created on the zone: producer policies, namespace-scoped consumer policies,
+anything applied directly to the zone cluster;</li>
 <li><code>MeshGatewayInstance</code> and <code>MeshGatewayConfig</code>, which are never synced to the Global
 control plane.</li>
 </ul>
@@ -279,23 +359,22 @@ control plane.</li>
 </code></pre></div>
 <p>Console output on a federated Zone control plane:</p>
 <div class="code"><pre class="chroma" data-lang="text"><code>CP mode:        zone (eu-west), federated
-<span class="o-warn">[WARN]</span> Extracting from a Zone CP. Only resources with kuma.io/origin: zone will be kept.
+<span class="o-warn">[WARN]</span> Extracting from a federated Zone CP — copies synced from Global (kuma.io/origin: global) are skipped.
        For a complete policy set, also run extract against the Global CP.
-<span class="o-info">[INFO]</span> MeshGatewayInstance and MeshGatewayConfig are zone-local and will be extracted here.
-<span class="o-info">[INFO]</span> Other resources with no kuma.io/origin label are skipped and listed after extraction.
+<span class="o-info">[INFO]</span> Resources created on this zone are extracted: kuma.io/origin: zone, or no origin label
+       (Kuma 2.x does not label legacy policies, ExternalService, ProxyTemplate, MeshGatewayRoute, …).
 Extracted 12 resource(s) to ./raw-policies
 
-  <span class="o-warn">⚠</span>  2 resource(s) without a kuma.io/origin label skipped on this federated Zone CP:
-     MeshTimeout/legacy-timeout  (mesh default)
-     MeshRetry/legacy-retry  (mesh default)
+<span class="o-info">[INFO]</span> 4 resource(s) without a kuma.io/origin label kept (created on this zone): ExternalService 1, TrafficPermission 3
+<span class="o-info">[INFO]</span> 31 resource(s) synced from the Global CP (kuma.io/origin: global) skipped — extract them from the Global CP.
 </code></pre></div>
-<p>Kuma 2.7 and later label every resource created on a zone <code>kuma.io/origin: zone</code> (the admission
-webhook and the API server compute it) and every copy synced from the Global control plane
-<code>kuma.io/origin: global</code>. A resource with no origin label on a federated zone was created
-before the label existed (Kuma 2.6 or earlier) and not updated since, or was written with the
-admission webhook bypassed. Its owner cannot be read from the object. If it also exists on the
-Global control plane, it is a synced copy: extract it there. Otherwise it was created on the
-zone: label it <code>kuma.io/origin=zone</code> and run <code>extract</code> again.</p>
+<p>Only <code>kuma.io/origin: global</code> marks a synced copy. The Global-to-zone sync (KDS) sets it on
+every resource it writes (<code>pkg/kds/context/context.go</code> in Kuma). <code>kuma.io/origin: zone</code> is set
+by Kuma's defaulting webhook, which the 2.x Helm chart registers for the new-style policies,
+<code>Mesh</code>, <code>Dataplane</code>, <code>MeshGateway</code> and the zone proxies only. The legacy policies,
+<code>ExternalService</code>, <code>ProxyTemplate</code>, <code>MeshGatewayRoute</code>, <code>OPAPolicy</code>, <code>AccessRole</code> and
+<code>AccessAudit</code> never get the label on Kubernetes, and a resource created before Kuma 2.7 may
+lack it too. Both were created on the zone, so <code>extract</code> keeps them.</p>
 <h3 id="zone-control-plane-without-a-global">Zone control plane without a Global</h3>
 <p>A zone control plane that is not connected to a Global control plane (<code>KUMA_MODE=zone</code> with no
 Global address) owns every resource in its store, including those with no origin label, so
@@ -325,7 +404,7 @@ Global address) owns every resource in its store, including those with no origin
 <td><code>MeshGateway</code>, <code>MeshGatewayRoute</code>, <code>MeshHTTPRoute</code>, <code>MeshTCPRoute</code></td>
 <td>Zone</td>
 <td>not present</td>
-<td>extracted (no origin label)</td>
+<td>extracted (<code>kuma.io/origin: zone</code> or no origin label)</td>
 </tr>
 <tr>
 <td><code>MeshGatewayInstance</code>, <code>MeshGatewayConfig</code></td>
@@ -376,9 +455,12 @@ regardless of the requested format. <code>--output-format kubernetes</code> conv
 Kubernetes format are not changed.</p>
 <p><code>migrate</code> reads both formats.</p>
 <h2 id="self-hosted-kumactl-specifics">Self-hosted kumactl specifics</h2>
-<p><code>/_resources</code> reports some types as mesh-scoped that <code>kumactl</code> then rejects with
-<code>unknown flag: --mesh</code>. <code>extract</code> detects that error and fetches the type once without
-<code>--mesh</code>. A type that fails this way does not stop the remaining types.</p>
+<p><code>/_resources</code> returns each type's API path, not its <code>kumactl</code> subcommand. The two are the same
+for every type except <code>HealthCheck</code>: API path <code>health-checks</code>, subcommand <code>healthchecks</code>.
+<code>extract</code> maps it. If <code>kumactl</code> still has no subcommand for a type (it answers
+<code>unknown flag: --mesh</code>, or prints its usage), <code>extract</code> warns and reads that type from the
+control plane API directly, following the pages. A type that fails does not stop the remaining
+types.</p>
 <p>Use <code>-k</code> / <code>--tls-skip-verify</code>, or <code>adminServer.tlsSkipVerify: true</code> in the configuration
 file, for a control plane API with a self-signed certificate.</p>
 
@@ -390,7 +472,7 @@ file, for a control plane API with a self-signed certificate.</p>
   </main>
   <nav class="toc" aria-label="On this page">
     <p class="toc-title">On this page</p>
-    <ul><li class="toc-l2"><a href="#connection-modes">Connection modes</a></li><li class="toc-l2"><a href="#output-layout">Output layout</a></li><li class="toc-l2"><a href="#control-plane-modes">Control plane modes</a></li><li class="toc-l3"><a href="#global-control-plane">Global control plane</a></li><li class="toc-l3"><a href="#zone-control-planes">Zone control planes</a></li><li class="toc-l3"><a href="#zone-control-plane-without-a-global">Zone control plane without a Global</a></li><li class="toc-l3"><a href="#where-gateway-resources-live">Where gateway resources live</a></li><li class="toc-l2"><a href="#environment-detection">Environment detection</a></li><li class="toc-l2"><a href="#konnect">Konnect</a></li><li class="toc-l2"><a href="#universal-format">Universal format</a></li><li class="toc-l2"><a href="#self-hosted-kumactl-specifics">Self-hosted kumactl specifics</a></li></ul>
+    <ul><li class="toc-l2"><a href="#connection-modes">Connection modes</a></li><li class="toc-l3"><a href="#generated-resources">Generated resources</a></li><li class="toc-l3"><a href="#server-written-fields">Server-written fields</a></li><li class="toc-l2"><a href="#output-layout">Output layout</a></li><li class="toc-l2"><a href="#control-plane-modes">Control plane modes</a></li><li class="toc-l3"><a href="#global-control-plane">Global control plane</a></li><li class="toc-l3"><a href="#zone-control-planes">Zone control planes</a></li><li class="toc-l3"><a href="#zone-control-plane-without-a-global">Zone control plane without a Global</a></li><li class="toc-l3"><a href="#where-gateway-resources-live">Where gateway resources live</a></li><li class="toc-l2"><a href="#environment-detection">Environment detection</a></li><li class="toc-l2"><a href="#konnect">Konnect</a></li><li class="toc-l2"><a href="#universal-format">Universal format</a></li><li class="toc-l2"><a href="#self-hosted-kumactl-specifics">Self-hosted kumactl specifics</a></li></ul>
   </nav>
 </div>
 <footer class="site-footer">

@@ -146,8 +146,8 @@ set), and filters on <code>kuma.io/origin</code>:</p>
 </tr>
 <tr>
 <td><code>zone</code>, federated</td>
-<td><code>kuma.io/origin: zone</code> and gateway-local kinds</td>
-<td>Resources synced from the Global CP (<code>kuma.io/origin: global</code>); other resources with no origin label, listed after extraction</td>
+<td><code>kuma.io/origin: zone</code> and resources with no origin label</td>
+<td>Resources synced from the Global CP (<code>kuma.io/origin: global</code>), counted after extraction</td>
 </tr>
 <tr>
 <td><code>zone</code>, not federated</td>
@@ -162,9 +162,11 @@ set), and filters on <code>kuma.io/origin</code>:</p>
 </tbody>
 </table></div>
 <p>A zone with no Global owns all of its resources, so no origin filter applies to it. On a
-federated zone, Kuma 2.7+ labels every locally created resource <code>kuma.io/origin: zone</code> and
-every synced copy <code>kuma.io/origin: global</code>; an unlabelled resource predates the label or
-bypassed the admission webhook, so <code>extract</code> lists it instead of guessing its owner.</p>
+federated zone, the Global-to-zone sync labels every copy it writes <code>kuma.io/origin: global</code>,
+so that label alone marks a synced copy. <code>kuma.io/origin: zone</code> is only set on the kinds Kuma's
+defaulting webhook covers: on Kubernetes 2.x, the legacy policies, <code>ExternalService</code>,
+<code>ProxyTemplate</code>, <code>MeshGatewayRoute</code>, <code>OPAPolicy</code>, <code>AccessRole</code> and <code>AccessAudit</code> are never
+labelled. <code>extract</code> keeps unlabelled resources as zone-created and prints how many it kept.</p>
 <p><code>MeshGatewayInstance</code> and <code>MeshGatewayConfig</code> are zone-local and never synced to the Global CP.
 Each context is written to its own directory (<code>&lt;context&gt;-global-ctx</code>, <code>&lt;context&gt;-zone-ctx</code>,
 <code>&lt;context&gt;-standalone-ctx</code>). On 3.0 the <code>standalone</code> mode is <code>zone</code>; the <code>-standalone-ctx</code>
@@ -245,7 +247,7 @@ zone CP upgrade. The <code>v3</code> warning contains the snippet.</li>
 <h2 id="manual-steps">Manual steps</h2>
 <ol>
 <li>Extract from the Global CP and from every Zone CP. Check the zone-origin skip list printed by
-the Global extraction, and the unlabelled-resource list printed by each federated zone.</li>
+the Global extraction.</li>
 <li>On 2.14, set <code>meshServices.mode: Exclusive</code> on every mesh (see <a href="../meshservice/">MeshService</a>).</li>
 <li>Create <code>MeshMultiZoneService</code>s for services that need cross-zone load balancing, and move
 <code>crossZone</code> settings onto <code>to[]</code> entries that target them.</li>

@@ -14,7 +14,7 @@ it never writes to the control plane.
 |---|---|---|
 | Tool | `kubectl` | `kumactl` CLI, or direct HTTPS for Konnect |
 | Type discovery | Every `kuma.io/v1alpha1` CRD in the cluster | `GET <cp>/_resources` |
-| Listing | `kubectl get <kind> -o yaml` per CRD | `kumactl get <type> [--mesh <mesh>] -o yaml` per type and mesh |
+| Listing | `kubectl get <plural> -A -o json` per CRD | `kumactl get <type> [--mesh <mesh>] -o yaml` per type and mesh |
 | Mode detection | `KUMA_MODE` on the control plane Deployment in `kuma-system` or `kong-mesh-system` | `GET <cp>/config` |
 | Zone federation | `KUMA_MULTIZONE_ZONE_GLOBAL_ADDRESS` and `KUMA_MULTIZONE_ZONE_NAME` on the Deployment | `multizone.zone.globalAddress` and `multizone.zone.name` in `GET <cp>/config` |
 | Environment | Kubernetes skip list always; `KUMA_ENVIRONMENT` and `KUMA_STORE_TYPE` recorded | `environment` and `store.type` fields of `GET <cp>/config` |
@@ -25,9 +25,41 @@ Both paths exclude kinds whose name contains `Insight`, and kinds in the skip li
 [Configuration file](cli.md#configuration-file)).
 
 The `--kumactl-context` path resolves the context from `~/.kumactl/config` (or
-`$KUMACTL_CONFIG`). It ignores the `readOnly` flag that `/_resources` returns: a control plane
-with `ApiServer.ReadOnly=true` reports every type as read-only, which would extract nothing.
-`extract` never writes through that API, so the flag does not apply to it.
+`$KUMACTL_CONFIG`). When `$KUMACTL_CONFIG` is set, every `kumactl` call gets
+`--config-file $KUMACTL_CONFIG`: `kumactl` itself only reads `~/.kumactl/config`. It ignores the
+`readOnly` flag that `/_resources` returns: a control plane with `ApiServer.ReadOnly=true`
+reports every type as read-only, which would extract nothing. `extract` never writes through
+that API, so the flag does not apply to it.
+
+### Generated resources
+
+Resources the control plane generates and reconciles itself are skipped in every mode and
+counted after extraction. They carry a `kuma.io/managed-by` label:
+
+| Value | Resource |
+|---|---|
+| `k8s-controller` | `MeshService` generated from a Kubernetes `Service`; `MeshZoneAddress`; `Workload` |
+| `meshservice-generator` | `MeshService` generated from Dataplane inbounds on Universal |
+| `workload-generator` | `Workload` on Universal |
+
+A hand-written `MeshService` has no such label and is extracted. The `kuma.io/env` label does
+not tell the two apart: Kuma sets it on every `MeshService` created on a zone.
+
+### Server-written fields
+
+`extract` drops the fields the server writes, so each file can be applied again as it is:
+
+| Format | Dropped | Why |
+|---|---|---|
+| both | `status` | computed by the control plane; `migrate` does not read it |
+| Kubernetes | `metadata.resourceVersion` | a stale value makes `kubectl apply` fail with a conflict |
+| Kubernetes | `metadata.uid`, `creationTimestamp`, `generation`, `selfLink`, `managedFields`, `deletionTimestamp`, `deletionGracePeriodSeconds` | owned by the API server |
+| Kubernetes | `metadata.ownerReferences` | Kuma's mutating webhook adds the `Mesh` owner on create, with the UID of the `Mesh` in the target cluster. A copied reference carries the source cluster's UID: anywhere else, the garbage collector deletes the object as orphaned. Kuma 3.0 also rejects a `Mesh` owner that disagrees with the resource's mesh |
+| Kubernetes | annotation `kubectl.kubernetes.io/last-applied-configuration` | written by client-side `kubectl apply` |
+| Universal | `creationTime`, `modificationTime`, `kri` | computed by the control plane |
+
+Labels and other annotations are kept, including the `kuma.io/*` labels the control plane
+computes: the zone filter and `migrate` read them.
 
 Code: [`pkg/extractor/kube.go`](https://github.com/Kong/kuma-migrator/blob/main/pkg/extractor/kube.go),
 [`pkg/extractor/kumactl.go`](https://github.com/Kong/kuma-migrator/blob/main/pkg/extractor/kumactl.go).
@@ -47,6 +79,7 @@ Code: [`pkg/extractor/kube.go`](https://github.com/Kong/kuma-migrator/blob/main/
       other/
     mesh-prod/
       resiliency/
+      mesh/Mesh-prod.yaml          ← a Mesh goes under its own directory
     global-scoped-resources/       ← resources with no mesh (Zone, HostnameGenerator, …)
       other/
   <context>-zone-ctx/              ← a Zone control plane
@@ -87,6 +120,12 @@ Extract one mesh only:
 kuma-migrator extract --kumactl-context global-cp --output-dir ./raw-policies --mesh default
 ```
 
+The mesh of a resource is its `kuma.io/mesh` label, or the top-level `mesh` field: Universal
+format stores it there, and so do the Kubernetes CRDs of the legacy kinds (`TrafficPermission`,
+`MeshGatewayRoute`, …), which carry no label. A `Mesh` belongs to itself and is written to
+`mesh-<name>/mesh/`; `--mesh` keeps only that mesh's `Mesh`. `migrate` also reads the older
+layout, where `Mesh` files sit under `global-scoped-resources/mesh/`.
+
 Running `extract` against several control planes with the same `--output-dir` is supported:
 each control plane gets its own `<context>-<mode>-ctx/` directory.
 
@@ -99,7 +138,7 @@ also depends on whether the zone is federated, that is, connected to a Global co
 | Mode | Directory | Kept | Skipped |
 |---|---|---|---|
 | `global` | `<context>-global-ctx` | `kuma.io/origin: global` and resources with no origin label | `kuma.io/origin: zone` (read-only copies synced up from zones), listed after extraction with the zone to target; `MeshGatewayInstance` and `MeshGatewayConfig` |
-| `zone`, federated | `<context>-zone-ctx` | `kuma.io/origin: zone`, plus gateway kinds with no origin label (`MeshGateway`, `MeshGatewayInstance`, `MeshGatewayConfig`, `MeshGatewayRoute`, `MeshHTTPRoute`, `MeshTCPRoute`) | `kuma.io/origin: global` (already captured from the Global control plane); other resources with no origin label, listed after extraction |
+| `zone`, federated | `<context>-zone-ctx` | `kuma.io/origin: zone` and resources with no origin label (created on the zone, counted after extraction) | `kuma.io/origin: global` (copies synced from the Global control plane; extract them there), counted after extraction |
 | `zone`, not federated | `<context>-zone-ctx` | everything | nothing |
 | `standalone` | `<context>-standalone-ctx` | everything | nothing |
 | unknown | `<context>-unknown-ctx` | everything | nothing |
@@ -150,8 +189,8 @@ Extracted 83 resource(s) to ./raw-policies
 
 Zone control planes hold what the Global control plane does not:
 
-- policies created on the zone (`kuma.io/origin: zone`): producer policies, namespace-scoped
-  consumer policies, anything applied directly to the zone cluster;
+- resources created on the zone: producer policies, namespace-scoped consumer policies,
+  anything applied directly to the zone cluster;
 - `MeshGatewayInstance` and `MeshGatewayConfig`, which are never synced to the Global
   control plane.
 
@@ -164,24 +203,23 @@ Console output on a federated Zone control plane:
 
 ```text
 CP mode:        zone (eu-west), federated
-[WARN] Extracting from a Zone CP. Only resources with kuma.io/origin: zone will be kept.
+[WARN] Extracting from a federated Zone CP — copies synced from Global (kuma.io/origin: global) are skipped.
        For a complete policy set, also run extract against the Global CP.
-[INFO] MeshGatewayInstance and MeshGatewayConfig are zone-local and will be extracted here.
-[INFO] Other resources with no kuma.io/origin label are skipped and listed after extraction.
+[INFO] Resources created on this zone are extracted: kuma.io/origin: zone, or no origin label
+       (Kuma 2.x does not label legacy policies, ExternalService, ProxyTemplate, MeshGatewayRoute, …).
 Extracted 12 resource(s) to ./raw-policies
 
-  ⚠  2 resource(s) without a kuma.io/origin label skipped on this federated Zone CP:
-     MeshTimeout/legacy-timeout  (mesh default)
-     MeshRetry/legacy-retry  (mesh default)
+[INFO] 4 resource(s) without a kuma.io/origin label kept (created on this zone): ExternalService 1, TrafficPermission 3
+[INFO] 31 resource(s) synced from the Global CP (kuma.io/origin: global) skipped — extract them from the Global CP.
 ```
 
-Kuma 2.7 and later label every resource created on a zone `kuma.io/origin: zone` (the admission
-webhook and the API server compute it) and every copy synced from the Global control plane
-`kuma.io/origin: global`. A resource with no origin label on a federated zone was created
-before the label existed (Kuma 2.6 or earlier) and not updated since, or was written with the
-admission webhook bypassed. Its owner cannot be read from the object. If it also exists on the
-Global control plane, it is a synced copy: extract it there. Otherwise it was created on the
-zone: label it `kuma.io/origin=zone` and run `extract` again.
+Only `kuma.io/origin: global` marks a synced copy. The Global-to-zone sync (KDS) sets it on
+every resource it writes (`pkg/kds/context/context.go` in Kuma). `kuma.io/origin: zone` is set
+by Kuma's defaulting webhook, which the 2.x Helm chart registers for the new-style policies,
+`Mesh`, `Dataplane`, `MeshGateway` and the zone proxies only. The legacy policies,
+`ExternalService`, `ProxyTemplate`, `MeshGatewayRoute`, `OPAPolicy`, `AccessRole` and
+`AccessAudit` never get the label on Kubernetes, and a resource created before Kuma 2.7 may
+lack it too. Both were created on the zone, so `extract` keeps them.
 
 ### Zone control plane without a Global
 
@@ -200,7 +238,7 @@ CP mode:        zone (eu-west), not federated
 | Kind | Created on | Global extraction | Zone extraction |
 |---|---|---|---|
 | `MeshGateway`, `MeshGatewayRoute`, `MeshHTTPRoute`, `MeshTCPRoute` | Global (usual) | extracted | skipped (`kuma.io/origin: global`) |
-| `MeshGateway`, `MeshGatewayRoute`, `MeshHTTPRoute`, `MeshTCPRoute` | Zone | not present | extracted (no origin label) |
+| `MeshGateway`, `MeshGatewayRoute`, `MeshHTTPRoute`, `MeshTCPRoute` | Zone | not present | extracted (`kuma.io/origin: zone` or no origin label) |
 | `MeshGatewayInstance`, `MeshGatewayConfig` | Zone only | skipped | extracted, with or without an origin label |
 | any policy with `kuma.io/origin: zone` | Zone, synced read-only to Global | skipped, warning printed | extracted |
 
@@ -248,9 +286,12 @@ Kubernetes format are not changed.
 
 ## Self-hosted kumactl specifics
 
-`/_resources` reports some types as mesh-scoped that `kumactl` then rejects with
-`unknown flag: --mesh`. `extract` detects that error and fetches the type once without
-`--mesh`. A type that fails this way does not stop the remaining types.
+`/_resources` returns each type's API path, not its `kumactl` subcommand. The two are the same
+for every type except `HealthCheck`: API path `health-checks`, subcommand `healthchecks`.
+`extract` maps it. If `kumactl` still has no subcommand for a type (it answers
+`unknown flag: --mesh`, or prints its usage), `extract` warns and reads that type from the
+control plane API directly, following the pages. A type that fails does not stop the remaining
+types.
 
 Use `-k` / `--tls-skip-verify`, or `adminServer.tlsSkipVerify: true` in the configuration
 file, for a control plane API with a self-signed certificate.

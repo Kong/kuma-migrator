@@ -134,13 +134,13 @@ resource.</p>
 </tr>
 <tr>
 <td>List meshes</td>
-<td><code>kuma.io/mesh</code> label of each resource</td>
+<td><code>kuma.io/mesh</code> label, else top-level <code>mesh</code> field, of each resource; a <code>Mesh</code> is its own mesh</td>
 <td><code>kumactl get meshes</code>; Konnect: <code>GET &lt;base&gt;/meshes</code></td>
 </tr>
 <tr>
 <td>Fetch</td>
-<td><code>kubectl get &lt;kind&gt; -o yaml</code></td>
-<td><code>kumactl get &lt;type&gt; [--mesh &lt;m&gt;] -o yaml</code>; Konnect: <code>GET &lt;base&gt;/meshes/&lt;m&gt;/&lt;type&gt;</code></td>
+<td><code>kubectl get &lt;plural&gt; -A -o json</code>, one call per CRD</td>
+<td><code>kumactl [--config-file $KUMACTL_CONFIG] get &lt;list-arg&gt; [--mesh &lt;m&gt;] -o yaml</code> (<code>kumactlListArg</code>); API fallback when <code>kumactl</code> has no subcommand; Konnect: <code>GET &lt;base&gt;/meshes/&lt;m&gt;/&lt;type&gt;</code></td>
 </tr>
 <tr>
 <td>Format</td>
@@ -167,9 +167,14 @@ resource.</p>
 <td>drop <code>kuma.io/origin: zone</code> (recorded as <code>ZoneOriginSkip</code> and printed with the zone to target); drop <code>MeshGatewayInstance</code>, <code>MeshGatewayConfig</code></td>
 </tr>
 <tr>
-<td><code>zone</code></td>
+<td><code>zone</code>, federated</td>
 <td><code>&lt;context&gt;-zone-ctx</code></td>
-<td>keep <code>kuma.io/origin: zone</code>; keep gateway kinds without an origin label; drop the rest</td>
+<td>drop <code>kuma.io/origin: global</code>; keep the rest (unlabelled ones counted)</td>
+</tr>
+<tr>
+<td><code>zone</code>, not federated</td>
+<td><code>&lt;context&gt;-zone-ctx</code></td>
+<td>none</td>
 </tr>
 <tr>
 <td><code>standalone</code></td>
@@ -183,6 +188,11 @@ resource.</p>
 </tr>
 </tbody>
 </table></div>
+<p>In every mode, <code>writeResourceObject</code> (shared by both paths) also drops resources labelled
+<code>kuma.io/managed-by</code> with a value the control plane writes (<code>k8s-controller</code>,
+<code>meshservice-generator</code>, <code>workload-generator</code>), and strips server-written fields
+(<code>stripServerSideFields</code>: <code>status</code>, <code>resourceVersion</code>, <code>uid</code>, <code>ownerReferences</code>, …) before
+writing.</p>
 <p>Each context directory gets a <code>.kuma-migrator.json</code> (<code>ContextMeta</code>: <code>tool</code>, <code>context</code>,
 <code>cpMode</code>, <code>isKonnect</code>, <code>environment</code>), written before any resource. <code>migrate</code> reads it back
 through <code>ReadContextMeta</code> for two decisions: the skip list (<code>environment</code>) and the apply

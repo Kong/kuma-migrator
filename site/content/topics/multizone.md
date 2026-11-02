@@ -47,14 +47,16 @@ set), and filters on `kuma.io/origin`:
 | CP mode | Kept | Skipped |
 |---|---|---|
 | `global` | `kuma.io/origin: global` and unlabelled resources | `kuma.io/origin: zone`: read-only copies of zone-created resources. Listed after extraction with the zone to extract from (its `kuma.io/zone` label) |
-| `zone`, federated | `kuma.io/origin: zone` and gateway-local kinds | Resources synced from the Global CP (`kuma.io/origin: global`); other resources with no origin label, listed after extraction |
+| `zone`, federated | `kuma.io/origin: zone` and resources with no origin label | Resources synced from the Global CP (`kuma.io/origin: global`), counted after extraction |
 | `zone`, not federated | Everything | Nothing |
 | `standalone`, unknown | Everything | Nothing |
 
 A zone with no Global owns all of its resources, so no origin filter applies to it. On a
-federated zone, Kuma 2.7+ labels every locally created resource `kuma.io/origin: zone` and
-every synced copy `kuma.io/origin: global`; an unlabelled resource predates the label or
-bypassed the admission webhook, so `extract` lists it instead of guessing its owner.
+federated zone, the Global-to-zone sync labels every copy it writes `kuma.io/origin: global`,
+so that label alone marks a synced copy. `kuma.io/origin: zone` is only set on the kinds Kuma's
+defaulting webhook covers: on Kubernetes 2.x, the legacy policies, `ExternalService`,
+`ProxyTemplate`, `MeshGatewayRoute`, `OPAPolicy`, `AccessRole` and `AccessAudit` are never
+labelled. `extract` keeps unlabelled resources as zone-created and prints how many it kept.
 
 `MeshGatewayInstance` and `MeshGatewayConfig` are zone-local and never synced to the Global CP.
 Each context is written to its own directory (`<context>-global-ctx`, `<context>-zone-ctx`,
@@ -99,7 +101,7 @@ list (the control plane generates them), so only Universal zone proxies reach `m
 ## Manual steps
 
 1. Extract from the Global CP and from every Zone CP. Check the zone-origin skip list printed by
-   the Global extraction, and the unlabelled-resource list printed by each federated zone.
+   the Global extraction.
 2. On 2.14, set `meshServices.mode: Exclusive` on every mesh (see [MeshService](meshservice.md)).
 3. Create `MeshMultiZoneService`s for services that need cross-zone load balancing, and move
    `crossZone` settings onto `to[]` entries that target them.
