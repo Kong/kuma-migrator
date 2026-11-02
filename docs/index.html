@@ -589,12 +589,16 @@ pre code { background: none; padding: 0; font-size: inherit; border-radius: 0 }
   <div class="wrap">
     <h2>Changelog</h2>
     <p class="changelog-stat">
-      <strong>20 releases</strong> since April 2026.
+      <strong>21 releases</strong> since April 2026.
       Full history: <a href="https://github.com/Kong/kuma-migrator/releases">Releases</a> ·
       <a href="https://github.com/Kong/kuma-migrator/compare">compare view</a>.
     </p>
 
     <ul class="changelog">
+      <li>
+        <div class="meta"><span class="ver">v0.9.1</span> · 2026-11-02</div>
+        <div class="desc">Validated end to end against real Kong Mesh 2.14.7 and 3.0.1 control planes (Kubernetes and Universal): every apply-tree file is accepted, every <code>_manual/</code> file is rejected by 3.0 for the stated reason, and a new <code>e2e</code> CI workflow keeps it that way. Fixes found that way: <code>extract</code> no longer drops resources without an origin label on zone CPs, extracts Universal <code>HealthCheck</code>, keeps hand-written <code>MeshService</code>s and strips server-set fields; converted policies keep their mesh-wide scope (system namespace) and Universal format; legacy values the new schemas reject (<code>ProxyTemplate</code> operations, header names, bandwidth units, <code>SourceIP</code>) are normalised; the Apply Checklist uses <code>kubectl replace</code> for rewritten objects, sets <code>Exclusive</code> before the MeshIdentity step and only prints commands that exist. New 3.0 checks: <code>Mesh.constraints</code>, route backendRef ports, control-plane topology.</div>
+      </li>
       <li>
         <div class="meta"><span class="ver">v0.9.0</span> · 2026-11-02</div>
         <div class="desc"><strong>Kuma / Kong Mesh 3.0 GA support</strong> for <code>--to-latest v3</code>, audited against the released 3.0.0/3.0.1 upgrade notes: <code>Mesh.mtls</code> removal (MeshIdentity cutover first), labels-only selection, control-plane-owned labels, Dataplane, MeshService, MeshPassthrough, zone proxy, Gateway API and Kong Mesh RBAC changes. Documents 3.0 rejects go to a <code>_manual/</code> subtree, and the report gains a "Delete Before Upgrading to 3.0" section. <strong>Breaking:</strong> Mesh logging/tracing no longer produce mesh-wide companions; companions default to <code>kuma-system</code> unless the input shows Kong Mesh (override with <code>systemNamespace:</code>); v2 service references use <code>Dataplane</code> labels instead of a name. New documentation site with guides, topics and a per-policy v2/v3 reference.</div>
