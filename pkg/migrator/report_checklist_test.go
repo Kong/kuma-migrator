@@ -378,7 +378,7 @@ func TestProcessFile_RejectedByTargetGoesToManual(t *testing.T) {
 	converted := []byte("apiVersion: kuma.io/v1alpha1\nkind: MeshTrafficPermission\nmetadata:\n  name: mtp\n  namespace: kuma-system\nspec:\n  targetRef:\n    kind: Mesh\n  from:\n  - targetRef:\n      kind: Mesh\n    default:\n      action: Allow\n")
 	transformDocument = func(raw []byte, opts TransformOptions) ([][]byte, []string, Scenario, error) {
 		return [][]byte{converted}, []string{"a warning"}, ScenarioPassthrough,
-			&RejectedByTargetError{Target: opts.Target, Reason: "3.0 removes spec.from"}
+			&RejectedByTargetError{Target: opts.Target, Rejected: []RejectedDoc{{Index: 0, Kind: "MeshTrafficPermission", Name: "mtp", Reasons: []string{"3.0 removes spec.from"}}}}
 	}
 
 	in, out := t.TempDir(), t.TempDir()
@@ -416,7 +416,7 @@ func TestProcessFile_RejectedByTargetUnderV2AlsoManual(t *testing.T) {
 	orig := transformDocument
 	t.Cleanup(func() { transformDocument = orig })
 	transformDocument = func(raw []byte, opts TransformOptions) ([][]byte, []string, Scenario, error) {
-		return nil, nil, ScenarioPassthrough, &RejectedByTargetError{Target: opts.Target, Reason: "nope"}
+		return nil, nil, ScenarioPassthrough, &RejectedByTargetError{Target: opts.Target}
 	}
 	in, out := t.TempDir(), t.TempDir()
 	writeTree(t, in, map[string]string{"zero-trust/m.yaml": "apiVersion: kuma.io/v1alpha1\nkind: MeshTrafficPermission\nmetadata:\n  name: mtp\n"})
@@ -428,7 +428,33 @@ func TestProcessFile_RejectedByTargetUnderV2AlsoManual(t *testing.T) {
 	if !strings.HasPrefix(dc.ManualRelPath, ManualDir+"/") || len(fr.OutputRelPaths) != 0 {
 		t.Errorf("without output, the original goes to %s/: %+v / %+v", ManualDir, fr, dc)
 	}
-	if got := (&RejectedByTargetError{Target: TargetV2, Reason: "nope"}).Error(); got != "rejected by --to-latest v2: nope" {
-		t.Errorf("Error() = %q", got)
+	rej := &RejectedByTargetError{Target: TargetV2, Rejected: []RejectedDoc{{Index: 1, Kind: "MeshTimeout", Name: "t", Reasons: []string{"nope"}}}}
+	if got := rej.Error(); !strings.Contains(got, `MeshTimeout "t": nope`) || rej.IsRejected(0) || !rej.IsRejected(1) {
+		t.Errorf("Error() = %q, IsRejected(0)=%v IsRejected(1)=%v", got, rej.IsRejected(0), rej.IsRejected(1))
+	}
+}
+
+func TestProcessFile_RejectedByTargetOnlyListedDocsGoToManual(t *testing.T) {
+	noUserConfig(t)
+	orig := transformDocument
+	t.Cleanup(func() { transformDocument = orig })
+	ok := []byte("apiVersion: kuma.io/v1alpha1\nkind: MeshTimeout\nmetadata:\n  name: t\n  namespace: kuma-system\nspec:\n  targetRef:\n    kind: Mesh\n")
+	bad := []byte("apiVersion: kuma.io/v1alpha1\nkind: MeshTimeout\nmetadata:\n  name: t-outbound\n  namespace: kuma-system\nspec:\n  targetRef:\n    kind: MeshService\n")
+	transformDocument = func(raw []byte, opts TransformOptions) ([][]byte, []string, Scenario, error) {
+		return [][]byte{ok, bad}, nil, ScenarioRules,
+			&RejectedByTargetError{Target: opts.Target, Rejected: []RejectedDoc{{Index: 1, Kind: "MeshTimeout", Name: "t-outbound", Reasons: []string{"top-level MeshService"}}}}
+	}
+	in, out := t.TempDir(), t.TempDir()
+	writeTree(t, in, map[string]string{"resiliency/t.yaml": string(ok)})
+	r, err := runMigration(in, out, true, "", TargetV3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fr, dc, _ := findChange(r, "MeshTimeout")
+	if len(fr.OutputRelPaths) != 1 || !strings.Contains(fr.OutputRelPaths[0], "MeshTimeout-kuma-system-t.yaml") {
+		t.Errorf("accepted doc must stay in the apply tree: %v", fr.OutputRelPaths)
+	}
+	if !strings.Contains(dc.ManualRelPath, "t-outbound") {
+		t.Errorf("rejected doc must go to %s/: %q", ManualDir, dc.ManualRelPath)
 	}
 }

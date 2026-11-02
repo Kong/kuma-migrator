@@ -28,7 +28,8 @@ func transformOne(t *testing.T, input string) (map[string]interface{}, []string)
 	if err := yaml.Unmarshal(docs[0], &out); err != nil {
 		t.Fatalf("unmarshal output: %v", err)
 	}
-	return out, warnings
+	// These tests are about the conf conversion, so the selector advisory is dropped.
+	return out, withoutBestGuess(warnings)
 }
 
 // at walks a nested map by path and fails when a segment is missing.
@@ -115,8 +116,8 @@ spec:
 	if got := at(t, out, "metadata", "labels", "kuma.io/mesh"); got != "prod" {
 		t.Errorf("metadata.labels[kuma.io/mesh] = %v, want prod", got)
 	}
-	if got := at(t, out, "spec", "targetRef", "name"); got != "web" {
-		t.Errorf("spec.targetRef.name = %v, want web (from spec.sources)", got)
+	if got := at(t, out, "spec", "targetRef", "labels", "app"); got != "web" {
+		t.Errorf("spec.targetRef.labels.app = %v, want web (from spec.sources)", got)
 	}
 	to := at(t, out, "spec", "to").([]interface{})[0].(map[string]interface{})
 	if got := at(t, to, "default", "connectionTimeout"); got != "10s" {
@@ -444,12 +445,15 @@ conf:
 	if _, hasTo := spec["to"]; hasTo {
 		t.Errorf("MeshFaultInjection must not use to[]: %v", spec)
 	}
-	if got := at(t, out, "spec", "targetRef", "name"); got != "backend" {
-		t.Errorf("spec.targetRef.name = %v, want backend (the destination)", got)
+	if got := at(t, out, "spec", "targetRef", "labels", "app"); got != "backend" {
+		t.Errorf("spec.targetRef.labels.app = %v, want backend (the destination)", got)
 	}
 	from := at(t, out, "spec", "from").([]interface{})[0].(map[string]interface{})
-	if got := from["targetRef"].(map[string]interface{})["name"]; got != "web" {
-		t.Errorf("from[0].targetRef.name = %v, want web (the source)", got)
+	// 2.x from[]: MeshSubset with the source's kuma.io/service tag (UPGRADE.md 2.7
+	// deprecates MeshService there), never the deprecated MeshService form.
+	fromRef := from["targetRef"].(map[string]interface{})
+	if fromRef["kind"] != "MeshSubset" || at(t, fromRef, "tags", "kuma.io/service") != "web_demo_svc_80" {
+		t.Errorf("from[0].targetRef = %v, want MeshSubset{kuma.io/service: web_demo_svc_80} (the source)", fromRef)
 	}
 
 	// The single legacy fault becomes a one-element http[] list.
@@ -493,8 +497,8 @@ conf:
 	if _, hasTo := spec["to"]; hasTo {
 		t.Errorf("MeshRateLimit must not use to[]: %v", spec)
 	}
-	if got := at(t, out, "spec", "targetRef", "name"); got != "backend" {
-		t.Errorf("spec.targetRef.name = %v, want backend (the destination)", got)
+	if got := at(t, out, "spec", "targetRef", "labels", "app"); got != "backend" {
+		t.Errorf("spec.targetRef.labels.app = %v, want backend (the destination)", got)
 	}
 
 	// from[] accepts only kind: Mesh and is removed in 3.0 with a mechanical
@@ -538,8 +542,8 @@ sources:
 destinations:
   - match: {kuma.io/service: backend_demo_svc_3001}
 `)
-	if got := at(t, out, "spec", "targetRef", "name"); got != "backend" {
-		t.Errorf("spec.targetRef.name = %v, want backend (the destination)", got)
+	if got := at(t, out, "spec", "targetRef", "labels", "app"); got != "backend" {
+		t.Errorf("spec.targetRef.labels.app = %v, want backend (the destination)", got)
 	}
 	from := at(t, out, "spec", "from").([]interface{})[0].(map[string]interface{})
 	if got := at(t, from, "default", "action"); got != "Allow" {
@@ -570,8 +574,8 @@ conf:
         value: 'name: custom'
 `)
 	// selectors[] scopes the policy: it must land on spec.targetRef, not be dropped.
-	if got := at(t, out, "spec", "targetRef", "name"); got != "web" {
-		t.Errorf("spec.targetRef.name = %v, want web (from selectors)", got)
+	if got := at(t, out, "spec", "targetRef", "labels", "app"); got != "web" {
+		t.Errorf("spec.targetRef.labels.app = %v, want web (from selectors)", got)
 	}
 	mods := at(t, out, "spec", "default", "appendModifications").([]interface{})
 	if len(mods) != 2 {
@@ -633,7 +637,19 @@ func transformWithMesh(t *testing.T, input string) (map[string]interface{}, []st
 	if err := yaml.Unmarshal(docs[0], &out); err != nil {
 		t.Fatalf("unmarshal output: %v", err)
 	}
-	return out, warnings
+	return out, withoutBestGuess(warnings)
+}
+
+// withoutBestGuess drops the top-level Dataplane 'app' best-guess advisory, which
+// every specific selector produces and convert_test.go pins.
+func withoutBestGuess(warnings []string) []string {
+	var kept []string
+	for _, w := range warnings {
+		if !strings.Contains(w, "best-guess pod label") {
+			kept = append(kept, w)
+		}
+	}
+	return kept
 }
 
 func TestLegacyConf_TrafficTrace_ResolvesBackend(t *testing.T) {
@@ -647,8 +663,8 @@ conf:
   backend: jaeger
 `)
 	// selectors[] must reach spec.targetRef.
-	if got := at(t, out, "spec", "targetRef", "name"); got != "backend" {
-		t.Errorf("spec.targetRef.name = %v, want backend", got)
+	if got := at(t, out, "spec", "targetRef", "labels", "app"); got != "backend" {
+		t.Errorf("spec.targetRef.labels.app = %v, want backend", got)
 	}
 	// MeshTrace inlines the backend the legacy policy only referenced by name.
 	backends := at(t, out, "spec", "default", "backends").([]interface{})

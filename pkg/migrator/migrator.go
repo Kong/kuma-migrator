@@ -499,11 +499,15 @@ func processFile(inputPath, outputDir, cpModeDir, meshDir string, writeFile bool
 			dc.ErrMsg = tErr.Error()
 			dc.Rejected = true
 			fr.HasError = true
+			// Only the documents the error lists are rejected; the others (e.g. the
+			// accepted half of a split) still belong in the apply tree. An error that
+			// lists none rejects all of them.
 			if len(results) == 0 {
 				results = [][]byte{doc}
 			}
-			for _, res := range results {
-				outputDocs = append(outputDocs, outputDoc{raw: res, change: changeIdx, manual: true})
+			for i, res := range results {
+				manual := len(rejected.Rejected) == 0 || rejected.IsRejected(i)
+				outputDocs = append(outputDocs, outputDoc{raw: res, change: changeIdx, manual: manual})
 			}
 		case tErr != nil:
 			dc.ErrMsg = tErr.Error()
