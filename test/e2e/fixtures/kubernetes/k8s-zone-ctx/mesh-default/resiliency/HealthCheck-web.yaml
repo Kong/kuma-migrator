@@ -1,0 +1,38 @@
+apiVersion: kuma.io/v1alpha1
+kind: HealthCheck
+mesh: default
+metadata:
+  name: hc-web
+spec:
+  sources:
+  - match:
+      kuma.io/service: frontend_kuma-demo_svc_8080
+  destinations:
+  - match:
+      kuma.io/service: backend_kuma-demo_svc_3001
+  conf:
+    interval: 10s
+    timeout: 2s
+    unhealthyThreshold: 3
+    healthyThreshold: 1
+    initialJitter: 5s
+    intervalJitter: 6s
+    intervalJitterPercent: 10
+    healthyPanicThreshold: 60
+    failTrafficOnPanic: true
+    eventLogPath: /tmp/health-check.log
+    alwaysLogHealthCheckFailures: true
+    noTrafficInterval: 10s
+    http:
+      path: /health
+      requestHeadersToAdd:
+      - append: false
+        header:
+          key: Content-Type
+          value: application/json
+      - header:
+          key: Accept
+          value: application/json
+      expectedStatuses:
+      - 200
+      - 201

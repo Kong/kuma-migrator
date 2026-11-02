@@ -1,0 +1,15 @@
+# Namespaces the fixtures reference. Not migrator input: a 2.x cluster has them already.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kuma-demo
+  labels:
+    kuma.io/sidecar-injection: enabled
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: payments
+  labels:
+    kuma.io/sidecar-injection: enabled
+    kuma.io/mesh: payments

@@ -1,0 +1,21 @@
+type: MeshCircuitBreaker
+name: cb-to-redis
+mesh: default
+labels:
+  kuma.io/origin: zone
+spec:
+  targetRef:
+    kind: Mesh
+  to:
+  - targetRef:
+      kind: MeshService
+      name: redis
+    default:
+      connectionLimits:
+        maxConnections: 1024
+      outlierDetection:
+        disabled: false
+        interval: 5s
+        detectors:
+          totalFailures:
+            consecutive: 10

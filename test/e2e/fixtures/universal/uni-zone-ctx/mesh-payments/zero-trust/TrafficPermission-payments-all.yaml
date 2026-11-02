@@ -1,0 +1,9 @@
+type: TrafficPermission
+name: payments-all
+mesh: payments
+sources:
+- match:
+    kuma.io/service: '*'
+destinations:
+- match:
+    kuma.io/service: '*'

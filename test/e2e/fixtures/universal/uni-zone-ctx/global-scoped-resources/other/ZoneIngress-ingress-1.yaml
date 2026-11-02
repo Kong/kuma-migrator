@@ -1,0 +1,7 @@
+type: ZoneIngress
+name: zone-ingress-1
+networking:
+  address: 10.0.0.40
+  advertisedAddress: 192.0.2.40
+  port: 10001
+  advertisedPort: 10001

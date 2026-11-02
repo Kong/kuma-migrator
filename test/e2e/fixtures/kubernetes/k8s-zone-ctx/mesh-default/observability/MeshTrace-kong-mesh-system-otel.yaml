@@ -1,0 +1,21 @@
+apiVersion: kuma.io/v1alpha1
+kind: MeshTrace
+metadata:
+  name: otel-trace
+  namespace: kong-mesh-system
+  labels:
+    kuma.io/mesh: default
+    kuma.io/origin: zone
+spec:
+  targetRef:
+    kind: Mesh
+  default:
+    backends:
+    - type: OpenTelemetry
+      openTelemetry:
+        endpoint: otel-collector.observability:4317
+    sampling:
+      overall: 80
+    tags:
+    - name: team
+      literal: core

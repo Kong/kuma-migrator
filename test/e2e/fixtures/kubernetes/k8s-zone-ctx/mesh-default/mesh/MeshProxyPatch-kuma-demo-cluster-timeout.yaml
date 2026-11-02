@@ -1,0 +1,21 @@
+apiVersion: kuma.io/v1alpha1
+kind: MeshProxyPatch
+metadata:
+  name: cluster-timeout
+  namespace: kong-mesh-system
+  labels:
+    kuma.io/mesh: default
+    kuma.io/origin: zone
+spec:
+  targetRef:
+    kind: MeshSubset
+    tags:
+      kuma.io/service: backend_kuma-demo_svc_3001
+  default:
+    appendModifications:
+    - cluster:
+        operation: Patch
+        match:
+          origin: outbound
+        value: |
+          connectTimeout: 5s

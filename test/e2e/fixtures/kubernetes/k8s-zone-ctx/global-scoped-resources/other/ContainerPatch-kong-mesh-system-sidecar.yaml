@@ -1,0 +1,10 @@
+apiVersion: kuma.io/v1alpha1
+kind: ContainerPatch
+metadata:
+  name: sidecar-resources
+  namespace: kong-mesh-system
+spec:
+  sidecarPatch:
+  - op: add
+    path: /securityContext/privileged
+    value: "false"

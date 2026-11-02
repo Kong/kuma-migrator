@@ -1,0 +1,19 @@
+type: MeshFaultInjection
+name: backend-faults
+mesh: default
+labels:
+  kuma.io/origin: zone
+spec:
+  targetRef:
+    kind: Dataplane
+    labels:
+      app: backend
+  from:
+  - targetRef:
+      kind: MeshService
+      name: frontend
+    default:
+      http:
+      - abort:
+          httpStatus: 500
+          percentage: 10

@@ -1,0 +1,53 @@
+type: Mesh
+name: default
+mtls:
+  enabledBackend: ca-1
+  backends:
+  - name: ca-1
+    type: builtin
+    dpCert:
+      rotation:
+        expiration: 1d
+    conf:
+      caCert:
+        RSAbits: 2048
+        expiration: 10y
+logging:
+  defaultBackend: file
+  backends:
+  - name: file
+    type: file
+    format: '{"start":"%START_TIME%","src":"%KUMA_SOURCE_SERVICE%","dst":"%KUMA_DESTINATION_SERVICE%"}'
+    conf:
+      path: /dev/stdout
+  - name: logstash
+    type: tcp
+    conf:
+      address: logstash.logging:5000
+tracing:
+  defaultBackend: zipkin
+  backends:
+  - name: zipkin
+    type: zipkin
+    sampling: 50.0
+    conf:
+      url: http://zipkin.tracing:9411/api/v2/spans
+  - name: dd
+    type: datadog
+    conf:
+      address: datadog.agent
+      port: 8126
+metrics:
+  enabledBackend: prom
+  backends:
+  - name: prom
+    type: prometheus
+    conf:
+      port: 5670
+      path: /metrics
+      skipMTLS: false
+networking:
+  outbound:
+    passthrough: false
+routing:
+  localityAwareLoadBalancing: true

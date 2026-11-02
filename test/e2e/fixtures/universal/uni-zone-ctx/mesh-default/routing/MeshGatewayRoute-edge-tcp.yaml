@@ -1,0 +1,13 @@
+type: MeshGatewayRoute
+name: edge-tcp
+mesh: default
+selectors:
+- match:
+    kuma.io/service: edge-gateway
+    port: tcp-9000
+conf:
+  tcp:
+    rules:
+    - backends:
+      - destination:
+          kuma.io/service: redis

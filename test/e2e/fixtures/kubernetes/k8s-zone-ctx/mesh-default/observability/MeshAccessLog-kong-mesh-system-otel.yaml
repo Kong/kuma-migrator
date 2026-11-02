@@ -1,0 +1,28 @@
+apiVersion: kuma.io/v1alpha1
+kind: MeshAccessLog
+metadata:
+  name: otel-logs
+  namespace: kong-mesh-system
+  labels:
+    kuma.io/mesh: default
+    kuma.io/origin: zone
+spec:
+  targetRef:
+    kind: Mesh
+  to:
+  - targetRef:
+      kind: Mesh
+    default:
+      backends:
+      - type: OpenTelemetry
+        openTelemetry:
+          endpoint: otel-collector.observability:4317
+          body:
+            kvlistValue:
+              values:
+              - key: mesh
+                value:
+                  stringValue: '%KUMA_MESH%'
+          attributes:
+          - key: service.name
+            value: '%KUMA_SOURCE_SERVICE%'

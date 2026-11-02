@@ -1,0 +1,3 @@
+# Meshes must exist before mesh-scoped Secrets can be created on Universal.
+type: Mesh
+name: payments

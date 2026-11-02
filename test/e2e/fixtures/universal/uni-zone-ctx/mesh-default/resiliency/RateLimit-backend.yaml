@@ -1,0 +1,19 @@
+type: RateLimit
+name: rl-backend
+mesh: default
+sources:
+- match:
+    kuma.io/service: '*'
+destinations:
+- match:
+    kuma.io/service: backend
+conf:
+  http:
+    requests: 100
+    interval: 1m
+    onRateLimit:
+      status: 423
+      headers:
+      - key: x-kuma-rate-limited
+        value: 'true'
+        append: true

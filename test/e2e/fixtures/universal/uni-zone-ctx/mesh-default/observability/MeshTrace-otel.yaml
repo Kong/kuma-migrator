@@ -1,0 +1,18 @@
+type: MeshTrace
+name: otel-trace
+mesh: default
+labels:
+  kuma.io/origin: zone
+spec:
+  targetRef:
+    kind: Mesh
+  default:
+    backends:
+    - type: OpenTelemetry
+      openTelemetry:
+        endpoint: otel-collector.observability:4317
+    sampling:
+      overall: 80
+    tags:
+    - name: team
+      literal: core

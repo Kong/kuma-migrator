@@ -1,0 +1,21 @@
+type: MeshPassthrough
+name: allow-egress
+mesh: default
+labels:
+  kuma.io/origin: zone
+spec:
+  targetRef:
+    kind: Mesh
+  default:
+    passthroughMode: Matched
+    appendMatch:
+    - type: Domain
+      value: api.example.com
+      port: 443
+      protocol: tls
+    - type: Domain
+      value: '*.example.org'
+      protocol: tls
+    - type: CIDR
+      value: 10.10.0.0/16
+      protocol: tcp

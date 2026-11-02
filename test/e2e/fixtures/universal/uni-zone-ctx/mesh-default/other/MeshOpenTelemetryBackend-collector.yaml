@@ -1,0 +1,10 @@
+type: MeshOpenTelemetryBackend
+name: collector
+mesh: default
+labels:
+  kuma.io/origin: zone
+spec:
+  endpoint:
+    address: otel-collector.observability
+    port: 4317
+  protocol: grpc

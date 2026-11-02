@@ -1,0 +1,21 @@
+type: MeshOPA
+name: opa-frontend
+mesh: default
+labels:
+  kuma.io/origin: zone
+spec:
+  targetRef:
+    kind: MeshService
+    name: frontend
+  default:
+    agentConfig:
+      inlineString: "decision_logs:\n  console: true\n"
+    appendPolicies:
+    - rego:
+        inline: cGFja2FnZSBlbnZveS5hdXRoegpkZWZhdWx0IGFsbG93ID0gdHJ1ZQo=
+    - rego:
+        inlineString: 'package envoy.authz
+
+          default allow = true
+
+          '

@@ -1,0 +1,21 @@
+type: FaultInjection
+name: fi-backend
+mesh: default
+sources:
+- match:
+    kuma.io/service: frontend
+    kuma.io/protocol: http
+destinations:
+- match:
+    kuma.io/service: backend
+    kuma.io/protocol: http
+conf:
+  abort:
+    httpStatus: 500
+    percentage: 50
+  delay:
+    percentage: 50.5
+    value: 5s
+  responseBandwidth:
+    limit: 50 mbps
+    percentage: 50

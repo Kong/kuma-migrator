@@ -1,0 +1,10 @@
+type: Dataplane
+name: legacy-db-1
+mesh: default
+networking:
+  address: 10.0.0.30
+  inbound:
+  - port: 5432
+    tags:
+      kuma.io/service: legacy-db
+      kuma.io/protocol: tcp

@@ -1,0 +1,21 @@
+type: Timeout
+name: timeout-backend
+mesh: default
+sources:
+- match:
+    kuma.io/service: frontend
+destinations:
+- match:
+    kuma.io/service: backend
+conf:
+  connectTimeout: 10s
+  tcp:
+    idleTimeout: 1h
+  http:
+    requestTimeout: 15s
+    idleTimeout: 1h
+    streamIdleTimeout: 30m
+    maxStreamDuration: 0s
+  grpc:
+    streamIdleTimeout: 5m
+    maxStreamDuration: 30m

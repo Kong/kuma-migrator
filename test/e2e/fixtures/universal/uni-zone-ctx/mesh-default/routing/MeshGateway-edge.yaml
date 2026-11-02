@@ -1,0 +1,26 @@
+type: MeshGateway
+name: edge-gateway
+mesh: default
+selectors:
+- match:
+    kuma.io/service: edge-gateway
+conf:
+  listeners:
+  - port: 8080
+    protocol: HTTP
+    hostname: '*'
+    tags:
+      port: http-8080
+  - port: 8443
+    protocol: HTTPS
+    hostname: shop.example.com
+    tls:
+      mode: TERMINATE
+      certificates:
+      - secret: httpbin-ca
+    tags:
+      port: https-8443
+  - port: 9000
+    protocol: TCP
+    tags:
+      port: tcp-9000

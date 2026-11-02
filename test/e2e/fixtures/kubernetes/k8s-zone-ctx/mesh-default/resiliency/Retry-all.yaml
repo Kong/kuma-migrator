@@ -1,0 +1,36 @@
+apiVersion: kuma.io/v1alpha1
+kind: Retry
+mesh: default
+metadata:
+  name: retry-all
+spec:
+  sources:
+  - match:
+      kuma.io/service: '*'
+  destinations:
+  - match:
+      kuma.io/service: '*'
+  conf:
+    http:
+      numRetries: 5
+      perTryTimeout: 200ms
+      backOff:
+        baseInterval: 20ms
+        maxInterval: 1s
+      retriableStatusCodes:
+      - 500
+      - 504
+      retriableMethods:
+      - GET
+      - HEAD
+      retryOn:
+      - gateway_error
+      - connect_failure
+    grpc:
+      numRetries: 5
+      perTryTimeout: 200ms
+      retryOn:
+      - cancelled
+      - deadline_exceeded
+    tcp:
+      maxConnectAttempts: 5

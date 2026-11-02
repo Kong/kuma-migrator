@@ -1,0 +1,29 @@
+apiVersion: kuma.io/v1alpha1
+kind: MeshMetric
+metadata:
+  name: metrics-default
+  namespace: kong-mesh-system
+  labels:
+    kuma.io/mesh: default
+    kuma.io/origin: zone
+spec:
+  targetRef:
+    kind: Mesh
+  default:
+    sidecar:
+      includeUnused: false
+      profiles:
+        appendProfiles:
+        - name: Basic
+        exclude:
+        - type: Regex
+          match: http2_act.*
+    backends:
+    - type: Prometheus
+      prometheus:
+        port: 5670
+        path: /metrics
+    - type: OpenTelemetry
+      openTelemetry:
+        endpoint: otel-collector.observability:4317
+        refreshInterval: 30s

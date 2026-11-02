@@ -1,0 +1,22 @@
+apiVersion: kuma.io/v1alpha1
+kind: MeshRetry
+metadata:
+  name: retry-default
+  namespace: kong-mesh-system
+  labels:
+    kuma.io/mesh: default
+    kuma.io/origin: zone
+spec:
+  targetRef:
+    kind: Mesh
+  to:
+  - targetRef:
+      kind: Mesh
+    default:
+      tcp:
+        maxConnectAttempt: 5
+      http:
+        numRetries: 3
+        retryOn:
+        - 5xx
+        - Reset

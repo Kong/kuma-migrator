@@ -1,0 +1,28 @@
+apiVersion: kuma.io/v1alpha1
+kind: MeshHTTPRoute
+metadata:
+  name: backend-canary
+  namespace: kuma-demo
+  labels:
+    kuma.io/mesh: default
+    kuma.io/origin: zone
+spec:
+  targetRef:
+    kind: Mesh
+  to:
+  - targetRef:
+      kind: MeshService
+      name: backend
+      namespace: kuma-demo
+    rules:
+    - matches:
+      - path:
+          type: PathPrefix
+          value: /v2
+      default:
+        backendRefs:
+        - kind: MeshService
+          name: backend
+          namespace: kuma-demo
+          port: 3001
+          weight: 100

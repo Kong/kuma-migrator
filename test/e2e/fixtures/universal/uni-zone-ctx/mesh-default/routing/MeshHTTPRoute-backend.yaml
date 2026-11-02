@@ -1,0 +1,23 @@
+type: MeshHTTPRoute
+name: backend-canary
+mesh: default
+labels:
+  kuma.io/origin: zone
+spec:
+  targetRef:
+    kind: Mesh
+  to:
+  - targetRef:
+      kind: MeshService
+      name: backend
+    rules:
+    - matches:
+      - path:
+          type: PathPrefix
+          value: /v2
+      default:
+        backendRefs:
+        - kind: MeshService
+          name: backend
+          port: 3001
+          weight: 100

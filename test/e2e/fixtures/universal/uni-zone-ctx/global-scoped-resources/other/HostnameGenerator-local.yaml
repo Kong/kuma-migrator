@@ -1,0 +1,10 @@
+type: HostnameGenerator
+name: local-mesh-external-services
+labels:
+  kuma.io/origin: zone
+spec:
+  selector:
+    meshExternalService:
+      matchLabels:
+        kuma.io/origin: zone
+  template: '{{ .DisplayName }}.extsvc.mesh.local'

@@ -1,0 +1,26 @@
+type: MeshHTTPRoute
+name: frontend-routes
+mesh: default
+labels:
+  kuma.io/origin: zone
+spec:
+  targetRef:
+    kind: MeshSubset
+    tags:
+      kuma.io/service: frontend
+  to:
+  - targetRef:
+      kind: MeshService
+      name: backend
+    rules:
+    - matches:
+      - path:
+          type: PathPrefix
+          value: /
+      default:
+        filters:
+        - type: RequestHeaderModifier
+          requestHeaderModifier:
+            set:
+            - name: x-route
+              value: frontend

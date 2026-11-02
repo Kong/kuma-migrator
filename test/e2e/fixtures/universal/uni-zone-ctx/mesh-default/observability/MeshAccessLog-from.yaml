@@ -1,0 +1,18 @@
+type: MeshAccessLog
+name: backend-inbound-logs
+mesh: default
+labels:
+  kuma.io/origin: zone
+spec:
+  targetRef:
+    kind: Dataplane
+    labels:
+      app: backend
+  from:
+  - targetRef:
+      kind: Mesh
+    default:
+      backends:
+      - type: File
+        file:
+          path: /dev/stdout

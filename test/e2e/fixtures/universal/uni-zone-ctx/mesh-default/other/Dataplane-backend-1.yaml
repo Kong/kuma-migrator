@@ -1,0 +1,26 @@
+type: Dataplane
+name: backend-1
+mesh: default
+labels:
+  app: backend
+networking:
+  address: 10.0.0.11
+  inbound:
+  - port: 3001
+    servicePort: 3000
+    tags:
+      kuma.io/service: backend
+      kuma.io/protocol: http
+      version: v1
+  outbound:
+  - port: 33033
+    tags:
+      kuma.io/service: redis
+  transparentProxying:
+    redirectPortInbound: 15006
+    redirectPortOutbound: 15001
+    reachableServices:
+    - redis
+    - frontend
+  admin:
+    port: 9901

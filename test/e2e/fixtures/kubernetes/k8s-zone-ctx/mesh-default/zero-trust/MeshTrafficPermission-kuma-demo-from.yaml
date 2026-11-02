@@ -1,0 +1,29 @@
+apiVersion: kuma.io/v1alpha1
+kind: MeshTrafficPermission
+metadata:
+  name: backend-allow
+  namespace: kuma-demo
+  labels:
+    kuma.io/mesh: default
+    kuma.io/origin: zone
+spec:
+  targetRef:
+    kind: Dataplane
+    labels:
+      app: backend
+  from:
+  - targetRef:
+      kind: MeshSubset
+      tags:
+        kuma.io/service: frontend_kuma-demo_svc_8080
+    default:
+      action: Allow
+  - targetRef:
+      kind: MeshService
+      name: legacy-client_kuma-demo_svc_80
+    default:
+      action: Allow
+  - targetRef:
+      kind: Mesh
+    default:
+      action: Deny

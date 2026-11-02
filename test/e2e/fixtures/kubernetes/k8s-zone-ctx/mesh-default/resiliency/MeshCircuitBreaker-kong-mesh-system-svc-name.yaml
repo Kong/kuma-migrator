@@ -1,0 +1,26 @@
+# Partially migrated: kind already MeshService, but the name is the Kuma-internal
+# kuma.io/service value. Accepted by 2.14 (name is a free string).
+apiVersion: kuma.io/v1alpha1
+kind: MeshCircuitBreaker
+metadata:
+  name: cb-to-redis
+  namespace: kong-mesh-system
+  labels:
+    kuma.io/mesh: default
+    kuma.io/origin: zone
+spec:
+  targetRef:
+    kind: Mesh
+  to:
+  - targetRef:
+      kind: MeshService
+      name: redis_kuma-demo_svc_6379
+    default:
+      connectionLimits:
+        maxConnections: 1024
+      outlierDetection:
+        disabled: false
+        interval: 5s
+        detectors:
+          totalFailures:
+            consecutive: 10

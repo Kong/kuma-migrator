@@ -1,0 +1,20 @@
+type: MeshHealthCheck
+name: hc-panic
+mesh: default
+labels:
+  kuma.io/origin: zone
+spec:
+  targetRef:
+    kind: Mesh
+  to:
+  - targetRef:
+      kind: MeshService
+      name: backend
+    default:
+      interval: 10s
+      timeout: 2s
+      unhealthyThreshold: 3
+      healthyThreshold: 1
+      healthyPanicThreshold: 60
+      http:
+        path: /health

@@ -1,0 +1,10 @@
+type: TrafficPermission
+name: frontend-to-backend
+mesh: default
+sources:
+- match:
+    kuma.io/service: frontend
+    version: v1
+destinations:
+- match:
+    kuma.io/service: backend

@@ -1,0 +1,19 @@
+apiVersion: kuma.io/v1alpha1
+kind: MeshTLS
+metadata:
+  name: strict-tls
+  namespace: kong-mesh-system
+  labels:
+    kuma.io/mesh: default
+    kuma.io/origin: zone
+spec:
+  targetRef:
+    kind: Mesh
+  from:
+  - targetRef:
+      kind: Mesh
+    default:
+      tlsVersion:
+        min: TLS13
+        max: TLS13
+      mode: Strict

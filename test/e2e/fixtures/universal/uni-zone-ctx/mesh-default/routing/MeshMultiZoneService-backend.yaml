@@ -1,0 +1,13 @@
+type: MeshMultiZoneService
+name: backend-mz
+mesh: default
+labels:
+  kuma.io/origin: zone
+spec:
+  selector:
+    meshService:
+      matchLabels:
+        kuma.io/display-name: backend
+  ports:
+  - port: 3001
+    appProtocol: http

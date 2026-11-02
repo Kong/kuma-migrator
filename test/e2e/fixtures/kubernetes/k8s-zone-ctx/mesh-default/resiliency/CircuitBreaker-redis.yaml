@@ -1,0 +1,37 @@
+apiVersion: kuma.io/v1alpha1
+kind: CircuitBreaker
+mesh: default
+metadata:
+  name: cb-redis
+spec:
+  sources:
+  - match:
+      kuma.io/service: '*'
+  destinations:
+  - match:
+      kuma.io/service: redis_kuma-demo_svc_6379
+  conf:
+    interval: 5s
+    baseEjectionTime: 30s
+    maxEjectionPercent: 20
+    splitExternalAndLocalErrors: false
+    thresholds:
+      maxConnections: 2
+      maxPendingRequests: 2
+      maxRequests: 2
+      maxRetries: 2
+    detectors:
+      totalErrors:
+        consecutive: 20
+      gatewayErrors:
+        consecutive: 10
+      localErrors:
+        consecutive: 7
+      standardDeviation:
+        requestVolume: 10
+        minimumHosts: 5
+        factor: 1.9
+      failure:
+        requestVolume: 10
+        minimumHosts: 5
+        threshold: 85

@@ -1,0 +1,18 @@
+apiVersion: kuma.io/v1alpha1
+kind: AccessAudit
+metadata:
+  name: audit
+spec:
+  rules:
+  - types:
+    - TrafficPermission
+    - MeshTrafficPermission
+    - OPAPolicy
+    mesh: default
+    access:
+    - CREATE
+    - UPDATE
+    - DELETE
+  - access:
+    - GENERATE_DATAPLANE_TOKEN
+    - GENERATE_USER_TOKEN

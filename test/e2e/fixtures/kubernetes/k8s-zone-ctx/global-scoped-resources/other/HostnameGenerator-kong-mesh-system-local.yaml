@@ -1,0 +1,13 @@
+apiVersion: kuma.io/v1alpha1
+kind: HostnameGenerator
+metadata:
+  name: local-mesh-external-services
+  namespace: kong-mesh-system
+  labels:
+    kuma.io/origin: zone
+spec:
+  selector:
+    meshExternalService:
+      matchLabels:
+        kuma.io/origin: zone
+  template: '{{ .DisplayName }}.extsvc.mesh.local'

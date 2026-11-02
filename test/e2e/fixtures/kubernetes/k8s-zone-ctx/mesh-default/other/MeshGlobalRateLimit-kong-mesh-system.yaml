@@ -1,0 +1,27 @@
+apiVersion: kuma.io/v1alpha1
+kind: MeshGlobalRateLimit
+metadata:
+  name: global-rl
+  namespace: kong-mesh-system
+  labels:
+    kuma.io/mesh: default
+    kuma.io/origin: zone
+spec:
+  targetRef:
+    kind: Dataplane
+    labels:
+      app: backend
+  from:
+  - targetRef:
+      kind: Mesh
+    default:
+      http:
+        requestRate:
+          num: 100
+          interval: 1s
+        onRateLimit:
+          status: 429
+      backend:
+        rateLimitService:
+          url: http://ratelimit.kong-mesh-system:10003
+          timeout: 1s
