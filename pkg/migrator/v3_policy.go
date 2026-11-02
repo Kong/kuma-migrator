@@ -166,6 +166,124 @@ func fixRealResourceTargetRefsForV3(obj map[string]interface{}, name, kind strin
 		}
 		warnings = append(warnings, ws...)
 	}
+
+	changed, ws := pinProducerZoneForV3(obj, to, name, kind, policyNS)
+	if changed {
+		modified = true
+	}
+	warnings = append(warnings, ws...)
+	return modified, warnings
+}
+
+// systemNamespaces are the control-plane namespaces; a policy there is always
+// kuma.io/policy-role: system.
+var systemNamespaces = map[string]bool{
+	"kuma-system":      true,
+	"kong-mesh-system": true,
+}
+
+// producerRefKinds are the to[] kinds that can make a policy a producer policy
+// (ComputePolicyRole in kuma pkg/core/resources/labels/compute.go).
+var producerRefKinds = map[string]bool{
+	"MeshService":   true,
+	"MeshHTTPRoute": true,
+}
+
+// isProducerPolicy reports whether the policy was meant as a producer policy: it
+// says so in kuma.io/policy-role, or (with no role recorded) it sits in an app
+// namespace and every to[] item names a MeshService/MeshHTTPRoute of that same
+// namespace — the 2.x producer shape.
+func isProducerPolicy(obj map[string]interface{}, to []interface{}, policyNS string) bool {
+	if policyNS == "" || systemNamespaces[policyNS] || len(to) == 0 {
+		return false
+	}
+	if role, ok := objLabels(obj)["kuma.io/policy-role"].(string); ok && role != "" {
+		return role == "producer"
+	}
+	for _, entry := range to {
+		em, _ := entry.(map[string]interface{})
+		tr, _ := em["targetRef"].(map[string]interface{})
+		if k, _ := tr["kind"].(string); !producerRefKinds[k] {
+			return false
+		}
+		labels, _ := tr["labels"].(map[string]interface{})
+		ns, _ := labels[kubeNamespaceLabel].(string)
+		if ns != policyNS {
+			return false
+		}
+	}
+	return true
+}
+
+// pinProducerZoneForV3 keeps a producer policy a producer on 3.0. ComputePolicyRole
+// (kuma pkg/core/resources/labels/compute.go on master) counts a to[] item as a
+// producer item only when its targetRef is a MeshService or MeshHTTPRoute whose
+// labels are exactly three: kuma.io/display-name, k8s.kuma.io/namespace equal to
+// the policy's namespace, and kuma.io/zone equal to the policy's own zone. All
+// items producer → producer; none → consumer; a mix is rejected. The 2-label form
+// fixRefToLabels writes from name/namespace is therefore a consumer policy, which
+// is applied only in its own namespace's proxies and is not synced to other zones.
+//
+// Runs after fixRefToLabels on the same refs. The zone comes from the policy's
+// own kuma.io/zone label; when that is absent (a policy extracted without it) the
+// exact label to add is named instead.
+func pinProducerZoneForV3(obj map[string]interface{}, to []interface{}, name, kind, policyNS string) (bool, []string) {
+	if !isProducerPolicy(obj, to, policyNS) {
+		return false, nil
+	}
+	zone, _ := objLabels(obj)[zoneLabel].(string)
+
+	modified := false
+	var warnings, missing []string
+	for i, entry := range to {
+		em, _ := entry.(map[string]interface{})
+		tr, _ := em["targetRef"].(map[string]interface{})
+		if k, _ := tr["kind"].(string); !producerRefKinds[k] {
+			continue
+		}
+		labels, _ := tr["labels"].(map[string]interface{})
+		if labels == nil {
+			continue // not rewritten (conflict); fixRefToLabels already warned
+		}
+		path := fmt.Sprintf("spec.to[%d].targetRef", i)
+		if _, ok := labels[zoneLabel]; !ok {
+			if zone == "" {
+				missing = append(missing, path)
+				continue
+			}
+			labels[zoneLabel] = zone
+			modified = true
+		}
+		if len(labels) != 3 || labels[displayNameLabel] == nil || labels[kubeNamespaceLabel] != policyNS {
+			keys := make([]string, 0, len(labels))
+			for k := range labels {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+			warnings = append(warnings, fmt.Sprintf(
+				"%s %q: %s labels {%s} make this a consumer policy on Kuma 3.0, not a producer one: a to[] "+
+					"item counts as producer only with exactly kuma.io/display-name, k8s.kuma.io/namespace: %s "+
+					"and kuma.io/zone. Remove the other labels to keep it a producer policy.",
+				kind, name, path, strings.Join(keys, ", "), policyNS))
+		}
+	}
+	if modified {
+		warnings = append(warnings, fmt.Sprintf(
+			"%s %q: added kuma.io/zone: %s to the to[] MeshService/MeshHTTPRoute labels — on Kuma 3.0 a "+
+				"policy is a producer policy only when each to[] item selects exactly kuma.io/display-name, "+
+				"k8s.kuma.io/namespace and kuma.io/zone (the policy's own zone). Apply it on zone %s.",
+			kind, name, zone, zone))
+	}
+	if len(missing) > 0 {
+		warnings = append(warnings, fmt.Sprintf(
+			"%s %q is a producer policy (namespace %s), but Kuma 3.0 keeps it one only when each to[] "+
+				"item's labels are exactly kuma.io/display-name, k8s.kuma.io/namespace and kuma.io/zone equal "+
+				"to the zone the policy is created in. The zone is not known from the manifest: add "+
+				"`kuma.io/zone: <zone-name>` to the labels of %s (the name of the zone control plane you apply "+
+				"it to). Without it the policy becomes a consumer policy: it is applied only to proxies in "+
+				"namespace %s and is not synced to other zones.",
+			kind, name, policyNS, strings.Join(missing, ", "), policyNS))
+	}
 	return modified, warnings
 }
 

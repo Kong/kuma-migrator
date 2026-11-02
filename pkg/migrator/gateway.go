@@ -73,7 +73,212 @@ func parseGatewayClassEntry(raw []byte) (string, string) {
 	}
 	// TransformMeshGatewayInstance names the generated GatewayClass after the
 	// instance, so the instance name is the class name.
-	return probe.Spec.Tags["kuma.io/service"], probe.Metadata.Name
+	return gatewayInstanceServiceTag(probe.Metadata, probe.Spec.Tags), probe.Metadata.Name
+}
+
+// gatewayInstanceServiceTag returns the kuma.io/service tag the pods of a
+// MeshGatewayInstance carry: spec.tags["kuma.io/service"] when set, otherwise
+// the "<name>_<namespace>_svc" value Kuma's instance controller defaults it to
+// (gatewayInstanceTags / k8s_util.ServiceTag, v2.14).
+func gatewayInstanceServiceTag(meta KubeMetadata, tags map[string]string) string {
+	if v := tags[serviceTagKey]; v != "" {
+		return v
+	}
+	if meta.Name != "" && meta.Namespace != "" {
+		return fmt.Sprintf("%s_%s_svc", meta.Name, meta.Namespace)
+	}
+	return ""
+}
+
+const serviceTagKey = "kuma.io/service"
+
+// ---- Gateway reference index ---------------------------------------------------
+
+// GatewayRefIndex links the kuma.io/service tag of a built-in gateway to the
+// Gateway API Gateway this tool emits for it, so that a converted route's
+// parentRefs and the converted Gateway agree on name, namespace and listener
+// names.
+//
+//   - Name: TransformMeshGateway names the Gateway after the MeshGateway
+//     (metadata.name). A MeshGatewayRoute carries only the kuma.io/service tag
+//     its selectors match, which is the MeshGatewayInstance's service name — a
+//     different identifier.
+//   - Namespace: MeshGateway is cluster-scoped, Gateway is namespaced. The
+//     MeshGatewayInstance carrying the same tag is namespaced and its pods run
+//     there; Kuma 2.x's Gateway API controller also creates the instance for a
+//     Gateway in the Gateway's own namespace. So the instance's namespace is
+//     where the Gateway belongs.
+//   - Listener names: a route selector's extra tags pick listeners by their
+//     tags; the Gateway names listeners with gatewayListenerNames.
+//
+// Built in the BuildTransformOptions pre-pass. A nil index is valid and
+// resolves nothing.
+type GatewayRefIndex struct {
+	gateways   map[string][]indexedGateway // tag → MeshGateways selecting it
+	namespaces map[string][]string         // tag → namespaces of MeshGatewayInstances declaring it
+}
+
+type indexedGateway struct {
+	name      string
+	namespace string // the MeshGateway's own metadata.namespace (normally empty)
+	tags      []string
+	listeners []indexedListener
+}
+
+type indexedListener struct {
+	name string
+	tags map[string]string
+}
+
+// add indexes one document; anything other than a MeshGateway or a
+// MeshGatewayInstance is ignored.
+func (idx *GatewayRefIndex) add(raw []byte) {
+	var probe struct {
+		Kind     string       `json:"kind"`
+		Type     string       `json:"type"`
+		Metadata KubeMetadata `json:"metadata"`
+		Spec     struct {
+			Tags map[string]string `json:"tags"`
+		} `json:"spec"`
+	}
+	if err := yaml.Unmarshal(raw, &probe); err != nil {
+		return
+	}
+	kind := probe.Kind
+	if kind == "" {
+		kind = probe.Type
+	}
+	switch kind {
+	case "MeshGatewayInstance":
+		tag := gatewayInstanceServiceTag(probe.Metadata, probe.Spec.Tags)
+		if tag == "" || probe.Metadata.Namespace == "" {
+			return
+		}
+		if idx.namespaces == nil {
+			idx.namespaces = map[string][]string{}
+		}
+		idx.namespaces[tag] = appendUniqueSorted(idx.namespaces[tag], probe.Metadata.Namespace)
+	case "MeshGateway":
+		gw, err := parseMeshGateway(raw)
+		if err != nil || gw.Metadata.Name == "" {
+			return
+		}
+		entry := newIndexedGateway(gw)
+		if idx.gateways == nil {
+			idx.gateways = map[string][]indexedGateway{}
+		}
+		for _, tag := range entry.tags {
+			idx.gateways[tag] = append(idx.gateways[tag], entry)
+			sort.SliceStable(idx.gateways[tag], func(i, j int) bool {
+				return idx.gateways[tag][i].name < idx.gateways[tag][j].name
+			})
+		}
+	}
+}
+
+func (idx *GatewayRefIndex) empty() bool {
+	return idx == nil || (len(idx.gateways) == 0 && len(idx.namespaces) == 0)
+}
+
+// gatewaysFor returns the MeshGateways whose selectors (or tags) carry tag.
+func (idx *GatewayRefIndex) gatewaysFor(tag string) []indexedGateway {
+	if idx == nil {
+		return nil
+	}
+	return idx.gateways[tag]
+}
+
+// gatewayNamespace resolves the namespace of the Gateway converted from g: the
+// namespace of the MeshGatewayInstance(s) sharing one of its kuma.io/service
+// tags, else the MeshGateway's own metadata.namespace. It returns every
+// candidate so the caller can report ambiguity; the first one is used.
+func (idx *GatewayRefIndex) gatewayNamespace(g indexedGateway) []string {
+	var out []string
+	if idx != nil {
+		for _, tag := range g.tags {
+			for _, ns := range idx.namespaces[tag] {
+				out = appendUniqueSorted(out, ns)
+			}
+		}
+	}
+	if len(out) == 0 && g.namespace != "" {
+		out = []string{g.namespace}
+	}
+	return out
+}
+
+func newIndexedGateway(gw oldMeshGateway) indexedGateway {
+	names := gatewayListenerNames(gw.Spec.Conf.Listeners)
+	listeners := make([]indexedListener, len(names))
+	for i, l := range gw.Spec.Conf.Listeners {
+		listeners[i] = indexedListener{name: names[i], tags: l.Tags}
+	}
+	return indexedGateway{
+		name:      gw.Metadata.Name,
+		namespace: gw.Metadata.Namespace,
+		tags:      gatewayServiceTags(gw),
+		listeners: listeners,
+	}
+}
+
+func appendUniqueSorted(list []string, v string) []string {
+	for _, existing := range list {
+		if existing == v {
+			return list
+		}
+	}
+	list = append(list, v)
+	sort.Strings(list)
+	return list
+}
+
+// universalMeshGateway is the Universal-format shape of a MeshGateway: type/name/
+// mesh and the spec fields at the top level.
+type universalMeshGateway struct {
+	Type      string            `json:"type"`
+	Name      string            `json:"name"`
+	Mesh      string            `json:"mesh"`
+	Selectors []OldSelector     `json:"selectors"`
+	Tags      map[string]string `json:"tags"`
+	Conf      oldMGWConf        `json:"conf"`
+}
+
+// parseMeshGateway reads a MeshGateway in either the Kubernetes or the
+// Universal layout into the Kubernetes-shaped oldMeshGateway.
+func parseMeshGateway(raw []byte) (oldMeshGateway, error) {
+	var gw oldMeshGateway
+	if err := yaml.Unmarshal(raw, &gw); err != nil {
+		return gw, err
+	}
+	if gw.Kind != "" {
+		return gw, nil
+	}
+	var u universalMeshGateway
+	if err := yaml.Unmarshal(raw, &u); err != nil || u.Type != "MeshGateway" {
+		return gw, nil //nolint:nilerr // the Kubernetes parse already succeeded
+	}
+	gw.Kind = u.Type
+	if gw.Metadata.Name == "" {
+		gw.Metadata.Name = u.Name
+	}
+	if u.Mesh != "" {
+		if gw.Metadata.Labels == nil {
+			gw.Metadata.Labels = map[string]string{}
+		}
+		if gw.Metadata.Labels[meshLabel] == "" {
+			gw.Metadata.Labels[meshLabel] = u.Mesh
+		}
+	}
+	if len(gw.Spec.Selectors) == 0 {
+		gw.Spec.Selectors = u.Selectors
+	}
+	if len(gw.Spec.Tags) == 0 {
+		gw.Spec.Tags = u.Tags
+	}
+	if len(gw.Spec.Conf.Listeners) == 0 {
+		gw.Spec.Conf = u.Conf
+	}
+	return gw, nil
 }
 
 // ---- Old MeshGateway structs (input) ----------------------------------------
@@ -131,20 +336,19 @@ type oldMeshGatewayInstance struct {
 // Gateway API on both targets, so this conversion is always performed. Only
 // spec.gatewayClassName is target-sensitive — see resolveGatewayClassName.
 func TransformMeshGateway(raw []byte, opts TransformOptions) ([][]byte, []string, error) {
-	var gw oldMeshGateway
-	if err := yaml.Unmarshal(raw, &gw); err != nil {
+	gw, err := parseMeshGateway(raw)
+	if err != nil {
 		return nil, nil, fmt.Errorf("unmarshal MeshGateway: %w", err)
 	}
 
 	name := gw.Metadata.Name
-	namespace := gw.Metadata.Namespace
-	var warnings []string
+	namespace, warnings := resolveGatewayNamespace(gw, opts)
 
 	if len(gw.Spec.Selectors) > 0 {
 		warnings = append(warnings, fmt.Sprintf(
 			"Gateway %q: spec.selectors has no equivalent in Gateway API — the gateway workload is "+
 				"managed by the gateway implementation, not selected by the Gateway resource. The tag is "+
-				"still used here to resolve spec.gatewayClassName", name))
+				"still used here to resolve spec.gatewayClassName and metadata.namespace", name))
 	}
 	if len(gw.Spec.Tags) > 0 {
 		warnings = append(warnings, fmt.Sprintf(
@@ -152,8 +356,9 @@ func TransformMeshGateway(raw []byte, opts TransformOptions) ([][]byte, []string
 	}
 
 	listeners := make([]interface{}, 0, len(gw.Spec.Conf.Listeners))
+	listenerNames := gatewayListenerNames(gw.Spec.Conf.Listeners)
 	for i, l := range gw.Spec.Conf.Listeners {
-		lName := gatewayListenerName(l.Protocol, l.Port)
+		lName := listenerNames[i]
 		listener := map[string]interface{}{
 			"name":     lName,
 			"port":     int(l.Port),
@@ -205,9 +410,9 @@ func TransformMeshGateway(raw []byte, opts TransformOptions) ([][]byte, []string
 		listeners = append(listeners, listener)
 	}
 
-	meta := map[string]interface{}{
-		"name":      name,
-		"namespace": namespace,
+	meta := map[string]interface{}{"name": name}
+	if namespace != "" {
+		meta["namespace"] = namespace
 	}
 	if labels := meshLabelFromLabels(gw.Metadata.Labels); len(labels) > 0 {
 		meta["labels"] = labels
@@ -236,7 +441,7 @@ func TransformMeshGateway(raw []byte, opts TransformOptions) ([][]byte, []string
 // ---- MeshGatewayInstance → GatewayClass + MeshGatewayConfig ----------------
 
 // TransformMeshGatewayInstance converts a MeshGatewayInstance into a Gateway API
-// GatewayClass (cluster-scoped) plus a Kuma MeshGatewayConfig (namespaced).
+// GatewayClass (cluster-scoped) plus a Kuma MeshGatewayConfig (cluster-scoped).
 //
 // That output is 2.x-only. Kuma 3.0 removes the built-in gateway API entirely and
 // its Gateway API integration is reduced to HTTPRoute (and, since kuma#18280,
@@ -258,33 +463,55 @@ func TransformMeshGatewayInstance(raw []byte, target TargetVersion) ([][]byte, [
 	// GatewayClass is cluster-scoped (no namespace) and carries no mesh marking:
 	// Kuma resolves a gateway's mesh from the Gateway object (its own label or
 	// its Namespace's), never from the class the Gateway names.
+	//
+	// MeshGatewayConfig is cluster-scoped too (meshgatewayconfigs.kuma.io,
+	// scope: Cluster), so parametersRef carries no namespace. That is not
+	// cosmetic: Kuma's GatewayClass controller (getParametersRef, v2.14) sets
+	// Accepted=False / InvalidParameters ("parametersRef must not refer to a
+	// namespace") on a class whose parametersRef has one, and every Gateway
+	// naming that class is then skipped.
 	gcMeta := map[string]interface{}{"name": name}
 	gatewayClass := map[string]interface{}{
 		"apiVersion": gatewayAPIVersion,
 		"kind":       "GatewayClass",
 		"metadata":   gcMeta,
 		"spec": map[string]interface{}{
-			"controllerName": "gateways.kuma.io/controller",
+			"controllerName": kumaGatewayController,
 			"parametersRef": map[string]interface{}{
-				"group":     "kuma.io",
-				"kind":      "MeshGatewayConfig",
-				"name":      name,
-				"namespace": namespace,
+				"group": "kuma.io",
+				"kind":  "MeshGatewayConfig",
+				"name":  name,
 			},
 		},
 	}
 
 	// MeshGatewayConfig carries the deployment configuration (replicas, service type, etc.).
-	mgcMeta := map[string]interface{}{
-		"name":      name,
-		"namespace": namespace,
-	}
+	mgcMeta := map[string]interface{}{"name": name}
 	if len(inst.Metadata.Labels) > 0 {
 		mgcMeta["labels"] = inst.Metadata.Labels
 	}
 	var specObj interface{}
 	if len(inst.Spec) > 0 {
 		_ = json.Unmarshal(inst.Spec, &specObj)
+	}
+	// Kuma's Gateway controller copies MeshGatewayConfig.spec.tags onto the
+	// MeshGatewayInstance it creates for each Gateway, but selects that
+	// instance's pods with kuma.io/service: <gateway>_<namespace>_svc. A
+	// kuma.io/service carried over from the old instance would override the
+	// generated tag and the gateway would select no dataplane, so it is dropped.
+	if spec, ok := specObj.(map[string]interface{}); ok {
+		if tags, ok := spec["tags"].(map[string]interface{}); ok {
+			if svc, ok := tags[serviceTagKey]; ok {
+				delete(tags, serviceTagKey)
+				if len(tags) == 0 {
+					delete(spec, "tags")
+				}
+				warnings = append(warnings, fmt.Sprintf(
+					"MeshGatewayInstance %q: spec.tags[kuma.io/service]=%v is not carried into MeshGatewayConfig %q — "+
+						"Kuma generates kuma.io/service=<gateway>_<namespace>_svc for each Gateway using this class, "+
+						"and a fixed value would stop the gateway from selecting its own pods", name, svc, name))
+			}
+		}
 	}
 	meshGatewayConfig := map[string]interface{}{
 		"apiVersion": kumaAPIVersion,
@@ -294,8 +521,9 @@ func TransformMeshGatewayInstance(raw []byte, target TargetVersion) ([][]byte, [
 	}
 
 	warnings = append(warnings, fmt.Sprintf(
-		"MeshGatewayInstance %q → GatewayClass %q (cluster-scoped) + MeshGatewayConfig %q (%s). "+
-			"Update Gateway resources to use gatewayClassName: %s", name, name, name, namespace, name))
+		"MeshGatewayInstance %q → GatewayClass %q + MeshGatewayConfig %q (both cluster-scoped). "+
+			"Gateways using gatewayClassName: %s belong in namespace %s, where this instance's pods run — "+
+			"Kuma creates each Gateway's MeshGatewayInstance in the Gateway's own namespace", name, name, name, name, namespaceOrUnknown(namespace)))
 	warnings = append(warnings, fmt.Sprintf(
 		"MeshGatewayInstance %q: the kuma.io/service tag is now auto-generated when the Gateway resource is applied — "+
 			"verify the generated service name matches what your routes expect", name))
@@ -373,6 +601,44 @@ func resolveGatewayClassName(gw oldMeshGateway, name string, opts TransformOptio
 				"Used %q for spec.gatewayClassName — confirm that is the intended gateway.",
 			name, strings.Join(matched, ", "), matched[0])}
 	}
+}
+
+// resolveGatewayNamespace determines metadata.namespace of the converted
+// Gateway. MeshGateway is cluster-scoped, so its document normally has no
+// namespace, while Gateway is namespaced. The namespace of the companion
+// MeshGatewayInstance (linked by kuma.io/service tag, see GatewayRefIndex) is
+// used; the same rule resolves a route's parentRefs[].namespace, so the two
+// always agree. Unresolvable → "" (the field is omitted) plus a warning: an
+// empty namespace must never be emitted.
+func resolveGatewayNamespace(gw oldMeshGateway, opts TransformOptions) (string, []string) {
+	g := newIndexedGateway(gw)
+	candidates := opts.Gateways.gatewayNamespace(g)
+	switch len(candidates) {
+	case 1:
+		return candidates[0], nil
+	case 0:
+		hint := "no MeshGatewayInstance in the input set declares a matching kuma.io/service tag"
+		if len(g.tags) == 0 {
+			hint = "this MeshGateway declares no kuma.io/service tag in spec.selectors or spec.tags"
+		}
+		return "", []string{fmt.Sprintf(
+			"Gateway %q: metadata.namespace omitted — MeshGateway is cluster-scoped but Gateway is namespaced, "+
+				"and the namespace is taken from the companion MeshGatewayInstance (where the gateway pods run), "+
+				"but %s. Apply it with -n <namespace>, and set parentRefs[].namespace on the routes attached "+
+				"to it to the same namespace.", g.name, hint)}
+	default:
+		return candidates[0], []string{fmt.Sprintf(
+			"Gateway %q: its kuma.io/service tag matches MeshGatewayInstances in more than one namespace (%s). "+
+				"Placed it in %q — confirm that is where the gateway should run.",
+			g.name, strings.Join(candidates, ", "), candidates[0])}
+	}
+}
+
+func namespaceOrUnknown(ns string) string {
+	if ns == "" {
+		return "(unknown)"
+	}
+	return ns
 }
 
 // gatewayServiceTags collects the kuma.io/service values a MeshGateway is scoped
@@ -516,6 +782,26 @@ func carriedGatewayInstanceSettings(inst oldMeshGatewayInstance) string {
 // matching the convention Kuma uses internally (e.g. "http-8080").
 func gatewayListenerName(protocol string, port uint32) string {
 	return fmt.Sprintf("%s-%d", strings.ToLower(protocol), port)
+}
+
+// gatewayListenerNames names every listener of a MeshGateway. Gateway API
+// requires listener names to be unique within a Gateway, but two MeshGateway
+// listeners can share protocol and port (differing by hostname), so repeats get
+// a "-2", "-3", … suffix. Used by both TransformMeshGateway and the route
+// parentRefs resolution so sectionName always names an emitted listener.
+func gatewayListenerNames(listeners []oldMGWListener) []string {
+	names := make([]string, len(listeners))
+	seen := map[string]int{}
+	for i, l := range listeners {
+		base := gatewayListenerName(l.Protocol, l.Port)
+		seen[base]++
+		if seen[base] > 1 {
+			names[i] = fmt.Sprintf("%s-%d", base, seen[base])
+		} else {
+			names[i] = base
+		}
+	}
+	return names
 }
 
 func convertGWTLSMode(mode string) string {

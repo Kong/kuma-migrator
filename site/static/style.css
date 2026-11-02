@@ -1,36 +1,5 @@
-/* kuma-migrator docs. Tokens, fonts and code-block look match docs/index.html. */
-:root {
-  --bg:        #ffffff;
-  --bg-alt:    #f6f8fa;
-  --ink:       #1f2328;
-  --muted:     #6e7781;
-  --line:      #d0d7de;
-  --code-bg:   rgba(31, 35, 40, .06);
-  --accent:    #6639ba;
-  --accent-d:  #4f2a94;
-  --old:       #b3261e;
-  --new:       #0f6f5c;
-  --manual:    #9a6700;
-  --accent2:   #3d1f75;
-  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg:       #0d1117;
-    --bg-alt:   #161b22;
-    --ink:      #e6edf3;
-    --muted:    #8b949e;
-    --line:     #30363d;
-    --code-bg:  rgba(230, 237, 243, .08);
-    --accent:   #b083f0;
-    --accent-d: #cba8f7;
-    --old:      #ff7b72;
-    --new:      #56d4a4;
-    --manual:   #e3b341;
-    --accent2:  #e2a6ff;
-  }
-}
+/* kuma-migrator docs. Colour tokens, the header and code blocks live in shared.css,
+   which is also inlined into the landing page (docs/index.html). */
 
 * { box-sizing: border-box }
 html { scroll-padding-top: 4.5rem }
@@ -50,52 +19,7 @@ a:hover { color: var(--accent-d) }
 .skip { position: absolute; left: -999px }
 .skip:focus { left: 1rem; top: .5rem; z-index: 20; background: var(--bg); padding: .4rem .8rem }
 
-code, pre { font-family: var(--mono) }
-code {
-  font-size: .875em;
-  background: var(--code-bg);
-  padding: .15em .4em;
-  border-radius: 4px;
-}
-pre {
-  background: var(--code-bg);
-  border-radius: 8px;
-  padding: 1rem 1.1rem;
-  overflow-x: auto;
-  font-size: .84rem;
-  line-height: 1.6;
-  border: 1px solid var(--line);
-}
-pre code { background: none; padding: 0; font-size: inherit }
-pre.chroma { background: var(--code-bg) !important }
-
-/* ---- header ---- */
-.site-header {
-  position: sticky; top: 0; z-index: 10;
-  background: var(--bg);
-  border-bottom: 1px solid var(--line);
-}
-.bar {
-  max-width: 90rem; margin: 0 auto;
-  display: flex; align-items: center; gap: 1.25rem;
-  padding: .6rem 1.25rem;
-  flex-wrap: wrap;
-}
-.brand {
-  display: inline-flex; align-items: center; gap: .5rem;
-  color: var(--ink); text-decoration: none;
-  font-family: var(--mono); font-weight: 700; font-size: 1.05rem;
-}
-.brand img { border-radius: 7px }
-.docs-home {
-  color: var(--muted); text-decoration: none; font-weight: 600; font-size: .9rem;
-  border-left: 1px solid var(--line); padding-left: 1rem;
-}
-.top-nav { display: flex; gap: 1rem; flex-wrap: wrap }
-.top-nav a { color: var(--ink); text-decoration: none; font-weight: 500; font-size: .95rem; padding: .2rem 0 }
-.top-nav a:hover { color: var(--accent) }
-.top-nav a.active { color: var(--accent); box-shadow: inset 0 -2px 0 var(--accent) }
-
+/* ---- header search ---- */
 .search { margin-left: auto; position: relative; min-width: 12rem; flex: 0 1 18rem }
 .search input {
   width: 100%;
@@ -175,7 +99,6 @@ main { min-width: 0; padding: 2rem 0 3rem }
   .nav-mobile .nav-group:first-of-type { margin-top: .6rem }
   .nav-mobile .nav-group a { margin-left: 0 }
   main { padding-top: 1.25rem }
-  .bar { gap: .6rem 1rem; padding: .55rem 1rem }
   .search { flex: 1 1 100%; margin-left: 0 }
   .docs-home { display: none }
 }

@@ -52,12 +52,21 @@ type oldESTLS struct {
 // TransformExternalService converts an old ExternalService CRD (both Kubernetes-style
 // and Universal-style) into a new MeshExternalService CRD.
 func TransformExternalService(raw []byte) ([][]byte, []string, error) {
+	return TransformExternalServiceWithOptions(raw, TransformOptions{})
+}
+
+// TransformExternalServiceWithOptions is TransformExternalService with the
+// pre-pass context. The output keeps the input's format: a Universal
+// ExternalService becomes a Universal MeshExternalService (type/name/mesh), a
+// Kubernetes one becomes a CRD in the system namespace (see resolveSystemNamespace).
+func TransformExternalServiceWithOptions(raw []byte, opts TransformOptions) ([][]byte, []string, error) {
 	var es oldExternalService
 	if err := yaml.Unmarshal(raw, &es); err != nil {
 		return nil, nil, fmt.Errorf("unmarshal ExternalService: %w", err)
 	}
 
-	name, namespace, mesh := extractESMeta(&es)
+	name, docNamespace, mesh := extractESMeta(&es)
+	universal := es.Kind == "" && es.Type != ""
 	tags := getESTags(&es)
 	networking := getESNetworking(&es)
 
@@ -116,25 +125,13 @@ func TransformExternalService(raw []byte) ([][]byte, []string, error) {
 				"(verification.mode defaults to Secured; adjust if needed)", name))
 	}
 
-	// Metadata.
-	labels := map[string]interface{}{}
-	if mesh != "" {
-		labels["kuma.io/mesh"] = mesh
-	}
-	meta := map[string]interface{}{
-		"name":   name,
-		"labels": labels,
-	}
-	if namespace != "" {
-		meta["namespace"] = namespace
-	}
-
-	output := map[string]interface{}{
-		"apiVersion": kumaAPIVersion,
-		"kind":       "MeshExternalService",
-		"metadata":   meta,
-		"spec":       spec,
-	}
+	// MeshExternalService is a mesh-scoped resource that lives in the system
+	// namespace on Kubernetes.
+	output := buildCompanion("MeshExternalService", name, companionMeta{
+		Mesh:      mesh,
+		Namespace: resolveSystemNamespace(opts, docNamespace),
+		Universal: universal,
+	}, spec)
 
 	warnings = append(warnings, fmt.Sprintf(
 		"MeshExternalService %q: spec.match.port is set to %d (same as the endpoint port). "+
@@ -203,13 +200,6 @@ func extractESMeta(es *oldExternalService) (name, namespace, mesh string) {
 	}
 	if name == "" {
 		name = es.Name
-	}
-	if namespace == "" {
-		namespace = "kong-mesh-system"
-	}
-	// Universal style has no namespace concept — clear it.
-	if es.Kind == "" && es.Type != "" {
-		namespace = ""
 	}
 	return name, namespace, mesh
 }

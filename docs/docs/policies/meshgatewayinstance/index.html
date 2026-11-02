@@ -15,8 +15,8 @@
 <meta property="og:image" content="https://kong.github.io/kuma-migrator/assets/migration-overview.svg">
 <meta name="twitter:card" content="summary_large_image">
 
+<link rel="stylesheet" href="../../static/shared.css">
 <link rel="stylesheet" href="../../static/style.css">
-<link rel="stylesheet" href="../../static/chroma.css">
 </head>
 <body data-root="../../">
 <a class="skip" href="#content">Skip to content</a>
@@ -30,6 +30,7 @@
       <a href="../" class="active" aria-current="true">Policies</a>
       <a href="https://github.com/Kong/kuma-migrator">GitHub</a>
     </nav>
+    <!-- release-tag --><a class="release-badge" href="https://github.com/Kong/kuma-migrator/releases/latest" title="Latest release: v0.8.0">v0.8.0</a><!-- /release-tag -->
     <div class="search">
       <input id="search-input" type="search" placeholder="Search docs" aria-label="Search docs" autocomplete="off">
       <ul id="search-results" hidden></ul>
@@ -70,12 +71,18 @@
   <section class="target-card">
     <header><span class="target-label">--to-latest v2 (2.x)</span> <span class="status status-converted">converted</span></header>
     <p class="outputs">Output: <code>GatewayClass</code>, <a href="../meshgatewayconfig/"><code>MeshGatewayConfig</code></a></p>
-    <div class="notes"><p>Converted to a cluster-scoped <code>GatewayClass</code> named after the instance
+    <div class="notes"><p>Converted to a <code>GatewayClass</code> named after the instance
 (<code>controllerName: gateways.kuma.io/controller</code>) whose <code>parametersRef</code> points at a
 <code>MeshGatewayConfig</code> carrying the instance <code>spec</code> (<code>replicas</code>, <code>serviceType</code>, <code>tags</code>).
-Set <code>gatewayClassName</code> on your Gateways to this name; the converted
-<a href="../meshgateway/">MeshGateway</a> does so automatically when the <code>kuma.io/service</code>
-tags match.</p>
+Both are cluster-scoped, so neither the <code>MeshGatewayConfig</code> nor the <code>parametersRef</code>
+has a namespace: Kuma marks a class whose <code>parametersRef</code> names a namespace as
+<code>InvalidParameters</code> and ignores its Gateways.</p>
+<p><code>tags[&quot;kuma.io/service&quot;]</code> is dropped from the <code>MeshGatewayConfig</code>, with a warning: Kuma
+copies those tags onto the instance it creates for each Gateway, which must keep the
+generated <code>&lt;gateway&gt;_&lt;namespace&gt;_svc</code> value.</p>
+<p>Set <code>gatewayClassName</code> on your Gateways to this name and create them in the instance's
+namespace; the converted <a href="../meshgateway/">MeshGateway</a> does both automatically
+when the <code>kuma.io/service</code> tags match.</p>
 </div>
   </section>
   <section class="target-card">
@@ -126,5 +133,6 @@ and annotate the Service <code>kuma.io/ignore: &quot;true&quot;</code>. It carri
 </footer>
 <script src="../../static/search-index.js"></script>
 <script src="../../static/search.js"></script>
+<script src="../../static/copy.js"></script>
 </body>
 </html>

@@ -324,7 +324,7 @@ func warnMeshServiceInFrom(obj map[string]interface{}, name, kind string) []stri
 		if tr["kind"] == "MeshService" {
 			warnings = append(warnings, fmt.Sprintf(
 				"%s %q: from[].targetRef.kind MeshService is deprecated in Kuma 2.7+ — "+
-					"use kind: Dataplane with labels instead.",
+					"use kind: MeshSubset with the kuma.io/service tag instead (UPGRADE.md 2.7).",
 				kind, name))
 			break
 		}
@@ -757,8 +757,9 @@ func warnMeshForbidExternalServiceAccess(obj map[string]interface{}, name string
 //
 // This is NOT auto-converted into a MeshIdentity: the cutover is a guided CA
 // migration (Kuma MADR-074) whose inputs — trust domain (runtime/zone-derived),
-// per-workload SPIFFE paths, and CA key material (CP-generated Secret / DataSource /
-// Vault) — are not present in the Mesh manifest, and the builtin path mints a new CA.
+// per-workload SPIFFE paths, and the location of the CA (CP-generated Secrets for
+// builtin, operator DataSources for provided, an external system for the Kong Mesh
+// types) — are not present in the Mesh manifest. The text is built per backend type.
 // Under v3 TransformMeshForTarget deletes the block and calls this for the text.
 func warnMeshMtlsBackends(obj map[string]interface{}, name string, target TargetVersion) []string {
 	// Kubernetes format: spec.mtls; Universal format: top-level mtls.
@@ -777,31 +778,56 @@ func warnMeshMtlsBackends(obj map[string]interface{}, name string, target Target
 		return nil
 	}
 
-	const cutover = "This is a guided CA cutover (see Kuma MADR-074), not a manifest rewrite — the " +
-		"trust domain, per-workload SPIFFE paths, and CA key material are not in this manifest, and the " +
-		"builtin backend mints a new CA."
+	// The cutover text depends on where each backend keeps its CA: builtin
+	// generates it into CP-owned Secrets, provided reads it from operator-owned
+	// DataSources, and the Kong Mesh enterprise types keep it in an external
+	// system. Text that is true for one is wrong for the others.
+	classes := classifyMtlsBackends(backends)
 
-	var msg string
+	msg := fmt.Sprintf("Mesh %q: ", name)
 	if target.IsV3() {
-		msg = fmt.Sprintf(
-			"Mesh %q: spec.mtls is REMOVED in 3.0 and has been dropped from the Mesh output. BLOCKING: "+
-				"before upgrading, create a MeshIdentity (and MeshTrust) that selects every proxy in this "+
-				"mesh, unless one already does. On 3.0 spec.mtls issues no certificates: a mesh whose only "+
-				"identity source is spec.mtls serves and accepts plaintext, and MeshTLS and "+
-				"MeshTrafficPermission stop applying to its proxies. Finish the MeshIdentity migration "+
-				"first: after the upgrade, proxies still holding a legacy mesh certificate are not trusted "+
-				"by MeshIdentity peers and there is no rolling path back. %s The upgrade does not delete "+
-				"the <mesh>.ca-builtin-cert-<backend> / <mesh>.ca-builtin-key-<backend> Secrets; delete "+
-				"them yourself once no tooling needs the CA material.",
-			name, cutover)
+		msg += "spec.mtls is REMOVED in 3.0 and has been dropped from the Mesh output. BLOCKING: " +
+			"before upgrading, create a MeshIdentity (and MeshTrust) that selects every proxy in this " +
+			"mesh, unless one already does. On 3.0 spec.mtls issues no certificates: a mesh whose only " +
+			"identity source is spec.mtls serves and accepts plaintext, and MeshTLS and " +
+			"MeshTrafficPermission stop applying to its proxies. Finish the MeshIdentity migration " +
+			"first: after the upgrade, proxies still holding a legacy mesh certificate are not trusted " +
+			"by MeshIdentity peers and there is no rolling path back."
 	} else {
-		msg = fmt.Sprintf(
-			"Mesh %q: spec.mtls is the legacy mTLS/identity model and is removed in Kuma 3.0. Migrating "+
-				"to MeshIdentity (workload identity) + MeshTrust (trust domains) is required before "+
-				"upgrading to 3.0: on 3.0 spec.mtls is dropped silently and issues no certificates, so a "+
-				"mesh whose only identity source is spec.mtls serves plaintext and MeshTLS / "+
-				"MeshTrafficPermission stop applying. %s The field still works on 2.x, so this output keeps it.",
-			name, cutover)
+		msg += "spec.mtls is the legacy mTLS/identity model and is removed in Kuma 3.0. Migrating " +
+			"to MeshIdentity (workload identity) + MeshTrust (trust domains) is required before " +
+			"upgrading to 3.0: on 3.0 spec.mtls is dropped silently and issues no certificates, so a " +
+			"mesh whose only identity source is spec.mtls serves plaintext and MeshTLS / " +
+			"MeshTrafficPermission stop applying."
+	}
+	msg += " This is a guided CA cutover (see Kuma MADR-074), not a manifest rewrite: the trust " +
+		"domain and the per-workload SPIFFE paths are not in this manifest."
+
+	if len(classes.builtin) > 0 {
+		msg += fmt.Sprintf(
+			" Backend(s) %s are type builtin: the control plane generated the CA and stores it in the "+
+				"<mesh>.ca-builtin-cert-<backend> / <mesh>.ca-builtin-key-<backend> Secrets. A MeshIdentity "+
+				"with spec.provider.type: Bundled and autogenerate mints a new CA; to keep the current one, "+
+				"reference those Secrets from spec.provider.bundled.ca.certificate / privateKey.",
+			strings.Join(classes.builtin, ", "))
+		if target.IsV3() {
+			msg += " The upgrade does not delete the ca-builtin Secrets; delete them yourself once no " +
+				"tooling needs the CA material."
+		}
+	}
+	if len(classes.provided) > 0 {
+		msg += fmt.Sprintf(
+			" Backend(s) %s are type provided: the CA certificate and key are the DataSources in "+
+				"conf.cert / conf.key, which you own. To keep that CA, reference the same material from "+
+				"spec.provider.bundled.ca.certificate / privateKey of a Bundled MeshIdentity "+
+				"(SecureDataSource shape: type Secret with secretRef, or type InsecureInline).",
+			strings.Join(classes.provided, ", "))
+	}
+	if len(classes.other) > 0 {
+		msg += fmt.Sprintf(
+			" Backend(s) %s have a type the migrator does not recognise: find where that CA's "+
+				"material lives before choosing a MeshIdentity provider.",
+			strings.Join(classes.other, ", "))
 	}
 
 	// Kong Mesh 2.14 added the MeshIdentity `Extension` provider, which is the
@@ -822,12 +848,51 @@ func warnMeshMtlsBackends(obj map[string]interface{}, name string, target Target
 					"set to %s.",
 				strings.Join(ext.types, ", "), strings.Join(ext.names, "/"))
 		}
-		msg += " Note the Kuma docs still list only Bundled and Spire as providers — the " +
+		msg += " The CA stays in the external system and the Extension provider issues workload " +
+			"certificates from it, so the control plane generates no new CA and stores no CA key. " +
+			"Note the Kuma docs still list only Bundled and Spire as providers — the " +
 			"Extension provider and its acmpca/vault/certmanager configs are undocumented. " +
 			"certmanager is Kubernetes-only; on Universal the CP does not register it."
 	}
+	if !target.IsV3() {
+		msg += " The field still works on 2.x, so this output keeps it."
+	}
 
 	return []string{msg}
+}
+
+// mtlsBackendClasses groups Mesh mTLS backend names by where their CA lives.
+// The Kong Mesh enterprise types are reported through kongMeshCABackendExtensions.
+type mtlsBackendClasses struct {
+	builtin, provided, other []string
+}
+
+// classifyMtlsBackends sorts mtls.backends[] by type into builtin, provided and
+// unrecognised. Types in caBackendExtensionMap are skipped here.
+func classifyMtlsBackends(backends []interface{}) mtlsBackendClasses {
+	var out mtlsBackendClasses
+	for _, b := range backends {
+		bm, ok := b.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		name, _ := bm["name"].(string)
+		typ, _ := bm["type"].(string)
+		if name == "" {
+			name = "(unnamed)"
+		}
+		switch {
+		case typ == "builtin":
+			out.builtin = append(out.builtin, name)
+		case typ == "provided":
+			out.provided = append(out.provided, name)
+		case caBackendExtensionMap[typ] != "":
+			// reported with its Extension provider mapping
+		default:
+			out.other = append(out.other, name)
+		}
+	}
+	return out
 }
 
 // caBackendExtensionMap maps a legacy Mesh mTLS backend type to the Kong Mesh

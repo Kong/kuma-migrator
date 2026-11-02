@@ -15,8 +15,8 @@
 <meta property="og:image" content="https://kong.github.io/kuma-migrator/assets/migration-overview.svg">
 <meta name="twitter:card" content="summary_large_image">
 
+<link rel="stylesheet" href="../../static/shared.css">
 <link rel="stylesheet" href="../../static/style.css">
-<link rel="stylesheet" href="../../static/chroma.css">
 </head>
 <body data-root="../../">
 <a class="skip" href="#content">Skip to content</a>
@@ -30,6 +30,7 @@
       <a href="../../policies/">Policies</a>
       <a href="https://github.com/Kong/kuma-migrator">GitHub</a>
     </nav>
+    <!-- release-tag --><a class="release-badge" href="https://github.com/Kong/kuma-migrator/releases/latest" title="Latest release: v0.8.0">v0.8.0</a><!-- /release-tag -->
     <div class="search">
       <input id="search-input" type="search" placeholder="Search docs" aria-label="Search docs" autocomplete="off">
       <ul id="search-results" hidden></ul>
@@ -290,71 +291,73 @@ then re-inject every pod.</li>
 </ol>
 <h2 id="example">Example</h2>
 <p>Input — a Universal <code>Dataplane</code>:</p>
-<pre class="chroma"><code><span class="line"><span class="cl"><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l">Dataplane</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">mesh</span><span class="p">:</span><span class="w"> </span><span class="l">default</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">web-01</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">networking</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">address</span><span class="p">:</span><span class="w"> </span><span class="m">10.0.0.12</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">advertisedAddress</span><span class="p">:</span><span class="w"> </span><span class="m">192.168.1.12</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">inbound</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span>- <span class="nt">port</span><span class="p">:</span><span class="w"> </span><span class="m">8080</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">servicePort</span><span class="p">:</span><span class="w"> </span><span class="m">8081</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">tags</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">kuma.io/service</span><span class="p">:</span><span class="w"> </span><span class="l">web</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">kuma.io/protocol</span><span class="p">:</span><span class="w"> </span><span class="l">http</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l">v1</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">outbound</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span>- <span class="nt">port</span><span class="p">:</span><span class="w"> </span><span class="m">33033</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">tags</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">kuma.io/service</span><span class="p">:</span><span class="w"> </span><span class="l">backend</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">transparentProxying</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">redirectPortInbound</span><span class="p">:</span><span class="w"> </span><span class="m">15006</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">redirectPortOutbound</span><span class="p">:</span><span class="w"> </span><span class="m">15001</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">reachableServices</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span>- <span class="l">backend</span><span class="w">
-</span></span></span></code></pre><p>With <code>--to-latest v2</code> the document is copied unchanged, with one warning about
+<div class="code"><pre class="chroma" data-lang="yaml"><code><span class="nt">type</span><span class="p">:</span> <span class="l">Dataplane</span>
+<span class="nt">mesh</span><span class="p">:</span> <span class="l">default</span>
+<span class="nt">name</span><span class="p">:</span> <span class="l">web-01</span>
+<span class="nt">networking</span><span class="p">:</span>
+  <span class="nt">address</span><span class="p">:</span> <span class="m">10.0.0.12</span>
+  <span class="nt">advertisedAddress</span><span class="p">:</span> <span class="m">192.168.1.12</span>
+  <span class="nt">inbound</span><span class="p">:</span>
+    - <span class="nt">port</span><span class="p">:</span> <span class="m">8080</span>
+      <span class="nt">servicePort</span><span class="p">:</span> <span class="m">8081</span>
+      <span class="nt">tags</span><span class="p">:</span>
+        <span class="nt">kuma.io/service</span><span class="p">:</span> <span class="l">web</span>
+        <span class="nt">kuma.io/protocol</span><span class="p">:</span> <span class="l">http</span>
+        <span class="nt">version</span><span class="p">:</span> <span class="l">v1</span>
+  <span class="nt">outbound</span><span class="p">:</span>
+    - <span class="nt">port</span><span class="p">:</span> <span class="m">33033</span>
+      <span class="nt">tags</span><span class="p">:</span>
+        <span class="nt">kuma.io/service</span><span class="p">:</span> <span class="l">backend</span>
+  <span class="nt">transparentProxying</span><span class="p">:</span>
+    <span class="nt">redirectPortInbound</span><span class="p">:</span> <span class="m">15006</span>
+    <span class="nt">redirectPortOutbound</span><span class="p">:</span> <span class="m">15001</span>
+    <span class="nt">reachableServices</span><span class="p">:</span>
+      - <span class="l">backend</span>
+</code></pre></div>
+<p>With <code>--to-latest v2</code> the document is copied unchanged, with one warning about
 <code>reachableServices</code>.</p>
 <p>With <code>--to-latest v3</code>:</p>
-<pre class="chroma"><code><span class="line"><span class="cl"><span class="c"># other/Dataplane-web-01.yaml</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">labels</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l">v1</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">mesh</span><span class="p">:</span><span class="w"> </span><span class="l">default</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">web-01</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">networking</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">address</span><span class="p">:</span><span class="w"> </span><span class="m">10.0.0.12</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">advertisedAddress</span><span class="p">:</span><span class="w"> </span><span class="m">192.168.1.12</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">inbound</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span>- <span class="nt">port</span><span class="p">:</span><span class="w"> </span><span class="m">8080</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">protocol</span><span class="p">:</span><span class="w"> </span><span class="l">http</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">servicePort</span><span class="p">:</span><span class="w"> </span><span class="m">8081</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">outbound</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span>- <span class="nt">port</span><span class="p">:</span><span class="w"> </span><span class="m">33033</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">tags</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">kuma.io/service</span><span class="p">:</span><span class="w"> </span><span class="l">backend</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">transparentProxying</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">reachableServices</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span>- <span class="l">backend</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">redirectPortInbound</span><span class="p">:</span><span class="w"> </span><span class="m">15006</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">redirectPortOutbound</span><span class="p">:</span><span class="w"> </span><span class="m">15001</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l">Dataplane</span><span class="w">
-</span></span></span></code></pre><p>The inbound is converted; the outbound and <code>reachableServices</code> are not, because <code>backend</code> is a
+<div class="code"><pre class="chroma" data-lang="yaml"><code><span class="c"># other/Dataplane-web-01.yaml</span>
+<span class="nt">labels</span><span class="p">:</span>
+  <span class="nt">version</span><span class="p">:</span> <span class="l">v1</span>
+<span class="nt">mesh</span><span class="p">:</span> <span class="l">default</span>
+<span class="nt">name</span><span class="p">:</span> <span class="l">web-01</span>
+<span class="nt">networking</span><span class="p">:</span>
+  <span class="nt">address</span><span class="p">:</span> <span class="m">10.0.0.12</span>
+  <span class="nt">advertisedAddress</span><span class="p">:</span> <span class="m">192.168.1.12</span>
+  <span class="nt">inbound</span><span class="p">:</span>
+  - <span class="nt">port</span><span class="p">:</span> <span class="m">8080</span>
+    <span class="nt">protocol</span><span class="p">:</span> <span class="l">http</span>
+    <span class="nt">servicePort</span><span class="p">:</span> <span class="m">8081</span>
+  <span class="nt">outbound</span><span class="p">:</span>
+  - <span class="nt">port</span><span class="p">:</span> <span class="m">33033</span>
+    <span class="nt">tags</span><span class="p">:</span>
+      <span class="nt">kuma.io/service</span><span class="p">:</span> <span class="l">backend</span>
+  <span class="nt">transparentProxying</span><span class="p">:</span>
+    <span class="nt">reachableServices</span><span class="p">:</span>
+    - <span class="l">backend</span>
+    <span class="nt">redirectPortInbound</span><span class="p">:</span> <span class="m">15006</span>
+    <span class="nt">redirectPortOutbound</span><span class="p">:</span> <span class="m">15001</span>
+<span class="nt">type</span><span class="p">:</span> <span class="l">Dataplane</span>
+</code></pre></div>
+<p>The inbound is converted; the outbound and <code>reachableServices</code> are not, because <code>backend</code> is a
 Universal name with no port. Warnings (shortened):</p>
-<pre><code>⚠  3.0 no longer reads the inbound protocol from the kuma.io/protocol tag … Auto-set
+<div class="code"><pre class="chroma" data-lang="text"><code><span class="o-warn">⚠</span>  3.0 no longer reads the inbound protocol from the kuma.io/protocol tag … Auto-set
    inbound[].protocol from the tag: inbound port 8080=http.
-⚠  networking.inbound[].tags is removed in 3.0 and dropped silently on apply … Auto-moved to
+<span class="o-warn">⚠</span>  networking.inbound[].tags is removed in 3.0 and dropped silently on apply … Auto-moved to
    Dataplane labels: version=v1. Dropped, because kuma.io/ and k8s.kuma.io/ are reserved label
    prefixes: kuma.io/protocol=http, kuma.io/service=web. …
-⚠  networking.outbound[].tags is removed in 3.0 … Not converted, because the MeshService port is
+<span class="o-warn">⚠</span>  networking.outbound[].tags is removed in 3.0 … Not converted, because the MeshService port is
    not in the manifest: outbound[0] (port 33033): replace tags with
    `backendRef: {kind: MeshService, name: backend, port: &lt;MeshService port&gt;}`.
-⚠  transparentProxying.reachableServices is removed in 3.0 … these entries could not be
+<span class="o-warn">⚠</span>  transparentProxying.reachableServices is removed in 3.0 … these entries could not be
    converted: [backend]. …
-⚠  networking.advertisedAddress (192.168.1.12) is removed in 3.0 and dropped silently. …
-⚠  transparentProxying.redirectPortInbound / redirectPortOutbound still works on 3.0 but is
+<span class="o-warn">⚠</span>  networking.advertisedAddress (192.168.1.12) is removed in 3.0 and dropped silently. …
+<span class="o-warn">⚠</span>  transparentProxying.redirectPortInbound / redirectPortOutbound still works on 3.0 but is
    removed in 3.1. …
-⚠  transparent proxying without reachableBackends. On 3.0 such a proxy gets no generated
+<span class="o-warn">⚠</span>  transparent proxying without reachableBackends. On 3.0 such a proxy gets no generated
    outbounds and cannot reach any service …
-</code></pre>
+</code></pre></div>
 <h2 id="related">Related</h2>
 <ul>
 <li><a href="../meshservice/">MeshService</a> — <code>reachableBackends</code> and display names</li>
@@ -385,5 +388,6 @@ Universal name with no port. Warnings (shortened):</p>
 </footer>
 <script src="../../static/search-index.js"></script>
 <script src="../../static/search.js"></script>
+<script src="../../static/copy.js"></script>
 </body>
 </html>

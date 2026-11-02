@@ -46,7 +46,10 @@ The tool detects the backend type on every `Mesh` and names the matching extensi
 
 | Input | `--to-latest v2` | `--to-latest v3` |
 |---|---|---|
-| `Mesh` with a `vault`, `acmpca`/`acm` or `certmanager`/`cert-manager` backend | `mtls` kept. Advisory names `spec.provider.type: Extension` and the `extension.name` to use | `mtls` removed, **blocking** warning with the same mapping |
+| `Mesh` with a `vault`, `acmpca`/`acm` or `certmanager`/`cert-manager` backend | `mtls` kept. Advisory names `spec.provider.type: Extension` and the `extension.name` to use, and says the CA stays in the external system | `mtls` removed, **blocking** warning with the same mapping |
+
+The warning is built per backend type: the `builtin`-only advice (a `Bundled` identity mints a new
+CA, delete the `ca-builtin-*` Secrets) appears only when the `Mesh` has a `builtin` backend.
 
 The mapping is `caBackendExtensionMap` in
 [`deprecation.go`](https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/deprecation.go).
@@ -258,7 +261,7 @@ spec:
 
 With `--to-latest v2` the `Mesh` is written back unchanged, with this advisory (shortened):
 
-```
+```text
 ⚠  Mesh "payments": spec.mtls is the legacy mTLS/identity model and is removed in Kuma 3.0. …
    This Mesh uses the Kong Mesh CA backend type(s) vault. Kong Mesh 2.14 added a matching
    MeshIdentity provider: spec.provider.type: Extension with spec.provider.extension.name set to
@@ -278,7 +281,7 @@ spec:
     mode: Exclusive
 ```
 
-```
+```text
 ⚠  Mesh "payments": spec.mtls is REMOVED in 3.0 and has been dropped from the Mesh output.
    BLOCKING: before upgrading, create a MeshIdentity (and MeshTrust) that selects every proxy in
    this mesh, unless one already does. … This Mesh uses the Kong Mesh CA backend type(s) vault,

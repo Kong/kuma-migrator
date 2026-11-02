@@ -15,8 +15,8 @@
 <meta property="og:image" content="https://kong.github.io/kuma-migrator/assets/migration-overview.svg">
 <meta name="twitter:card" content="summary_large_image">
 
+<link rel="stylesheet" href="../../static/shared.css">
 <link rel="stylesheet" href="../../static/style.css">
-<link rel="stylesheet" href="../../static/chroma.css">
 </head>
 <body data-root="../../">
 <a class="skip" href="#content">Skip to content</a>
@@ -30,6 +30,7 @@
       <a href="../../policies/">Policies</a>
       <a href="https://github.com/Kong/kuma-migrator">GitHub</a>
     </nav>
+    <!-- release-tag --><a class="release-badge" href="https://github.com/Kong/kuma-migrator/releases/latest" title="Latest release: v0.8.0">v0.8.0</a><!-- /release-tag -->
     <div class="search">
       <input id="search-input" type="search" placeholder="Search docs" aria-label="Search docs" autocomplete="off">
       <ul id="search-results" hidden></ul>
@@ -205,13 +206,13 @@ applies to every client, so <code>from[]</code> entries that all use <code>kind:
 <tbody>
 <tr>
 <td>Legacy <code>TrafficPermission</code></td>
-<td><code>MeshTrafficPermission</code> with <code>from[]</code> and <code>action: Allow</code>. <code>destinations</code> → <code>spec.targetRef</code>, <code>sources</code> → <code>from[]</code></td>
+<td><code>MeshTrafficPermission</code> with <code>from[]</code> and <code>action: Allow</code>. <code>destinations</code> → <code>spec.targetRef</code> (<code>Dataplane</code> labels), <code>sources</code> → <code>from[]</code> as <code>MeshSubset</code> with the source's <code>kuma.io/service</code> tag (the form 2.7+ documents)</td>
 <td><strong>Error</strong>. Original written to <code>_manual/</code>. Re-run with <code>v2</code> for the <code>from[]</code> form</td>
 </tr>
 <tr>
 <td><code>MeshTrafficPermission</code> with <code>from[]</code></td>
 <td>Warning: deprecated, not converted, manual steps listed</td>
-<td>Warning: rejected by 3.0 as it stands</td>
+<td><strong>Error</strong>: rejected by 3.0 as it stands, written to <code>_manual/</code> instead of the apply tree</td>
 </tr>
 <tr>
 <td><code>MeshTrafficPermission</code> <code>rules[]</code> with an empty match entry</td>
@@ -235,17 +236,17 @@ applies to every client, so <code>from[]</code> entries that all use <code>kind:
 </tr>
 <tr>
 <td>Legacy <code>FaultInjection</code></td>
-<td><code>MeshFaultInjection</code> with <code>from[]</code></td>
+<td><code>MeshFaultInjection</code> with <code>from[]</code> (<code>MeshSubset</code> sources, as for <code>TrafficPermission</code>)</td>
 <td><code>rules[]</code> when every source is <code>kuma.io/service: '*'</code>; error otherwise</td>
 </tr>
 <tr>
 <td><code>MeshFaultInjection</code> with <code>from[]</code></td>
 <td>Warning</td>
-<td><code>rules[]</code> when every entry is <code>kind: Mesh</code>; warning otherwise</td>
+<td><code>rules[]</code> when every entry is <code>kind: Mesh</code>; otherwise <strong>error</strong>, written to <code>_manual/</code></td>
 </tr>
 <tr>
 <td><code>OPAPolicy</code></td>
-<td><code>MeshOPA</code>: <code>conf.policies[]</code> → <code>default.appendPolicies[].rego</code>, <code>conf.agentConfig</code> → <code>default.agentConfig</code>, <code>targetRef</code> kept, with 3.0 advisories</td>
+<td><code>MeshOPA</code>: <code>conf.policies[]</code> → <code>default.appendPolicies[].rego</code>, <code>conf.agentConfig</code> → <code>default.agentConfig</code>, each keeping its <code>inlineString</code>/<code>inline</code>/<code>secret</code> key; an entry with none of them is left out with a &quot;NOT migrated&quot; warning, never emitted as an empty <code>rego</code>. <code>targetRef</code> kept, with 3.0 advisories</td>
 <td>Same, plus the 3.0 rewrites below</td>
 </tr>
 <tr>
@@ -311,185 +312,194 @@ file into <code>MeshOPA</code> <code>agentConfig</code>.</li>
 (<code>kumactl get access-roles -o yaml</code>), and rewrite <code>AccessRole</code> qualifiers to <code>Mesh</code>/<code>Dataplane</code>.</li>
 </ol>
 <p>A <code>from[]</code> policy and its <code>rules[]</code> equivalent, assuming the default Kubernetes identity templates:</p>
-<pre class="chroma"><code><span class="line"><span class="cl"><span class="c"># before (2.x)</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">spec</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">targetRef</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">Dataplane</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">labels</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">app</span><span class="p">:</span><span class="w"> </span><span class="l">payments</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">from</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span>- <span class="nt">targetRef</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshSubset</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">tags</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">          </span><span class="nt">app</span><span class="p">:</span><span class="w"> </span><span class="l">orders</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">default</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">action</span><span class="p">:</span><span class="w"> </span><span class="l">Allow</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nn">---</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="c"># after (2.14 with MeshIdentity, and 3.0)</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">spec</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">targetRef</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">Dataplane</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">labels</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">app</span><span class="p">:</span><span class="w"> </span><span class="l">payments</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">rules</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span>- <span class="nt">default</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">allow</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">          </span>- <span class="nt">spiffeID</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">              </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l">Exact</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">              </span><span class="nt">value</span><span class="p">:</span><span class="w"> </span><span class="l">spiffe://default.zone-1.mesh.local/ns/kuma-demo/sa/orders</span><span class="w">
-</span></span></span></code></pre><h2 id="example">Example</h2>
+<div class="code"><pre class="chroma" data-lang="yaml"><code><span class="c"># before (2.x)</span>
+<span class="nt">spec</span><span class="p">:</span>
+  <span class="nt">targetRef</span><span class="p">:</span>
+    <span class="nt">kind</span><span class="p">:</span> <span class="l">Dataplane</span>
+    <span class="nt">labels</span><span class="p">:</span>
+      <span class="nt">app</span><span class="p">:</span> <span class="l">payments</span>
+  <span class="nt">from</span><span class="p">:</span>
+    - <span class="nt">targetRef</span><span class="p">:</span>
+        <span class="nt">kind</span><span class="p">:</span> <span class="l">MeshSubset</span>
+        <span class="nt">tags</span><span class="p">:</span>
+          <span class="nt">app</span><span class="p">:</span> <span class="l">orders</span>
+      <span class="nt">default</span><span class="p">:</span>
+        <span class="nt">action</span><span class="p">:</span> <span class="l">Allow</span>
+<span class="nn">---</span>
+<span class="c"># after (2.14 with MeshIdentity, and 3.0)</span>
+<span class="nt">spec</span><span class="p">:</span>
+  <span class="nt">targetRef</span><span class="p">:</span>
+    <span class="nt">kind</span><span class="p">:</span> <span class="l">Dataplane</span>
+    <span class="nt">labels</span><span class="p">:</span>
+      <span class="nt">app</span><span class="p">:</span> <span class="l">payments</span>
+  <span class="nt">rules</span><span class="p">:</span>
+    - <span class="nt">default</span><span class="p">:</span>
+        <span class="nt">allow</span><span class="p">:</span>
+          - <span class="nt">spiffeID</span><span class="p">:</span>
+              <span class="nt">type</span><span class="p">:</span> <span class="l">Exact</span>
+              <span class="nt">value</span><span class="p">:</span> <span class="l">spiffe://default.zone-1.mesh.local/ns/kuma-demo/sa/orders</span>
+</code></pre></div>
+<h2 id="example">Example</h2>
 <p>Input — three files: a legacy <code>TrafficPermission</code>, a <code>MeshTrafficPermission</code> on <code>from[]</code>, and a
 Kong Mesh <code>AccessRole</code>:</p>
-<pre class="chroma"><code><span class="line"><span class="cl"><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l">TrafficPermission</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">mesh</span><span class="p">:</span><span class="w"> </span><span class="l">default</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">web-to-backend</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">sources</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span>- <span class="nt">match</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">kuma.io/service</span><span class="p">:</span><span class="w"> </span><span class="l">web_demo_svc_8080</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">destinations</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span>- <span class="nt">match</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">kuma.io/service</span><span class="p">:</span><span class="w"> </span><span class="l">backend_demo_svc_3001</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nn">---</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l">kuma.io/v1alpha1</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshTrafficPermission</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">metadata</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">allow-orders</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l">kong-mesh-system</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">labels</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kuma.io/mesh</span><span class="p">:</span><span class="w"> </span><span class="l">default</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">spec</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">targetRef</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">Dataplane</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">labels</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">app</span><span class="p">:</span><span class="w"> </span><span class="l">payments</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">from</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span>- <span class="nt">targetRef</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshSubset</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">tags</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">          </span><span class="nt">app</span><span class="p">:</span><span class="w"> </span><span class="l">orders</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">default</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">action</span><span class="p">:</span><span class="w"> </span><span class="l">Allow</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nn">---</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l">AccessRole</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">team-a-policies</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">rules</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span>- <span class="nt">types</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&#34;TrafficPermission&#34;</span><span class="p">,</span><span class="w"> </span><span class="s2">&#34;MeshTimeout&#34;</span><span class="p">]</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">mesh</span><span class="p">:</span><span class="w"> </span><span class="l">default</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">access</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&#34;CREATE&#34;</span><span class="p">,</span><span class="w"> </span><span class="s2">&#34;UPDATE&#34;</span><span class="p">,</span><span class="w"> </span><span class="s2">&#34;DELETE&#34;</span><span class="p">]</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">when</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span>- <span class="nt">sources</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">          </span><span class="nt">match</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">            </span><span class="nt">kuma.io/service</span><span class="p">:</span><span class="w"> </span><span class="l">web_demo_svc_8080</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span>- <span class="nt">targetRef</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">          </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshService</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">          </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">backend</span><span class="w">
-</span></span></span></code></pre><p>With <code>--to-latest v2</code> the <code>TrafficPermission</code> becomes a <code>from[]</code> policy; the other two are copied
+<div class="code"><pre class="chroma" data-lang="yaml"><code><span class="nt">type</span><span class="p">:</span> <span class="l">TrafficPermission</span>
+<span class="nt">mesh</span><span class="p">:</span> <span class="l">default</span>
+<span class="nt">name</span><span class="p">:</span> <span class="l">web-to-backend</span>
+<span class="nt">sources</span><span class="p">:</span>
+  - <span class="nt">match</span><span class="p">:</span>
+      <span class="nt">kuma.io/service</span><span class="p">:</span> <span class="l">web_demo_svc_8080</span>
+<span class="nt">destinations</span><span class="p">:</span>
+  - <span class="nt">match</span><span class="p">:</span>
+      <span class="nt">kuma.io/service</span><span class="p">:</span> <span class="l">backend_demo_svc_3001</span>
+<span class="nn">---</span>
+<span class="nt">apiVersion</span><span class="p">:</span> <span class="l">kuma.io/v1alpha1</span>
+<span class="nt">kind</span><span class="p">:</span> <span class="l">MeshTrafficPermission</span>
+<span class="nt">metadata</span><span class="p">:</span>
+  <span class="nt">name</span><span class="p">:</span> <span class="l">allow-orders</span>
+  <span class="nt">namespace</span><span class="p">:</span> <span class="l">kong-mesh-system</span>
+  <span class="nt">labels</span><span class="p">:</span>
+    <span class="nt">kuma.io/mesh</span><span class="p">:</span> <span class="l">default</span>
+<span class="nt">spec</span><span class="p">:</span>
+  <span class="nt">targetRef</span><span class="p">:</span>
+    <span class="nt">kind</span><span class="p">:</span> <span class="l">Dataplane</span>
+    <span class="nt">labels</span><span class="p">:</span>
+      <span class="nt">app</span><span class="p">:</span> <span class="l">payments</span>
+  <span class="nt">from</span><span class="p">:</span>
+    - <span class="nt">targetRef</span><span class="p">:</span>
+        <span class="nt">kind</span><span class="p">:</span> <span class="l">MeshSubset</span>
+        <span class="nt">tags</span><span class="p">:</span>
+          <span class="nt">app</span><span class="p">:</span> <span class="l">orders</span>
+      <span class="nt">default</span><span class="p">:</span>
+        <span class="nt">action</span><span class="p">:</span> <span class="l">Allow</span>
+<span class="nn">---</span>
+<span class="nt">type</span><span class="p">:</span> <span class="l">AccessRole</span>
+<span class="nt">name</span><span class="p">:</span> <span class="l">team-a-policies</span>
+<span class="nt">rules</span><span class="p">:</span>
+  - <span class="nt">types</span><span class="p">:</span> <span class="p">[</span><span class="s2">"TrafficPermission"</span><span class="p">,</span> <span class="s2">"MeshTimeout"</span><span class="p">]</span>
+    <span class="nt">mesh</span><span class="p">:</span> <span class="l">default</span>
+    <span class="nt">access</span><span class="p">:</span> <span class="p">[</span><span class="s2">"CREATE"</span><span class="p">,</span> <span class="s2">"UPDATE"</span><span class="p">,</span> <span class="s2">"DELETE"</span><span class="p">]</span>
+    <span class="nt">when</span><span class="p">:</span>
+      - <span class="nt">sources</span><span class="p">:</span>
+          <span class="nt">match</span><span class="p">:</span>
+            <span class="nt">kuma.io/service</span><span class="p">:</span> <span class="l">web_demo_svc_8080</span>
+      - <span class="nt">targetRef</span><span class="p">:</span>
+          <span class="nt">kind</span><span class="p">:</span> <span class="l">MeshService</span>
+          <span class="nt">name</span><span class="p">:</span> <span class="l">backend</span>
+</code></pre></div>
+<p>With <code>--to-latest v2</code> the <code>TrafficPermission</code> becomes a <code>from[]</code> policy; the other two are copied
 with advisories:</p>
-<pre class="chroma"><code><span class="line"><span class="cl"><span class="c"># zero-trust/MeshTrafficPermission-web-to-backend.yaml</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l">kuma.io/v1alpha1</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshTrafficPermission</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">metadata</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">labels</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kuma.io/mesh</span><span class="p">:</span><span class="w"> </span><span class="l">default</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">web-to-backend</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">spec</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">from</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span>- <span class="nt">default</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">action</span><span class="p">:</span><span class="w"> </span><span class="l">Allow</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">targetRef</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshService</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">web</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l">demo</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">targetRef</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">Dataplane</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">backend</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l">demo</span><span class="w">
-</span></span></span></code></pre><pre><code>⚠  MeshTrafficPermission &quot;web-to-backend&quot;: from[].targetRef.kind MeshService is deprecated in
-   Kuma 2.7+ — use kind: Dataplane with labels instead.
-⚠  MeshTrafficPermission &quot;web-to-backend&quot;: the from[] field is deprecated in favour of the rules[]
+<div class="code"><pre class="chroma" data-lang="yaml"><code><span class="c"># zero-trust/MeshTrafficPermission-web-to-backend.yaml</span>
+<span class="nt">apiVersion</span><span class="p">:</span> <span class="l">kuma.io/v1alpha1</span>
+<span class="nt">kind</span><span class="p">:</span> <span class="l">MeshTrafficPermission</span>
+<span class="nt">metadata</span><span class="p">:</span>
+  <span class="nt">labels</span><span class="p">:</span>
+    <span class="nt">kuma.io/mesh</span><span class="p">:</span> <span class="l">default</span>
+  <span class="nt">name</span><span class="p">:</span> <span class="l">web-to-backend</span>
+<span class="nt">spec</span><span class="p">:</span>
+  <span class="nt">from</span><span class="p">:</span>
+  - <span class="nt">default</span><span class="p">:</span>
+      <span class="nt">action</span><span class="p">:</span> <span class="l">Allow</span>
+    <span class="nt">targetRef</span><span class="p">:</span>
+      <span class="nt">kind</span><span class="p">:</span> <span class="l">MeshSubset</span>
+      <span class="nt">tags</span><span class="p">:</span>
+        <span class="nt">kuma.io/service</span><span class="p">:</span> <span class="l">web_demo_svc_8080</span>
+  <span class="nt">targetRef</span><span class="p">:</span>
+    <span class="nt">kind</span><span class="p">:</span> <span class="l">Dataplane</span>
+    <span class="nt">labels</span><span class="p">:</span>
+      <span class="nt">app</span><span class="p">:</span> <span class="l">backend</span>
+      <span class="nt">k8s.kuma.io/namespace</span><span class="p">:</span> <span class="l">demo</span>
+</code></pre></div>
+<div class="code"><pre class="chroma" data-lang="text"><code><span class="o-warn">⚠</span>  spec.targetRef Dataplane labels use 'app: backend' as a best-guess pod label — verify this
+   matches your actual pod labels before applying
+<span class="o-warn">⚠</span>  MeshTrafficPermission "web-to-backend": the from[] field is deprecated in favour of the rules[]
    API (Kuma 2.14, removed in 3.0) and is NOT auto-converted. …
-</code></pre>
-<blockquote class="callout callout-warning"><p><strong>Warning:</strong> In this output <code>spec.targetRef</code> is <code>kind: Dataplane</code> with <code>name: backend</code>, which
-selects the single <code>Dataplane</code> resource named <code>backend</code>. On Kubernetes a <code>Dataplane</code> is named
-after its pod, so check that it selects the proxies you expect, or replace it with <code>labels</code>.</p>
-</blockquote>
+</code></pre></div>
+<p><code>from[]</code> keeps the source's <code>kuma.io/service</code> tag in a <code>MeshSubset</code>, the form the 2.7 upgrade notes
+give in place of the deprecated <code>kind: MeshService</code>
+(<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#deprecation-of-fromtargetrefkind-meshservice">UPGRADE</a>).
+<code>spec.targetRef</code> selects <code>Dataplane</code> labels, never a <code>name</code>: a <code>Dataplane</code> name is its pod's name.
+<code>app</code> comes from the pod labels and <code>k8s.kuma.io/namespace</code> is set by the control plane; check
+that your pods carry <code>app: backend</code>.</p>
 <p>With <code>--to-latest v3</code> the <code>TrafficPermission</code> is refused and written to <code>_manual/</code>, the
-<code>MeshTrafficPermission</code> is copied with a &quot;rejected by 3.0&quot; warning, and the <code>AccessRole</code> is
-rewritten:</p>
-<pre class="chroma"><code><span class="line"><span class="cl"><span class="c"># other/AccessRole-team-a-policies.yaml (v3)</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">team-a-policies</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">rules</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl">- <span class="nt">access</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span>- <span class="l">CREATE</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span>- <span class="l">UPDATE</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span>- <span class="l">DELETE</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">mesh</span><span class="p">:</span><span class="w"> </span><span class="l">default</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">types</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span>- <span class="l">MeshTrafficPermission</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span>- <span class="l">MeshTimeout</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">when</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span>- <span class="nt">targetRef</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshService</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">backend</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l">AccessRole</span><span class="w">
-</span></span></span></code></pre><pre><code>✗  TrafficPermission &quot;web-to-backend&quot; requires manual migration for Kuma 3.0: 3.0 removes
+<code>MeshTrafficPermission</code> is rejected by 3.0 as it stands (it still has <code>from[]</code>) and is also
+written to <code>_manual/</code>, and the <code>AccessRole</code> is rewritten:</p>
+<div class="code"><pre class="chroma" data-lang="yaml"><code><span class="c"># other/AccessRole-team-a-policies.yaml (v3)</span>
+<span class="nt">name</span><span class="p">:</span> <span class="l">team-a-policies</span>
+<span class="nt">rules</span><span class="p">:</span>
+- <span class="nt">access</span><span class="p">:</span>
+  - <span class="l">CREATE</span>
+  - <span class="l">UPDATE</span>
+  - <span class="l">DELETE</span>
+  <span class="nt">mesh</span><span class="p">:</span> <span class="l">default</span>
+  <span class="nt">types</span><span class="p">:</span>
+  - <span class="l">MeshTrafficPermission</span>
+  - <span class="l">MeshTimeout</span>
+  <span class="nt">when</span><span class="p">:</span>
+  - <span class="nt">targetRef</span><span class="p">:</span>
+      <span class="nt">kind</span><span class="p">:</span> <span class="l">MeshService</span>
+      <span class="nt">name</span><span class="p">:</span> <span class="l">backend</span>
+<span class="nt">type</span><span class="p">:</span> <span class="l">AccessRole</span>
+</code></pre></div>
+<div class="code"><pre class="chroma" data-lang="text"><code><span class="o-err">✗</span>  TrafficPermission "web-to-backend" requires manual migration for Kuma 3.0: 3.0 removes
    MeshTrafficPermission spec.from … its replacement selects clients with
    rules[].default.{allow,deny,allowWithShadowDeny}[].spiffeID matches. Those need a MeshIdentity
    and its trust domain, which this manifest does not carry. …
-⚠  AccessRole &quot;team-a-policies&quot;: rules[0].types rewritten for 3.0. Renamed:
+<span class="o-warn">⚠</span>  AccessRole "team-a-policies": rules[0].types rewritten for 3.0. Renamed:
    TrafficPermission→MeshTrafficPermission.
-⚠  AccessRole &quot;team-a-policies&quot;: rules[0].when[1].targetRef.kind MeshService is rejected in 3.0 …
+<span class="o-warn">⚠</span>  AccessRole "team-a-policies": rules[0].when[1].targetRef.kind MeshService is rejected in 3.0 …
    Not converted: the label set is not in the manifest.
-⚠  AccessRole &quot;team-a-policies&quot;: rules[0].when[0] removed. They only set
+<span class="o-warn">⚠</span>  AccessRole "team-a-policies": rules[0].when[0] removed. They only set
    sources/destinations/selectors (or nothing), which 3.0 removes … so the grant does not widen.
-</code></pre>
+</code></pre></div>
 <p>A Kong Mesh <code>OPAPolicy</code> converted with <code>--to-latest v3</code>:</p>
-<pre class="chroma"><code><span class="line"><span class="cl"><span class="c"># input</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l">kuma.io/v1alpha1</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">OPAPolicy</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">mesh</span><span class="p">:</span><span class="w"> </span><span class="l">default</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">metadata</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">backend-authz</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">spec</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">targetRef</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshService</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">backend</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">conf</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">agentConfig</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">inlineString</span><span class="p">:</span><span class="w"> </span><span class="p">|</span><span class="sd">
-</span></span></span><span class="line"><span class="cl"><span class="sd">        decision_logs:
-</span></span></span><span class="line"><span class="cl"><span class="sd">          console: true</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">policies</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span>- <span class="nt">inlineString</span><span class="p">:</span><span class="w"> </span><span class="p">|</span><span class="sd">
-</span></span></span><span class="line"><span class="cl"><span class="sd">          package envoy.authz
-</span></span></span><span class="line"><span class="cl"><span class="sd">          default allow = false</span><span class="w">
-</span></span></span></code></pre><pre class="chroma"><code><span class="line"><span class="cl"><span class="c"># zero-trust/MeshOPA-backend-authz.yaml (v3)</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l">kuma.io/v1alpha1</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshOPA</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">metadata</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">labels</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kuma.io/mesh</span><span class="p">:</span><span class="w"> </span><span class="l">default</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">backend-authz</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">spec</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">default</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">agentConfig</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">insecureInline</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">value</span><span class="p">:</span><span class="w"> </span><span class="p">|</span><span class="sd">
-</span></span></span><span class="line"><span class="cl"><span class="sd">          decision_logs:
-</span></span></span><span class="line"><span class="cl"><span class="sd">            console: true</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l">InsecureInline</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">appendPolicies</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span>- <span class="nt">rego</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">insecureInline</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">          </span><span class="nt">value</span><span class="p">:</span><span class="w"> </span><span class="p">|-</span><span class="sd">
-</span></span></span><span class="line"><span class="cl"><span class="sd">            package envoy.authz
-</span></span></span><span class="line"><span class="cl"><span class="sd">            default allow = false</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l">InsecureInline</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">targetRef</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">Dataplane</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">labels</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">app</span><span class="p">:</span><span class="w"> </span><span class="l">backend</span><span class="w">
-</span></span></span></code></pre><p>Under <code>v2</code> the same input gives a <code>MeshOPA</code> with <code>inlineString</code> data sources and the original
+<div class="code"><pre class="chroma" data-lang="yaml"><code><span class="c"># input</span>
+<span class="nt">apiVersion</span><span class="p">:</span> <span class="l">kuma.io/v1alpha1</span>
+<span class="nt">kind</span><span class="p">:</span> <span class="l">OPAPolicy</span>
+<span class="nt">mesh</span><span class="p">:</span> <span class="l">default</span>
+<span class="nt">metadata</span><span class="p">:</span>
+  <span class="nt">name</span><span class="p">:</span> <span class="l">backend-authz</span>
+<span class="nt">spec</span><span class="p">:</span>
+  <span class="nt">targetRef</span><span class="p">:</span>
+    <span class="nt">kind</span><span class="p">:</span> <span class="l">MeshService</span>
+    <span class="nt">name</span><span class="p">:</span> <span class="l">backend</span>
+  <span class="nt">conf</span><span class="p">:</span>
+    <span class="nt">agentConfig</span><span class="p">:</span>
+      <span class="nt">inlineString</span><span class="p">:</span> <span class="p">|</span><span class="sd">
+        decision_logs:
+          console: true</span>
+    <span class="nt">policies</span><span class="p">:</span>
+      - <span class="nt">inlineString</span><span class="p">:</span> <span class="p">|</span><span class="sd">
+          package envoy.authz
+          default allow = false</span>
+</code></pre></div>
+<div class="code"><pre class="chroma" data-lang="yaml"><code><span class="c"># zero-trust/MeshOPA-backend-authz.yaml (v3)</span>
+<span class="nt">apiVersion</span><span class="p">:</span> <span class="l">kuma.io/v1alpha1</span>
+<span class="nt">kind</span><span class="p">:</span> <span class="l">MeshOPA</span>
+<span class="nt">metadata</span><span class="p">:</span>
+  <span class="nt">labels</span><span class="p">:</span>
+    <span class="nt">kuma.io/mesh</span><span class="p">:</span> <span class="l">default</span>
+  <span class="nt">name</span><span class="p">:</span> <span class="l">backend-authz</span>
+<span class="nt">spec</span><span class="p">:</span>
+  <span class="nt">default</span><span class="p">:</span>
+    <span class="nt">agentConfig</span><span class="p">:</span>
+      <span class="nt">insecureInline</span><span class="p">:</span>
+        <span class="nt">value</span><span class="p">:</span> <span class="p">|</span><span class="sd">
+          decision_logs:
+            console: true</span>
+      <span class="nt">type</span><span class="p">:</span> <span class="l">InsecureInline</span>
+    <span class="nt">appendPolicies</span><span class="p">:</span>
+    - <span class="nt">rego</span><span class="p">:</span>
+        <span class="nt">insecureInline</span><span class="p">:</span>
+          <span class="nt">value</span><span class="p">:</span> <span class="p">|-</span><span class="sd">
+            package envoy.authz
+            default allow = false</span>
+        <span class="nt">type</span><span class="p">:</span> <span class="l">InsecureInline</span>
+  <span class="nt">targetRef</span><span class="p">:</span>
+    <span class="nt">kind</span><span class="p">:</span> <span class="l">Dataplane</span>
+    <span class="nt">labels</span><span class="p">:</span>
+      <span class="nt">app</span><span class="p">:</span> <span class="l">backend</span>
+</code></pre></div>
+<p>Under <code>v2</code> the same input gives a <code>MeshOPA</code> with <code>inlineString</code> data sources and the original
 <code>targetRef: {kind: MeshService, name: backend}</code>, plus advisories for both.</p>
 <h2 id="related">Related</h2>
 <ul>
@@ -523,5 +533,6 @@ rewritten:</p>
 </footer>
 <script src="../../static/search-index.js"></script>
 <script src="../../static/search.js"></script>
+<script src="../../static/copy.js"></script>
 </body>
 </html>

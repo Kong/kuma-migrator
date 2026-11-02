@@ -15,8 +15,8 @@
 <meta property="og:image" content="https://kong.github.io/kuma-migrator/assets/migration-overview.svg">
 <meta name="twitter:card" content="summary_large_image">
 
+<link rel="stylesheet" href="../../static/shared.css">
 <link rel="stylesheet" href="../../static/style.css">
-<link rel="stylesheet" href="../../static/chroma.css">
 </head>
 <body data-root="../../">
 <a class="skip" href="#content">Skip to content</a>
@@ -30,6 +30,7 @@
       <a href="../" class="active" aria-current="true">Policies</a>
       <a href="https://github.com/Kong/kuma-migrator">GitHub</a>
     </nav>
+    <!-- release-tag --><a class="release-badge" href="https://github.com/Kong/kuma-migrator/releases/latest" title="Latest release: v0.8.0">v0.8.0</a><!-- /release-tag -->
     <div class="search">
       <input id="search-input" type="search" placeholder="Search docs" aria-label="Search docs" autocomplete="off">
       <ul id="search-results" hidden></ul>
@@ -101,6 +102,9 @@
 </tr>
 </tbody>
 </table></div>
+<p>The output keeps the input format: a Universal <code>ExternalService</code> becomes a Universal
+<code>MeshExternalService</code> (<code>type</code>/<code>name</code>/<code>mesh</code>), a Kubernetes one becomes a CRD in the
+system namespace (see <a href="../../topics/meshes/#system-namespace">Meshes</a>).</p>
 <p><code>spec.match.type</code> is <code>HostnameGenerator</code>. Warnings remind you to check the virtual port,
 the generated hostname and <code>verification.mode</code> (defaults to <code>Secured</code>). The copied TLS
 DataSources then get the <a href="../meshexternalservice/">MeshExternalService</a> 3.0
@@ -153,5 +157,6 @@ mesh. The source object is listed under &quot;Delete Before Upgrading to 3.0&quo
 </footer>
 <script src="../../static/search-index.js"></script>
 <script src="../../static/search.js"></script>
+<script src="../../static/copy.js"></script>
 </body>
 </html>

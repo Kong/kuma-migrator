@@ -15,8 +15,8 @@
 <meta property="og:image" content="https://kong.github.io/kuma-migrator/assets/migration-overview.svg">
 <meta name="twitter:card" content="summary_large_image">
 
+<link rel="stylesheet" href="../../static/shared.css">
 <link rel="stylesheet" href="../../static/style.css">
-<link rel="stylesheet" href="../../static/chroma.css">
 </head>
 <body data-root="../../">
 <a class="skip" href="#content">Skip to content</a>
@@ -30,6 +30,7 @@
       <a href="../../policies/">Policies</a>
       <a href="https://github.com/Kong/kuma-migrator">GitHub</a>
     </nav>
+    <!-- release-tag --><a class="release-badge" href="https://github.com/Kong/kuma-migrator/releases/latest" title="Latest release: v0.8.0">v0.8.0</a><!-- /release-tag -->
     <div class="search">
       <input id="search-input" type="search" placeholder="Search docs" aria-label="Search docs" autocomplete="off">
       <ul id="search-results" hidden></ul>
@@ -56,13 +57,16 @@
 <h2 id="homebrew">Homebrew</h2>
 <p>Supported platforms: macOS Apple Silicon (<code>arm64</code>), macOS Intel (<code>amd64</code>), Linux <code>amd64</code>,
 Linux <code>arm64</code>.</p>
-<pre class="chroma"><code><span class="line"><span class="cl">brew tap bcollard/kuma-migrator
-</span></span><span class="line"><span class="cl">brew install --cask kuma-migrator
-</span></span></code></pre><p>Or in one command:</p>
-<pre class="chroma"><code><span class="line"><span class="cl">brew install --cask bcollard/kuma-migrator/kuma-migrator
-</span></span></code></pre><p>Upgrade:</p>
-<pre class="chroma"><code><span class="line"><span class="cl">brew upgrade --cask kuma-migrator
-</span></span></code></pre><h2 id="release-archives">Release archives</h2>
+<div class="code"><pre class="chroma" data-lang="bash"><code><span class="k-cmd">brew</span> tap bcollard/kuma-migrator
+<span class="k-cmd">brew</span> install <span class="k-flag">--cask</span> <span class="k-val">kuma-migrator</span>
+</code></pre></div>
+<p>Or in one command:</p>
+<div class="code"><pre class="chroma" data-lang="bash"><code><span class="k-cmd">brew</span> install <span class="k-flag">--cask</span> <span class="k-val">bcollard/kuma-migrator/kuma-migrator</span>
+</code></pre></div>
+<p>Upgrade:</p>
+<div class="code"><pre class="chroma" data-lang="bash"><code><span class="k-cmd">brew</span> upgrade <span class="k-flag">--cask</span> <span class="k-val">kuma-migrator</span>
+</code></pre></div>
+<h2 id="release-archives">Release archives</h2>
 <p>Download the archive for your platform from
 <a href="https://github.com/Kong/kuma-migrator/releases">GitHub Releases</a>.</p>
 <div class="table-wrap"><table>
@@ -92,28 +96,32 @@ Linux <code>arm64</code>.</p>
 </tbody>
 </table></div>
 <p>Linux <code>amd64</code>:</p>
-<pre class="chroma"><code><span class="line"><span class="cl"><span class="nv">VERSION</span><span class="o">=</span><span class="k">$(</span>gh release view --repo Kong/kuma-migrator --json tagName --jq <span class="s1">&#39;.tagName&#39;</span> <span class="p">|</span> tr -d <span class="s1">&#39;v&#39;</span><span class="k">)</span>
-</span></span><span class="line"><span class="cl">curl -L <span class="s2">&#34;https://github.com/Kong/kuma-migrator/releases/latest/download/kuma-migrator_</span><span class="si">${</span><span class="nv">VERSION</span><span class="si">}</span><span class="s2">_linux_amd64.tar.gz&#34;</span> <span class="p">|</span> tar xz
-</span></span><span class="line"><span class="cl">sudo mv kuma-migrator /usr/local/bin/
-</span></span></code></pre><p>Linux <code>arm64</code>:</p>
-<pre class="chroma"><code><span class="line"><span class="cl"><span class="nv">VERSION</span><span class="o">=</span><span class="k">$(</span>gh release view --repo Kong/kuma-migrator --json tagName --jq <span class="s1">&#39;.tagName&#39;</span> <span class="p">|</span> tr -d <span class="s1">&#39;v&#39;</span><span class="k">)</span>
-</span></span><span class="line"><span class="cl">curl -L <span class="s2">&#34;https://github.com/Kong/kuma-migrator/releases/latest/download/kuma-migrator_</span><span class="si">${</span><span class="nv">VERSION</span><span class="si">}</span><span class="s2">_linux_arm64.tar.gz&#34;</span> <span class="p">|</span> tar xz
-</span></span><span class="line"><span class="cl">sudo mv kuma-migrator /usr/local/bin/
-</span></span></code></pre><h2 id="from-source">From source</h2>
+<div class="code"><pre class="chroma" data-lang="bash"><code><span class="nv">VERSION</span><span class="o">=</span><span class="k">$(</span><span class="k-cmd">gh</span> release view <span class="k-flag">--repo</span> <span class="k-val">Kong/kuma-migrator</span> <span class="k-flag">--json</span> <span class="k-val">tagName</span> <span class="k-flag">--jq</span> <span class="s1">'.tagName'</span> <span class="p">|</span> <span class="k-cmd">tr</span> <span class="k-flag">-d</span> <span class="s1">'v'</span><span class="k">)</span>
+<span class="k-cmd">curl</span> <span class="k-flag">-L</span> <span class="s2">"https://github.com/Kong/kuma-migrator/releases/latest/download/kuma-migrator_</span><span class="si">${</span><span class="nv">VERSION</span><span class="si">}</span><span class="s2">_linux_amd64.tar.gz"</span> <span class="p">|</span> <span class="k-cmd">tar</span> xz
+<span class="k-cmd">sudo</span> mv kuma-migrator /usr/local/bin/
+</code></pre></div>
+<p>Linux <code>arm64</code>:</p>
+<div class="code"><pre class="chroma" data-lang="bash"><code><span class="nv">VERSION</span><span class="o">=</span><span class="k">$(</span><span class="k-cmd">gh</span> release view <span class="k-flag">--repo</span> <span class="k-val">Kong/kuma-migrator</span> <span class="k-flag">--json</span> <span class="k-val">tagName</span> <span class="k-flag">--jq</span> <span class="s1">'.tagName'</span> <span class="p">|</span> <span class="k-cmd">tr</span> <span class="k-flag">-d</span> <span class="s1">'v'</span><span class="k">)</span>
+<span class="k-cmd">curl</span> <span class="k-flag">-L</span> <span class="s2">"https://github.com/Kong/kuma-migrator/releases/latest/download/kuma-migrator_</span><span class="si">${</span><span class="nv">VERSION</span><span class="si">}</span><span class="s2">_linux_arm64.tar.gz"</span> <span class="p">|</span> <span class="k-cmd">tar</span> xz
+<span class="k-cmd">sudo</span> mv kuma-migrator /usr/local/bin/
+</code></pre></div>
+<h2 id="from-source">From source</h2>
 <p>Requires Go 1.24 or later.</p>
-<pre class="chroma"><code><span class="line"><span class="cl">git clone https://github.com/Kong/kuma-migrator.git
-</span></span><span class="line"><span class="cl"><span class="nb">cd</span> kuma-migrator
-</span></span><span class="line"><span class="cl">make build
-</span></span><span class="line"><span class="cl"><span class="c1"># binary at ./dist/kuma-migrator</span>
-</span></span></code></pre><h2 id="verify-a-release-archive">Verify a release archive</h2>
+<div class="code"><pre class="chroma" data-lang="bash"><code><span class="k-cmd">git</span> clone https://github.com/Kong/kuma-migrator.git
+<span class="k-cmd">cd</span> kuma-migrator
+<span class="k-cmd">make</span> build
+<span class="c1"># binary at ./dist/kuma-migrator</span>
+</code></pre></div>
+<h2 id="verify-a-release-archive">Verify a release archive</h2>
 <p>Every release archive carries a
 <a href="https://github.com/Kong/kuma-migrator/attestations">build provenance attestation</a>. It binds
 the archive to the commit and the GitHub Actions run that built it. Check it with the
 <a href="https://cli.github.com/">GitHub CLI</a> (<code>gh attestation verify</code> is built in):</p>
-<pre class="chroma"><code><span class="line"><span class="cl"><span class="nv">VERSION</span><span class="o">=</span><span class="k">$(</span>gh release view --repo Kong/kuma-migrator --json tagName --jq <span class="s1">&#39;.tagName&#39;</span> <span class="p">|</span> tr -d <span class="s1">&#39;v&#39;</span><span class="k">)</span>
-</span></span><span class="line"><span class="cl">curl -LO <span class="s2">&#34;https://github.com/Kong/kuma-migrator/releases/latest/download/kuma-migrator_</span><span class="si">${</span><span class="nv">VERSION</span><span class="si">}</span><span class="s2">_linux_amd64.tar.gz&#34;</span>
-</span></span><span class="line"><span class="cl">gh attestation verify <span class="s2">&#34;kuma-migrator_</span><span class="si">${</span><span class="nv">VERSION</span><span class="si">}</span><span class="s2">_linux_amd64.tar.gz&#34;</span> --repo Kong/kuma-migrator
-</span></span></code></pre><p>The Homebrew cask is built from the same archives, and its <code>sha256</code> fields match the attested
+<div class="code"><pre class="chroma" data-lang="bash"><code><span class="nv">VERSION</span><span class="o">=</span><span class="k">$(</span><span class="k-cmd">gh</span> release view <span class="k-flag">--repo</span> <span class="k-val">Kong/kuma-migrator</span> <span class="k-flag">--json</span> <span class="k-val">tagName</span> <span class="k-flag">--jq</span> <span class="s1">'.tagName'</span> <span class="p">|</span> <span class="k-cmd">tr</span> <span class="k-flag">-d</span> <span class="s1">'v'</span><span class="k">)</span>
+<span class="k-cmd">curl</span> <span class="k-flag">-LO</span> <span class="s2">"https://github.com/Kong/kuma-migrator/releases/latest/download/kuma-migrator_</span><span class="si">${</span><span class="nv">VERSION</span><span class="si">}</span><span class="s2">_linux_amd64.tar.gz"</span>
+<span class="k-cmd">gh</span> attestation verify <span class="s2">"kuma-migrator_</span><span class="si">${</span><span class="nv">VERSION</span><span class="si">}</span><span class="s2">_linux_amd64.tar.gz"</span> <span class="k-flag">--repo</span> <span class="k-val">Kong/kuma-migrator</span>
+</code></pre></div>
+<p>The Homebrew cask is built from the same archives, and its <code>sha256</code> fields match the attested
 <code>checksums.txt</code>.</p>
 <h2 id="runtime-requirements">Runtime requirements</h2>
 <div class="table-wrap"><table>
@@ -139,8 +147,9 @@ the archive to the commit and the GitHub Actions run that built it. Check it wit
 refuses to talk to a Kong Mesh control plane. Extraction from Konnect uses direct HTTPS calls
 and only reads the context from the <code>kumactl</code> config file.</p>
 <p>Check the installed version:</p>
-<pre class="chroma"><code><span class="line"><span class="cl">kuma-migrator version
-</span></span></code></pre><p>Next: <a href="../usage/">Typical usage</a>.</p>
+<div class="code"><pre class="chroma" data-lang="bash"><code><span class="k-bin">kuma-migrator</span> <span class="k-sub">version</span>
+</code></pre></div>
+<p>Next: <a href="../usage/">Typical usage</a>.</p>
 
     </article>
     <nav class="pager" aria-label="Previous and next page">
@@ -165,5 +174,6 @@ and only reads the context from the <code>kumactl</code> config file.</p>
 </footer>
 <script src="../../static/search-index.js"></script>
 <script src="../../static/search.js"></script>
+<script src="../../static/copy.js"></script>
 </body>
 </html>

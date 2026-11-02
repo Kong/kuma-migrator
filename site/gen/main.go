@@ -16,9 +16,10 @@ import (
 func main() {
 	root := flag.String("root", "../..", "repository root")
 	lastmod := flag.String("lastmod", "", "sitemap <lastmod> date (YYYY-MM-DD); default: latest git commit date of site/")
+	release := flag.String("release", "", `release tag for the header badge; default: git describe --tags --abbrev=0; "none" hides it`)
 	flag.Parse()
 
-	cfg := Config{Root: *root, LastMod: *lastmod}
+	cfg := Config{Root: *root, LastMod: *lastmod, Release: *release}
 	n, err := Build(cfg)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)

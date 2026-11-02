@@ -15,8 +15,8 @@
 <meta property="og:image" content="https://kong.github.io/kuma-migrator/assets/migration-overview.svg">
 <meta name="twitter:card" content="summary_large_image">
 
+<link rel="stylesheet" href="../../static/shared.css">
 <link rel="stylesheet" href="../../static/style.css">
-<link rel="stylesheet" href="../../static/chroma.css">
 </head>
 <body data-root="../../">
 <a class="skip" href="#content">Skip to content</a>
@@ -30,6 +30,7 @@
       <a href="../" class="active" aria-current="true">Policies</a>
       <a href="https://github.com/Kong/kuma-migrator">GitHub</a>
     </nav>
+    <!-- release-tag --><a class="release-badge" href="https://github.com/Kong/kuma-migrator/releases/latest" title="Latest release: v0.8.0">v0.8.0</a><!-- /release-tag -->
     <div class="search">
       <input id="search-input" type="search" placeholder="Search docs" aria-label="Search docs" autocomplete="off">
       <ul id="search-results" hidden></ul>
@@ -100,9 +101,12 @@ A policy with several specific sources is split into one <code>MeshTimeout</code
 </tbody>
 </table></div>
 <p>Any <code>conf</code> leaf no rule consumed is reported as a warning. A <code>kuma.io/service: '*'</code>
-selector becomes <code>kind: Mesh</code>. A specific service becomes <code>kind: Dataplane</code> at the top
-level and <code>kind: MeshService</code> in <code>to[]</code>; <code>&lt;name&gt;_&lt;ns&gt;_svc_&lt;port&gt;</code> values are decoded
-into name and namespace. A selector with only non-service tags stays a <code>MeshSubset</code>.</p>
+selector becomes <code>kind: Mesh</code>. A specific service becomes
+<code>kind: Dataplane, labels: {app: &lt;name&gt;, k8s.kuma.io/namespace: &lt;ns&gt;}</code> at the top level
+(<code>app</code> is a best guess, warned) and <code>kind: MeshService</code> in <code>to[]</code>;
+<code>&lt;name&gt;_&lt;ns&gt;_svc_&lt;port&gt;</code> values are decoded into name and namespace. Reserved tags that
+are not labels (<code>kuma.io/protocol</code>, …) are dropped from label selectors, with a warning.
+A selector with only non-service tags stays a <code>MeshSubset</code>.</p>
 </div>
   </section>
   <section class="target-card">
@@ -154,5 +158,6 @@ destination by hand. The report lists the source <code>Timeout</code> under
 </footer>
 <script src="../../static/search-index.js"></script>
 <script src="../../static/search.js"></script>
+<script src="../../static/copy.js"></script>
 </body>
 </html>

@@ -15,8 +15,8 @@
 <meta property="og:image" content="https://kong.github.io/kuma-migrator/assets/migration-overview.svg">
 <meta name="twitter:card" content="summary_large_image">
 <!-- Everything is same-origin: no fonts, stylesheets or scripts are fetched from anywhere else. -->
+<link rel="stylesheet" href="{{.Root}}static/shared.css">
 <link rel="stylesheet" href="{{.Root}}static/style.css">
-<link rel="stylesheet" href="{{.Root}}static/chroma.css">
 </head>
 <body data-root="{{.Root}}">
 <a class="skip" href="#content">Skip to content</a>
@@ -28,6 +28,7 @@
       {{range .TopNav}}<a href="{{.URL}}"{{if .Active}} class="active" aria-current="true"{{end}}>{{.Title}}</a>
       {{end}}<a href="{{.RepoURL}}">GitHub</a>
     </nav>
+    {{.Release}}
     <div class="search">
       <input id="search-input" type="search" placeholder="Search docs" aria-label="Search docs" autocomplete="off">
       <ul id="search-results" hidden></ul>
@@ -71,5 +72,6 @@
 </footer>
 <script src="{{.Root}}static/search-index.js"></script>
 <script src="{{.Root}}static/search.js"></script>
+<script src="{{.Root}}static/copy.js"></script>
 </body>
 </html>

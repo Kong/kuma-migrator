@@ -15,8 +15,8 @@
 <meta property="og:image" content="https://kong.github.io/kuma-migrator/assets/migration-overview.svg">
 <meta name="twitter:card" content="summary_large_image">
 
+<link rel="stylesheet" href="../../static/shared.css">
 <link rel="stylesheet" href="../../static/style.css">
-<link rel="stylesheet" href="../../static/chroma.css">
 </head>
 <body data-root="../../">
 <a class="skip" href="#content">Skip to content</a>
@@ -30,6 +30,7 @@
       <a href="../../policies/">Policies</a>
       <a href="https://github.com/Kong/kuma-migrator">GitHub</a>
     </nav>
+    <!-- release-tag --><a class="release-badge" href="https://github.com/Kong/kuma-migrator/releases/latest" title="Latest release: v0.8.0">v0.8.0</a><!-- /release-tag -->
     <div class="search">
       <input id="search-input" type="search" placeholder="Search docs" aria-label="Search docs" autocomplete="off">
       <ul id="search-results" hidden></ul>
@@ -57,94 +58,99 @@
 printed alongside are summarised in prose. The full behaviour per kind is on the
 <a href="../../policies/">policy pages</a>.</p>
 <h2 id="scenario-legacy">Scenario: Legacy</h2>
-<pre class="chroma"><code><span class="line"><span class="cl"><span class="c"># Before</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l">Timeout</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">mesh</span><span class="p">:</span><span class="w"> </span><span class="l">default</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">my-timeout</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">sources</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span>- <span class="nt">match</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">kuma.io/service</span><span class="p">:</span><span class="w"> </span><span class="s1">&#39;*&#39;</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">destinations</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span>- <span class="nt">match</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">kuma.io/service</span><span class="p">:</span><span class="w"> </span><span class="l">backend_demo_svc_3001</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">conf</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">connectTimeout</span><span class="p">:</span><span class="w"> </span><span class="l">5s</span><span class="w">
-</span></span></span></code></pre><pre class="chroma"><code><span class="line"><span class="cl"><span class="c"># After (--to-latest v2)</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l">kuma.io/v1alpha1</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshTimeout</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">metadata</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">labels</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kuma.io/mesh</span><span class="p">:</span><span class="w"> </span><span class="l">default</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">my-timeout</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">spec</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">targetRef</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">Mesh</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">to</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span>- <span class="nt">default</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">connectionTimeout</span><span class="p">:</span><span class="w"> </span><span class="l">5s</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">targetRef</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshService</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">backend</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l">demo</span><span class="w">
-</span></span></span></code></pre><p>Under <code>--to-latest v3</code> the destination is selected by labels, because 3.0 selects real
+<div class="code"><pre class="chroma" data-lang="yaml"><code><span class="c"># Before</span>
+<span class="nt">type</span><span class="p">:</span> <span class="l">Timeout</span>
+<span class="nt">mesh</span><span class="p">:</span> <span class="l">default</span>
+<span class="nt">name</span><span class="p">:</span> <span class="l">my-timeout</span>
+<span class="nt">sources</span><span class="p">:</span>
+  - <span class="nt">match</span><span class="p">:</span>
+      <span class="nt">kuma.io/service</span><span class="p">:</span> <span class="s1">'*'</span>
+<span class="nt">destinations</span><span class="p">:</span>
+  - <span class="nt">match</span><span class="p">:</span>
+      <span class="nt">kuma.io/service</span><span class="p">:</span> <span class="l">backend_demo_svc_3001</span>
+<span class="nt">conf</span><span class="p">:</span>
+  <span class="nt">connectTimeout</span><span class="p">:</span> <span class="l">5s</span>
+</code></pre></div>
+<div class="code"><pre class="chroma" data-lang="yaml"><code><span class="c"># After (--to-latest v2)</span>
+<span class="nt">apiVersion</span><span class="p">:</span> <span class="l">kuma.io/v1alpha1</span>
+<span class="nt">kind</span><span class="p">:</span> <span class="l">MeshTimeout</span>
+<span class="nt">metadata</span><span class="p">:</span>
+  <span class="nt">labels</span><span class="p">:</span>
+    <span class="nt">kuma.io/mesh</span><span class="p">:</span> <span class="l">default</span>
+  <span class="nt">name</span><span class="p">:</span> <span class="l">my-timeout</span>
+<span class="nt">spec</span><span class="p">:</span>
+  <span class="nt">targetRef</span><span class="p">:</span>
+    <span class="nt">kind</span><span class="p">:</span> <span class="l">Mesh</span>
+  <span class="nt">to</span><span class="p">:</span>
+  - <span class="nt">default</span><span class="p">:</span>
+      <span class="nt">connectionTimeout</span><span class="p">:</span> <span class="l">5s</span>
+    <span class="nt">targetRef</span><span class="p">:</span>
+      <span class="nt">kind</span><span class="p">:</span> <span class="l">MeshService</span>
+      <span class="nt">name</span><span class="p">:</span> <span class="l">backend</span>
+      <span class="nt">namespace</span><span class="p">:</span> <span class="l">demo</span>
+</code></pre></div>
+<p>Under <code>--to-latest v3</code> the destination is selected by labels, because 3.0 selects real
 resources by <code>labels</code> only:</p>
-<pre class="chroma"><code><span class="line"><span class="cl"><span class="c"># After (--to-latest v3)</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l">kuma.io/v1alpha1</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshTimeout</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">metadata</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">labels</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kuma.io/mesh</span><span class="p">:</span><span class="w"> </span><span class="l">default</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">my-timeout</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">spec</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">targetRef</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">Mesh</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">to</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span>- <span class="nt">default</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">connectionTimeout</span><span class="p">:</span><span class="w"> </span><span class="l">5s</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">targetRef</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshService</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">labels</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">k8s.kuma.io/namespace</span><span class="p">:</span><span class="w"> </span><span class="l">demo</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">kuma.io/display-name</span><span class="p">:</span><span class="w"> </span><span class="l">backend</span><span class="w">
-</span></span></span></code></pre><h2 id="scenario-subset">Scenario: Subset</h2>
-<pre class="chroma"><code><span class="line"><span class="cl"><span class="c"># Before</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l">kuma.io/v1alpha1</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshTrafficPermission</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">metadata</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l">kong-mesh-system</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">allow-backend-to-redis</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">spec</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">targetRef</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshSubset</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">tags</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">k8s.kuma.io/service-name</span><span class="p">:</span><span class="w"> </span><span class="l">redis</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">from</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span>- <span class="nt">targetRef</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshSubset</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">tags</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">          </span><span class="nt">kuma.io/service</span><span class="p">:</span><span class="w"> </span><span class="l">backend_demo_svc_3001</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">default</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">action</span><span class="p">:</span><span class="w"> </span><span class="l">Allow</span><span class="w">
-</span></span></span></code></pre><pre class="chroma"><code><span class="line"><span class="cl"><span class="c"># After (--to-latest v2)</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l">kuma.io/v1alpha1</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshTrafficPermission</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">metadata</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">allow-backend-to-redis</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l">kong-mesh-system</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">spec</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">from</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span>- <span class="nt">default</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">action</span><span class="p">:</span><span class="w"> </span><span class="l">Allow</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">targetRef</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshService</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">labels</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">k8s.kuma.io/namespace</span><span class="p">:</span><span class="w"> </span><span class="l">demo</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">kuma.io/display-name</span><span class="p">:</span><span class="w"> </span><span class="l">backend</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">targetRef</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">Dataplane</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">redis</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l">kong-mesh-system</span><span class="w">
-</span></span></span></code></pre><p>The <code>from[]</code> source lives in namespace <code>demo</code>, which differs from the policy namespace, so it is
+<div class="code"><pre class="chroma" data-lang="yaml"><code><span class="c"># After (--to-latest v3)</span>
+<span class="nt">apiVersion</span><span class="p">:</span> <span class="l">kuma.io/v1alpha1</span>
+<span class="nt">kind</span><span class="p">:</span> <span class="l">MeshTimeout</span>
+<span class="nt">metadata</span><span class="p">:</span>
+  <span class="nt">labels</span><span class="p">:</span>
+    <span class="nt">kuma.io/mesh</span><span class="p">:</span> <span class="l">default</span>
+  <span class="nt">name</span><span class="p">:</span> <span class="l">my-timeout</span>
+<span class="nt">spec</span><span class="p">:</span>
+  <span class="nt">targetRef</span><span class="p">:</span>
+    <span class="nt">kind</span><span class="p">:</span> <span class="l">Mesh</span>
+  <span class="nt">to</span><span class="p">:</span>
+  - <span class="nt">default</span><span class="p">:</span>
+      <span class="nt">connectionTimeout</span><span class="p">:</span> <span class="l">5s</span>
+    <span class="nt">targetRef</span><span class="p">:</span>
+      <span class="nt">kind</span><span class="p">:</span> <span class="l">MeshService</span>
+      <span class="nt">labels</span><span class="p">:</span>
+        <span class="nt">k8s.kuma.io/namespace</span><span class="p">:</span> <span class="l">demo</span>
+        <span class="nt">kuma.io/display-name</span><span class="p">:</span> <span class="l">backend</span>
+</code></pre></div>
+<h2 id="scenario-subset">Scenario: Subset</h2>
+<div class="code"><pre class="chroma" data-lang="yaml"><code><span class="c"># Before</span>
+<span class="nt">apiVersion</span><span class="p">:</span> <span class="l">kuma.io/v1alpha1</span>
+<span class="nt">kind</span><span class="p">:</span> <span class="l">MeshTrafficPermission</span>
+<span class="nt">metadata</span><span class="p">:</span>
+  <span class="nt">namespace</span><span class="p">:</span> <span class="l">kong-mesh-system</span>
+  <span class="nt">name</span><span class="p">:</span> <span class="l">allow-backend-to-redis</span>
+<span class="nt">spec</span><span class="p">:</span>
+  <span class="nt">targetRef</span><span class="p">:</span>
+    <span class="nt">kind</span><span class="p">:</span> <span class="l">MeshSubset</span>
+    <span class="nt">tags</span><span class="p">:</span>
+      <span class="nt">k8s.kuma.io/service-name</span><span class="p">:</span> <span class="l">redis</span>
+  <span class="nt">from</span><span class="p">:</span>
+    - <span class="nt">targetRef</span><span class="p">:</span>
+        <span class="nt">kind</span><span class="p">:</span> <span class="l">MeshSubset</span>
+        <span class="nt">tags</span><span class="p">:</span>
+          <span class="nt">kuma.io/service</span><span class="p">:</span> <span class="l">backend_demo_svc_3001</span>
+      <span class="nt">default</span><span class="p">:</span>
+        <span class="nt">action</span><span class="p">:</span> <span class="l">Allow</span>
+</code></pre></div>
+<div class="code"><pre class="chroma" data-lang="yaml"><code><span class="c"># After (--to-latest v2)</span>
+<span class="nt">apiVersion</span><span class="p">:</span> <span class="l">kuma.io/v1alpha1</span>
+<span class="nt">kind</span><span class="p">:</span> <span class="l">MeshTrafficPermission</span>
+<span class="nt">metadata</span><span class="p">:</span>
+  <span class="nt">name</span><span class="p">:</span> <span class="l">allow-backend-to-redis</span>
+  <span class="nt">namespace</span><span class="p">:</span> <span class="l">kong-mesh-system</span>
+<span class="nt">spec</span><span class="p">:</span>
+  <span class="nt">from</span><span class="p">:</span>
+  - <span class="nt">default</span><span class="p">:</span>
+      <span class="nt">action</span><span class="p">:</span> <span class="l">Allow</span>
+    <span class="nt">targetRef</span><span class="p">:</span>
+      <span class="nt">kind</span><span class="p">:</span> <span class="l">MeshService</span>
+      <span class="nt">labels</span><span class="p">:</span>
+        <span class="nt">k8s.kuma.io/namespace</span><span class="p">:</span> <span class="l">demo</span>
+        <span class="nt">kuma.io/display-name</span><span class="p">:</span> <span class="l">backend</span>
+  <span class="nt">targetRef</span><span class="p">:</span>
+    <span class="nt">kind</span><span class="p">:</span> <span class="l">Dataplane</span>
+    <span class="nt">name</span><span class="p">:</span> <span class="l">redis</span>
+    <span class="nt">namespace</span><span class="p">:</span> <span class="l">kong-mesh-system</span>
+</code></pre></div>
+<p>The <code>from[]</code> source lives in namespace <code>demo</code>, which differs from the policy namespace, so it is
 selected by labels. The top-level <code>k8s.kuma.io/service-name: redis</code> carries no namespace, so the
 policy namespace is used and the reference keeps the <code>name</code>/<code>namespace</code> form.</p>
 <blockquote class="callout callout-warning"><p><strong>Warning:</strong> <code>Dataplane</code> with <code>name</code> selects the <code>Dataplane</code> object of that name. On
@@ -153,167 +159,177 @@ that the reference matches your Dataplanes before applying, or select them by la
 </blockquote>
 <p>Under <code>--to-latest v3</code> the top-level reference becomes labels, because 3.0 selects by labels
 only:</p>
-<pre class="chroma"><code><span class="line"><span class="cl"><span class="c"># After (--to-latest v3), spec.targetRef</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">targetRef</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">Dataplane</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">labels</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">app</span><span class="p">:</span><span class="w"> </span><span class="l">redis</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">k8s.kuma.io/namespace</span><span class="p">:</span><span class="w"> </span><span class="l">kong-mesh-system</span><span class="w">
-</span></span></span></code></pre><p><code>app</code> is a best guess for the Pod label and is reported as a warning. Both targets warn that
+<div class="code"><pre class="chroma" data-lang="yaml"><code><span class="c"># After (--to-latest v3), spec.targetRef</span>
+  <span class="nt">targetRef</span><span class="p">:</span>
+    <span class="nt">kind</span><span class="p">:</span> <span class="l">Dataplane</span>
+    <span class="nt">labels</span><span class="p">:</span>
+      <span class="nt">app</span><span class="p">:</span> <span class="l">redis</span>
+      <span class="nt">k8s.kuma.io/namespace</span><span class="p">:</span> <span class="l">kong-mesh-system</span>
+</code></pre></div>
+<p><code>app</code> is a best guess for the Pod label and is reported as a warning. Both targets warn that
 <code>from[]</code> on <code>MeshTrafficPermission</code> is deprecated in favour of <code>rules[]</code> and is not converted;
 see <a href="../../topics/access-control/">Access control</a>.</p>
 <h2 id="scenario-rules">Scenario: Rules</h2>
-<pre class="chroma"><code><span class="line"><span class="cl"><span class="c"># Before</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l">kuma.io/v1alpha1</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshTimeout</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">metadata</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">backend-timeout</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">spec</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">targetRef</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">Dataplane</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">labels</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">app</span><span class="p">:</span><span class="w"> </span><span class="l">backend</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">from</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span>- <span class="nt">targetRef</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">Mesh</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">default</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">idleTimeout</span><span class="p">:</span><span class="w"> </span><span class="l">30s</span><span class="w">
-</span></span></span></code></pre><pre class="chroma"><code><span class="line"><span class="cl"><span class="c"># After (both targets)</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l">kuma.io/v1alpha1</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshTimeout</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">metadata</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">backend-timeout</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">spec</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">rules</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span>- <span class="nt">default</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">idleTimeout</span><span class="p">:</span><span class="w"> </span><span class="l">30s</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">targetRef</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">Dataplane</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">labels</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">app</span><span class="p">:</span><span class="w"> </span><span class="l">backend</span><span class="w">
-</span></span></span></code></pre><p>The <code>rules[]</code> entry applies to all inbound traffic selected by <code>spec.targetRef</code>. A <code>from[]</code>
+<div class="code"><pre class="chroma" data-lang="yaml"><code><span class="c"># Before</span>
+<span class="nt">apiVersion</span><span class="p">:</span> <span class="l">kuma.io/v1alpha1</span>
+<span class="nt">kind</span><span class="p">:</span> <span class="l">MeshTimeout</span>
+<span class="nt">metadata</span><span class="p">:</span>
+  <span class="nt">name</span><span class="p">:</span> <span class="l">backend-timeout</span>
+<span class="nt">spec</span><span class="p">:</span>
+  <span class="nt">targetRef</span><span class="p">:</span>
+    <span class="nt">kind</span><span class="p">:</span> <span class="l">Dataplane</span>
+    <span class="nt">labels</span><span class="p">:</span>
+      <span class="nt">app</span><span class="p">:</span> <span class="l">backend</span>
+  <span class="nt">from</span><span class="p">:</span>
+    - <span class="nt">targetRef</span><span class="p">:</span>
+        <span class="nt">kind</span><span class="p">:</span> <span class="l">Mesh</span>
+      <span class="nt">default</span><span class="p">:</span>
+        <span class="nt">idleTimeout</span><span class="p">:</span> <span class="l">30s</span>
+</code></pre></div>
+<div class="code"><pre class="chroma" data-lang="yaml"><code><span class="c"># After (both targets)</span>
+<span class="nt">apiVersion</span><span class="p">:</span> <span class="l">kuma.io/v1alpha1</span>
+<span class="nt">kind</span><span class="p">:</span> <span class="l">MeshTimeout</span>
+<span class="nt">metadata</span><span class="p">:</span>
+  <span class="nt">name</span><span class="p">:</span> <span class="l">backend-timeout</span>
+<span class="nt">spec</span><span class="p">:</span>
+  <span class="nt">rules</span><span class="p">:</span>
+  - <span class="nt">default</span><span class="p">:</span>
+      <span class="nt">idleTimeout</span><span class="p">:</span> <span class="l">30s</span>
+  <span class="nt">targetRef</span><span class="p">:</span>
+    <span class="nt">kind</span><span class="p">:</span> <span class="l">Dataplane</span>
+    <span class="nt">labels</span><span class="p">:</span>
+      <span class="nt">app</span><span class="p">:</span> <span class="l">backend</span>
+</code></pre></div>
+<p>The <code>rules[]</code> entry applies to all inbound traffic selected by <code>spec.targetRef</code>. A <code>from[]</code>
 entry whose source is not <code>kind: Mesh</code> is narrower than that, and the conversion warns about the
 widened scope.</p>
 <h2 id="scenario-gateway-meshgatewayroute-to-httproute">Scenario: Gateway (MeshGatewayRoute to HTTPRoute)</h2>
 <p><a href="../../policies/meshhttproute/">MeshHTTPRoute</a> and <a href="../../policies/meshtcproute/">MeshTCPRoute</a> are passed through unchanged; only the built-in gateway's
 <code>MeshGatewayRoute</code> is converted. Same output on both targets. The backend lives in another
 namespace than the route, so a <code>ReferenceGrant</code> is generated in the backend namespace.</p>
-<pre class="chroma"><code><span class="line"><span class="cl"><span class="c"># Before</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l">kuma.io/v1alpha1</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshGatewayRoute</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">metadata</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">edge</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l">gateways</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">labels</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kuma.io/mesh</span><span class="p">:</span><span class="w"> </span><span class="l">default</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">spec</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">selectors</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span>- <span class="nt">match</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">kuma.io/service</span><span class="p">:</span><span class="w"> </span><span class="l">edge_gateways_svc</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">conf</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">http</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">rules</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">        </span>- <span class="nt">matches</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">            </span>- <span class="nt">path</span><span class="p">:</span><span class="w"> </span>{<span class="nt">match</span><span class="p">:</span><span class="w"> </span><span class="nt">PREFIX, value</span><span class="p">:</span><span class="w"> </span><span class="l">/}</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">          </span><span class="nt">backends</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">            </span>- <span class="nt">weight</span><span class="p">:</span><span class="w"> </span><span class="m">1</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">              </span><span class="nt">destination</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">                </span><span class="nt">kuma.io/service</span><span class="p">:</span><span class="w"> </span><span class="l">api_apps_svc_8080</span><span class="w">
-</span></span></span></code></pre><pre class="chroma"><code><span class="line"><span class="cl"><span class="c"># After: HTTPRoute-gateways-edge.yaml</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l">gateway.networking.k8s.io/v1</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">HTTPRoute</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">metadata</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">labels</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kuma.io/mesh</span><span class="p">:</span><span class="w"> </span><span class="l">default</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">edge</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l">gateways</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">spec</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">parentRefs</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span>- <span class="nt">group</span><span class="p">:</span><span class="w"> </span><span class="l">gateway.networking.k8s.io</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">Gateway</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">edge</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">rules</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span>- <span class="nt">backendRefs</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span>- <span class="nt">group</span><span class="p">:</span><span class="w"> </span><span class="s2">&#34;&#34;</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">Service</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">api</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l">apps</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">port</span><span class="p">:</span><span class="w"> </span><span class="m">8080</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">weight</span><span class="p">:</span><span class="w"> </span><span class="m">1</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">matches</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span>- <span class="nt">path</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l">PathPrefix</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">value</span><span class="p">:</span><span class="w"> </span><span class="l">/</span><span class="w">
-</span></span></span></code></pre><pre class="chroma"><code><span class="line"><span class="cl"><span class="c"># After: ReferenceGrant-apps-gateways-edge.yaml</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l">gateway.networking.k8s.io/v1beta1</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">ReferenceGrant</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">metadata</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">gateways-edge</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l">apps</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">spec</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">from</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span>- <span class="nt">group</span><span class="p">:</span><span class="w"> </span><span class="l">gateway.networking.k8s.io</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">HTTPRoute</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l">gateways</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">to</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span>- <span class="nt">group</span><span class="p">:</span><span class="w"> </span><span class="s2">&#34;&#34;</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">Service</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">api</span><span class="w">
-</span></span></span></code></pre><h2 id="scenario-mesh-under---to-latest-v3">Scenario: Mesh under <code>--to-latest v3</code></h2>
+<div class="code"><pre class="chroma" data-lang="yaml"><code><span class="c"># Before</span>
+<span class="nt">apiVersion</span><span class="p">:</span> <span class="l">kuma.io/v1alpha1</span>
+<span class="nt">kind</span><span class="p">:</span> <span class="l">MeshGatewayRoute</span>
+<span class="nt">metadata</span><span class="p">:</span>
+  <span class="nt">name</span><span class="p">:</span> <span class="l">edge</span>
+  <span class="nt">namespace</span><span class="p">:</span> <span class="l">gateways</span>
+  <span class="nt">labels</span><span class="p">:</span>
+    <span class="nt">kuma.io/mesh</span><span class="p">:</span> <span class="l">default</span>
+<span class="nt">spec</span><span class="p">:</span>
+  <span class="nt">selectors</span><span class="p">:</span>
+    - <span class="nt">match</span><span class="p">:</span>
+        <span class="nt">kuma.io/service</span><span class="p">:</span> <span class="l">edge_gateways_svc</span>
+  <span class="nt">conf</span><span class="p">:</span>
+    <span class="nt">http</span><span class="p">:</span>
+      <span class="nt">rules</span><span class="p">:</span>
+        - <span class="nt">matches</span><span class="p">:</span>
+            - <span class="nt">path</span><span class="p">:</span> {<span class="nt">match</span><span class="p">:</span> <span class="nt">PREFIX, value</span><span class="p">:</span> <span class="l">/}</span>
+          <span class="nt">backends</span><span class="p">:</span>
+            - <span class="nt">weight</span><span class="p">:</span> <span class="m">1</span>
+              <span class="nt">destination</span><span class="p">:</span>
+                <span class="nt">kuma.io/service</span><span class="p">:</span> <span class="l">api_apps_svc_8080</span>
+</code></pre></div>
+<div class="code"><pre class="chroma" data-lang="yaml"><code><span class="c"># After: HTTPRoute-gateways-edge.yaml</span>
+<span class="nt">apiVersion</span><span class="p">:</span> <span class="l">gateway.networking.k8s.io/v1</span>
+<span class="nt">kind</span><span class="p">:</span> <span class="l">HTTPRoute</span>
+<span class="nt">metadata</span><span class="p">:</span>
+  <span class="nt">labels</span><span class="p">:</span>
+    <span class="nt">kuma.io/mesh</span><span class="p">:</span> <span class="l">default</span>
+  <span class="nt">name</span><span class="p">:</span> <span class="l">edge</span>
+  <span class="nt">namespace</span><span class="p">:</span> <span class="l">gateways</span>
+<span class="nt">spec</span><span class="p">:</span>
+  <span class="nt">parentRefs</span><span class="p">:</span>
+  - <span class="nt">group</span><span class="p">:</span> <span class="l">gateway.networking.k8s.io</span>
+    <span class="nt">kind</span><span class="p">:</span> <span class="l">Gateway</span>
+    <span class="nt">name</span><span class="p">:</span> <span class="l">edge</span>
+  <span class="nt">rules</span><span class="p">:</span>
+  - <span class="nt">backendRefs</span><span class="p">:</span>
+    - <span class="nt">group</span><span class="p">:</span> <span class="s2">""</span>
+      <span class="nt">kind</span><span class="p">:</span> <span class="l">Service</span>
+      <span class="nt">name</span><span class="p">:</span> <span class="l">api</span>
+      <span class="nt">namespace</span><span class="p">:</span> <span class="l">apps</span>
+      <span class="nt">port</span><span class="p">:</span> <span class="m">8080</span>
+      <span class="nt">weight</span><span class="p">:</span> <span class="m">1</span>
+    <span class="nt">matches</span><span class="p">:</span>
+    - <span class="nt">path</span><span class="p">:</span>
+        <span class="nt">type</span><span class="p">:</span> <span class="l">PathPrefix</span>
+        <span class="nt">value</span><span class="p">:</span> <span class="l">/</span>
+</code></pre></div>
+<div class="code"><pre class="chroma" data-lang="yaml"><code><span class="c"># After: ReferenceGrant-apps-gateways-edge.yaml</span>
+<span class="nt">apiVersion</span><span class="p">:</span> <span class="l">gateway.networking.k8s.io/v1beta1</span>
+<span class="nt">kind</span><span class="p">:</span> <span class="l">ReferenceGrant</span>
+<span class="nt">metadata</span><span class="p">:</span>
+  <span class="nt">name</span><span class="p">:</span> <span class="l">gateways-edge</span>
+  <span class="nt">namespace</span><span class="p">:</span> <span class="l">apps</span>
+<span class="nt">spec</span><span class="p">:</span>
+  <span class="nt">from</span><span class="p">:</span>
+  - <span class="nt">group</span><span class="p">:</span> <span class="l">gateway.networking.k8s.io</span>
+    <span class="nt">kind</span><span class="p">:</span> <span class="l">HTTPRoute</span>
+    <span class="nt">namespace</span><span class="p">:</span> <span class="l">gateways</span>
+  <span class="nt">to</span><span class="p">:</span>
+  - <span class="nt">group</span><span class="p">:</span> <span class="s2">""</span>
+    <span class="nt">kind</span><span class="p">:</span> <span class="l">Service</span>
+    <span class="nt">name</span><span class="p">:</span> <span class="l">api</span>
+</code></pre></div>
+<h2 id="scenario-mesh-under---to-latest-v3">Scenario: Mesh under <code>--to-latest v3</code></h2>
 <p>A <code>Mesh</code> using the legacy mTLS backend in permissive mode, with outbound passthrough on:</p>
-<pre class="chroma"><code><span class="line"><span class="cl"><span class="c"># Before</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l">kuma.io/v1alpha1</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">Mesh</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">metadata</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">default</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">spec</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">mtls</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">enabledBackend</span><span class="p">:</span><span class="w"> </span><span class="l">ca-1</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">backends</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span>- <span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">ca-1</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l">builtin</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">mode</span><span class="p">:</span><span class="w"> </span><span class="l">PERMISSIVE</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">networking</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">outbound</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">passthrough</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">routing</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">zoneEgress</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="w">
-</span></span></span></code></pre><pre class="chroma"><code><span class="line"><span class="cl"><span class="c"># After (--to-latest v3): Mesh-default.yaml</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l">kuma.io/v1alpha1</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">Mesh</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">metadata</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">default</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">spec</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">meshServices</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">mode</span><span class="p">:</span><span class="w"> </span><span class="l">Exclusive</span><span class="w">
-</span></span></span></code></pre><pre class="chroma"><code><span class="line"><span class="cl"><span class="c"># After (--to-latest v3): MeshTLS-kong-mesh-system-default-tls-permissive.yaml</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l">kuma.io/v1alpha1</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshTLS</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">metadata</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">labels</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kuma.io/mesh</span><span class="p">:</span><span class="w"> </span><span class="l">default</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">default-tls-permissive</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l">kong-mesh-system</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">spec</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">rules</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span>- <span class="nt">default</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">mode</span><span class="p">:</span><span class="w"> </span><span class="l">Permissive</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">targetRef</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">Mesh</span><span class="w">
-</span></span></span></code></pre><pre class="chroma"><code><span class="line"><span class="cl"><span class="c"># After (--to-latest v3): MeshPassthrough-kong-mesh-system-default-passthrough.yaml</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l">kuma.io/v1alpha1</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshPassthrough</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">metadata</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">labels</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kuma.io/mesh</span><span class="p">:</span><span class="w"> </span><span class="l">default</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">default-passthrough</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l">kong-mesh-system</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">spec</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">default</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">passthroughMode</span><span class="p">:</span><span class="w"> </span><span class="l">All</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">targetRef</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">Mesh</span><span class="w">
-</span></span></span></code></pre><p><code>spec.mtls</code> and <code>routing.zoneEgress</code> are gone from the <code>Mesh</code>. The run prints a <strong>blocking</strong>
+<div class="code"><pre class="chroma" data-lang="yaml"><code><span class="c"># Before</span>
+<span class="nt">apiVersion</span><span class="p">:</span> <span class="l">kuma.io/v1alpha1</span>
+<span class="nt">kind</span><span class="p">:</span> <span class="l">Mesh</span>
+<span class="nt">metadata</span><span class="p">:</span>
+  <span class="nt">name</span><span class="p">:</span> <span class="l">default</span>
+<span class="nt">spec</span><span class="p">:</span>
+  <span class="nt">mtls</span><span class="p">:</span>
+    <span class="nt">enabledBackend</span><span class="p">:</span> <span class="l">ca-1</span>
+    <span class="nt">backends</span><span class="p">:</span>
+      - <span class="nt">name</span><span class="p">:</span> <span class="l">ca-1</span>
+        <span class="nt">type</span><span class="p">:</span> <span class="l">builtin</span>
+        <span class="nt">mode</span><span class="p">:</span> <span class="l">PERMISSIVE</span>
+  <span class="nt">networking</span><span class="p">:</span>
+    <span class="nt">outbound</span><span class="p">:</span>
+      <span class="nt">passthrough</span><span class="p">:</span> <span class="kc">true</span>
+  <span class="nt">routing</span><span class="p">:</span>
+    <span class="nt">zoneEgress</span><span class="p">:</span> <span class="kc">true</span>
+</code></pre></div>
+<div class="code"><pre class="chroma" data-lang="yaml"><code><span class="c"># After (--to-latest v3): Mesh-default.yaml</span>
+<span class="nt">apiVersion</span><span class="p">:</span> <span class="l">kuma.io/v1alpha1</span>
+<span class="nt">kind</span><span class="p">:</span> <span class="l">Mesh</span>
+<span class="nt">metadata</span><span class="p">:</span>
+  <span class="nt">name</span><span class="p">:</span> <span class="l">default</span>
+<span class="nt">spec</span><span class="p">:</span>
+  <span class="nt">meshServices</span><span class="p">:</span>
+    <span class="nt">mode</span><span class="p">:</span> <span class="l">Exclusive</span>
+</code></pre></div>
+<div class="code"><pre class="chroma" data-lang="yaml"><code><span class="c"># After (--to-latest v3): MeshTLS-kong-mesh-system-default-tls-permissive.yaml</span>
+<span class="nt">apiVersion</span><span class="p">:</span> <span class="l">kuma.io/v1alpha1</span>
+<span class="nt">kind</span><span class="p">:</span> <span class="l">MeshTLS</span>
+<span class="nt">metadata</span><span class="p">:</span>
+  <span class="nt">labels</span><span class="p">:</span>
+    <span class="nt">kuma.io/mesh</span><span class="p">:</span> <span class="l">default</span>
+  <span class="nt">name</span><span class="p">:</span> <span class="l">default-tls-permissive</span>
+  <span class="nt">namespace</span><span class="p">:</span> <span class="l">kong-mesh-system</span>
+<span class="nt">spec</span><span class="p">:</span>
+  <span class="nt">rules</span><span class="p">:</span>
+  - <span class="nt">default</span><span class="p">:</span>
+      <span class="nt">mode</span><span class="p">:</span> <span class="l">Permissive</span>
+  <span class="nt">targetRef</span><span class="p">:</span>
+    <span class="nt">kind</span><span class="p">:</span> <span class="l">Mesh</span>
+</code></pre></div>
+<div class="code"><pre class="chroma" data-lang="yaml"><code><span class="c"># After (--to-latest v3): MeshPassthrough-kong-mesh-system-default-passthrough.yaml</span>
+<span class="nt">apiVersion</span><span class="p">:</span> <span class="l">kuma.io/v1alpha1</span>
+<span class="nt">kind</span><span class="p">:</span> <span class="l">MeshPassthrough</span>
+<span class="nt">metadata</span><span class="p">:</span>
+  <span class="nt">labels</span><span class="p">:</span>
+    <span class="nt">kuma.io/mesh</span><span class="p">:</span> <span class="l">default</span>
+  <span class="nt">name</span><span class="p">:</span> <span class="l">default-passthrough</span>
+  <span class="nt">namespace</span><span class="p">:</span> <span class="l">kong-mesh-system</span>
+<span class="nt">spec</span><span class="p">:</span>
+  <span class="nt">default</span><span class="p">:</span>
+    <span class="nt">passthroughMode</span><span class="p">:</span> <span class="l">All</span>
+  <span class="nt">targetRef</span><span class="p">:</span>
+    <span class="nt">kind</span><span class="p">:</span> <span class="l">Mesh</span>
+</code></pre></div>
+<p><code>spec.mtls</code> and <code>routing.zoneEgress</code> are gone from the <code>Mesh</code>. The run prints a <strong>blocking</strong>
 warning for <code>spec.mtls</code>: create a <code>MeshIdentity</code> (and <code>MeshTrust</code>) that selects every proxy
 before upgrading, or the mesh serves plaintext on 3.0. Under <code>--to-latest v2</code> the same input
 keeps <code>spec.mtls</code> and <code>routing.zoneEgress</code>, gains <code>meshServices.mode: Exclusive</code>, drops
@@ -321,85 +337,90 @@ keeps <code>spec.mtls</code> and <code>routing.zoneEgress</code>, gains <code>me
 advisories. See <a href="../../topics/meshes/">Meshes</a> and <a href="../../topics/mtls-identity/">mTLS and identity</a>.</p>
 <h2 id="scenario-externalservice">Scenario: ExternalService</h2>
 <p>Universal input from a <code>kumactl</code> extraction. Same output on both targets.</p>
-<pre class="chroma"><code><span class="line"><span class="cl"><span class="c"># Before</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l">ExternalService</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">mesh</span><span class="p">:</span><span class="w"> </span><span class="l">default</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">httpbin</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">tags</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">kuma.io/service</span><span class="p">:</span><span class="w"> </span><span class="l">httpbin</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">kuma.io/protocol</span><span class="p">:</span><span class="w"> </span><span class="l">http</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">networking</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">address</span><span class="p">:</span><span class="w"> </span><span class="l">httpbin.org:443</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">tls</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="w">
-</span></span></span></code></pre><pre class="chroma"><code><span class="line"><span class="cl"><span class="c"># After: MeshExternalService-httpbin.yaml</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l">kuma.io/v1alpha1</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshExternalService</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">metadata</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">labels</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kuma.io/mesh</span><span class="p">:</span><span class="w"> </span><span class="l">default</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">httpbin</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">spec</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">endpoints</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span>- <span class="nt">address</span><span class="p">:</span><span class="w"> </span><span class="l">httpbin.org</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">port</span><span class="p">:</span><span class="w"> </span><span class="m">443</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">match</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">port</span><span class="p">:</span><span class="w"> </span><span class="m">443</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">protocol</span><span class="p">:</span><span class="w"> </span><span class="l">http</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l">HostnameGenerator</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">tls</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">verification</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">mode</span><span class="p">:</span><span class="w"> </span><span class="l">Secured</span><span class="w">
-</span></span></span></code></pre><p>The run warns that <code>verification.mode</code> defaults to <code>Secured</code>, that <code>match.port</code> copies the
+<div class="code"><pre class="chroma" data-lang="yaml"><code><span class="c"># Before</span>
+<span class="nt">type</span><span class="p">:</span> <span class="l">ExternalService</span>
+<span class="nt">mesh</span><span class="p">:</span> <span class="l">default</span>
+<span class="nt">name</span><span class="p">:</span> <span class="l">httpbin</span>
+<span class="nt">tags</span><span class="p">:</span>
+  <span class="nt">kuma.io/service</span><span class="p">:</span> <span class="l">httpbin</span>
+  <span class="nt">kuma.io/protocol</span><span class="p">:</span> <span class="l">http</span>
+<span class="nt">networking</span><span class="p">:</span>
+  <span class="nt">address</span><span class="p">:</span> <span class="l">httpbin.org:443</span>
+  <span class="nt">tls</span><span class="p">:</span>
+    <span class="nt">enabled</span><span class="p">:</span> <span class="kc">true</span>
+</code></pre></div>
+<div class="code"><pre class="chroma" data-lang="yaml"><code><span class="c"># After: MeshExternalService-httpbin.yaml</span>
+<span class="nt">apiVersion</span><span class="p">:</span> <span class="l">kuma.io/v1alpha1</span>
+<span class="nt">kind</span><span class="p">:</span> <span class="l">MeshExternalService</span>
+<span class="nt">metadata</span><span class="p">:</span>
+  <span class="nt">labels</span><span class="p">:</span>
+    <span class="nt">kuma.io/mesh</span><span class="p">:</span> <span class="l">default</span>
+  <span class="nt">name</span><span class="p">:</span> <span class="l">httpbin</span>
+<span class="nt">spec</span><span class="p">:</span>
+  <span class="nt">endpoints</span><span class="p">:</span>
+  - <span class="nt">address</span><span class="p">:</span> <span class="l">httpbin.org</span>
+    <span class="nt">port</span><span class="p">:</span> <span class="m">443</span>
+  <span class="nt">match</span><span class="p">:</span>
+    <span class="nt">port</span><span class="p">:</span> <span class="m">443</span>
+    <span class="nt">protocol</span><span class="p">:</span> <span class="l">http</span>
+    <span class="nt">type</span><span class="p">:</span> <span class="l">HostnameGenerator</span>
+  <span class="nt">tls</span><span class="p">:</span>
+    <span class="nt">enabled</span><span class="p">:</span> <span class="kc">true</span>
+    <span class="nt">verification</span><span class="p">:</span>
+      <span class="nt">mode</span><span class="p">:</span> <span class="l">Secured</span>
+</code></pre></div>
+<p>The run warns that <code>verification.mode</code> defaults to <code>Secured</code>, that <code>match.port</code> copies the
 endpoint port, and that the hostname clients use now comes from a <code>HostnameGenerator</code>. Under
 <code>--to-latest v3</code> it also warns when the input has no <code>MeshIdentity</code> for the mesh: 3.0 requires
 one for <code>MeshExternalService</code> traffic. See <a href="../../topics/external-services/">External services</a>.</p>
 <h2 id="scenario-opapolicy-kong-mesh">Scenario: OPAPolicy (Kong Mesh)</h2>
-<pre class="chroma"><code><span class="line"><span class="cl"><span class="c"># Before</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l">kuma.io/v1alpha1</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">OPAPolicy</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">metadata</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">my-opa-policy</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l">kong-mesh-system</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">spec</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">targetRef</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">Mesh</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">conf</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">policies</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span>- <span class="nt">inlineString</span><span class="p">:</span><span class="w"> </span><span class="p">|</span><span class="sd">
-</span></span></span><span class="line"><span class="cl"><span class="sd">          package envoy.authz
-</span></span></span><span class="line"><span class="cl"><span class="sd">          default allow = false
-</span></span></span><span class="line"><span class="cl"><span class="sd">          allow { input.attributes.request.http.method == &#34;GET&#34; }</span><span class="w">
-</span></span></span></code></pre><pre class="chroma"><code><span class="line"><span class="cl"><span class="c"># After (--to-latest v2)</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l">kuma.io/v1alpha1</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshOPA</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">metadata</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">my-opa-policy</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l">kong-mesh-system</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">spec</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">default</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">appendPolicies</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span>- <span class="nt">rego</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">inlineString</span><span class="p">:</span><span class="w"> </span><span class="p">|-</span><span class="sd">
-</span></span></span><span class="line"><span class="cl"><span class="sd">          package envoy.authz
-</span></span></span><span class="line"><span class="cl"><span class="sd">          default allow = false
-</span></span></span><span class="line"><span class="cl"><span class="sd">          allow { input.attributes.request.http.method == &#34;GET&#34; }</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">targetRef</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">Mesh</span><span class="w">
-</span></span></span></code></pre><p>Under <code>--to-latest v3</code> the rego source uses the <code>SecureDataSource</code> shape that Kong Mesh 3.0
+<div class="code"><pre class="chroma" data-lang="yaml"><code><span class="c"># Before</span>
+<span class="nt">apiVersion</span><span class="p">:</span> <span class="l">kuma.io/v1alpha1</span>
+<span class="nt">kind</span><span class="p">:</span> <span class="l">OPAPolicy</span>
+<span class="nt">metadata</span><span class="p">:</span>
+  <span class="nt">name</span><span class="p">:</span> <span class="l">my-opa-policy</span>
+  <span class="nt">namespace</span><span class="p">:</span> <span class="l">kong-mesh-system</span>
+<span class="nt">spec</span><span class="p">:</span>
+  <span class="nt">targetRef</span><span class="p">:</span>
+    <span class="nt">kind</span><span class="p">:</span> <span class="l">Mesh</span>
+  <span class="nt">conf</span><span class="p">:</span>
+    <span class="nt">policies</span><span class="p">:</span>
+      - <span class="nt">inlineString</span><span class="p">:</span> <span class="p">|</span><span class="sd">
+          package envoy.authz
+          default allow = false
+          allow { input.attributes.request.http.method == "GET" }</span>
+</code></pre></div>
+<div class="code"><pre class="chroma" data-lang="yaml"><code><span class="c"># After (--to-latest v2)</span>
+<span class="nt">apiVersion</span><span class="p">:</span> <span class="l">kuma.io/v1alpha1</span>
+<span class="nt">kind</span><span class="p">:</span> <span class="l">MeshOPA</span>
+<span class="nt">metadata</span><span class="p">:</span>
+  <span class="nt">name</span><span class="p">:</span> <span class="l">my-opa-policy</span>
+  <span class="nt">namespace</span><span class="p">:</span> <span class="l">kong-mesh-system</span>
+<span class="nt">spec</span><span class="p">:</span>
+  <span class="nt">default</span><span class="p">:</span>
+    <span class="nt">appendPolicies</span><span class="p">:</span>
+    - <span class="nt">rego</span><span class="p">:</span>
+        <span class="nt">inlineString</span><span class="p">:</span> <span class="p">|-</span><span class="sd">
+          package envoy.authz
+          default allow = false
+          allow { input.attributes.request.http.method == "GET" }</span>
+  <span class="nt">targetRef</span><span class="p">:</span>
+    <span class="nt">kind</span><span class="p">:</span> <span class="l">Mesh</span>
+</code></pre></div>
+<p>Under <code>--to-latest v3</code> the rego source uses the <code>SecureDataSource</code> shape that Kong Mesh 3.0
 requires:</p>
-<pre class="chroma"><code><span class="line"><span class="cl"><span class="c"># After (--to-latest v3), spec.default</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">default</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">appendPolicies</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span>- <span class="nt">rego</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">insecureInline</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">          </span><span class="nt">value</span><span class="p">:</span><span class="w"> </span><span class="p">|-</span><span class="sd">
-</span></span></span><span class="line"><span class="cl"><span class="sd">            package envoy.authz
-</span></span></span><span class="line"><span class="cl"><span class="sd">            default allow = false
-</span></span></span><span class="line"><span class="cl"><span class="sd">            allow { input.attributes.request.http.method == &#34;GET&#34; }</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l">InsecureInline</span><span class="w">
-</span></span></span></code></pre><p>See <a href="../../policies/meshopa/">MeshOPA</a>.</p>
+<div class="code"><pre class="chroma" data-lang="yaml"><code><span class="c"># After (--to-latest v3), spec.default</span>
+  <span class="nt">default</span><span class="p">:</span>
+    <span class="nt">appendPolicies</span><span class="p">:</span>
+    - <span class="nt">rego</span><span class="p">:</span>
+        <span class="nt">insecureInline</span><span class="p">:</span>
+          <span class="nt">value</span><span class="p">:</span> <span class="p">|-</span><span class="sd">
+            package envoy.authz
+            default allow = false
+            allow { input.attributes.request.http.method == "GET" }</span>
+        <span class="nt">type</span><span class="p">:</span> <span class="l">InsecureInline</span>
+</code></pre></div>
+<p>See <a href="../../policies/meshopa/">MeshOPA</a>.</p>
 
     </article>
     <nav class="pager" aria-label="Previous and next page">
@@ -424,5 +445,6 @@ requires:</p>
 </footer>
 <script src="../../static/search-index.js"></script>
 <script src="../../static/search.js"></script>
+<script src="../../static/copy.js"></script>
 </body>
 </html>

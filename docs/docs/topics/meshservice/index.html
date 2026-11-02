@@ -15,8 +15,8 @@
 <meta property="og:image" content="https://kong.github.io/kuma-migrator/assets/migration-overview.svg">
 <meta name="twitter:card" content="summary_large_image">
 
+<link rel="stylesheet" href="../../static/shared.css">
 <link rel="stylesheet" href="../../static/style.css">
-<link rel="stylesheet" href="../../static/chroma.css">
 </head>
 <body data-root="../../">
 <a class="skip" href="#content">Skip to content</a>
@@ -30,6 +30,7 @@
       <a href="../../policies/">Policies</a>
       <a href="https://github.com/Kong/kuma-migrator">GitHub</a>
     </nav>
+    <!-- release-tag --><a class="release-badge" href="https://github.com/Kong/kuma-migrator/releases/latest" title="Latest release: v0.8.0">v0.8.0</a><!-- /release-tag -->
     <div class="search">
       <input id="search-input" type="search" placeholder="Search docs" aria-label="Search docs" autocomplete="off">
       <ul id="search-results" hidden></ul>
@@ -163,7 +164,12 @@ namespace and port; a Universal value is used as the name.</p>
 </tr>
 <tr>
 <td><code>spec.targetRef</code> <code>MeshSubset</code> with a service tag</td>
-<td><code>kind: Dataplane</code> with <code>labels: {app: &lt;name&gt;, k8s.kuma.io/namespace: &lt;ns&gt;}</code> plus other tags; <code>app</code> is a best guess and warned</td>
+<td><code>kind: Dataplane</code> with <code>labels: {app: &lt;name&gt;, k8s.kuma.io/namespace: &lt;ns&gt;}</code> plus other tags, in every namespace (never <code>name</code>: a <code>Dataplane</code> name is its pod's name); <code>app</code> is a best guess and warned</td>
+<td>Same</td>
+</tr>
+<tr>
+<td>Kuma-reserved tag that is not a label (<code>kuma.io/protocol</code>, <code>kuma.io/instance</code>, <code>k8s.kuma.io/service-port</code>, …) next to a service tag</td>
+<td>Dropped from the generated <code>labels</code>, with a warning naming it. <code>kuma.io/zone</code>, <code>kuma.io/env</code>, <code>kuma.io/mesh</code>, <code>kuma.io/origin</code>, <code>k8s.kuma.io/namespace</code> are labels and are kept</td>
 <td>Same</td>
 </tr>
 <tr>
@@ -172,9 +178,19 @@ namespace and port; a Universal value is used as the name.</p>
 <td><code>kind: MeshService</code> with <code>labels</code> only</td>
 </tr>
 <tr>
+<td><code>from[]</code> <code>MeshSubset</code> with a service tag on <code>MeshTrafficPermission</code>/<code>MeshFaultInjection</code></td>
+<td>Kept: it is the form the 2.7 notes give in place of the deprecated <code>MeshService</code></td>
+<td>As above; a policy still carrying <code>from[]</code> is rejected by 3.0 and written to <code>_manual/</code></td>
+</tr>
+<tr>
 <td><code>MeshService</code> ref with a Kuma-internal name (<code>backend_demo_svc_3001</code>)</td>
-<td>Decoded: <code>to[]</code>/<code>from[]</code> → <code>MeshService</code> name/namespace; top level → <code>Dataplane</code></td>
+<td>Decoded: <code>to[]</code>/<code>from[]</code> → <code>MeshService</code> name/namespace (<code>sectionName</code> kept); top level → <code>Dataplane</code> labels. On <code>MeshTrafficPermission</code>/<code>MeshFaultInjection</code> <code>from[]</code> → <code>MeshSubset</code> with that <code>kuma.io/service</code> tag</td>
 <td>Same, with labels</td>
+</tr>
+<tr>
+<td>Universal-format policy (<code>type</code>/<code>name</code>/<code>mesh</code> at the root)</td>
+<td>Converted in place: the Universal layout and every unrelated field are kept</td>
+<td>Same</td>
 </tr>
 <tr>
 <td><code>rules[]</code> and <code>to[]</code> in one policy</td>
@@ -264,107 +280,114 @@ hostname and every reference to it.</li>
 <h2 id="example">Example</h2>
 <p>Input — two files: a policy still on <code>MeshSubset</code>, and one partially migrated
 (<code>kind: MeshService</code> with the Kuma-internal name):</p>
-<pre class="chroma"><code><span class="line"><span class="cl"><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l">kuma.io/v1alpha1</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshTimeout</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">metadata</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">web-to-backend</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l">kong-mesh-system</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">labels</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kuma.io/mesh</span><span class="p">:</span><span class="w"> </span><span class="l">default</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">spec</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">targetRef</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshSubset</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">tags</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">kuma.io/service</span><span class="p">:</span><span class="w"> </span><span class="l">web_demo_svc_8080</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">to</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span>- <span class="nt">targetRef</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshSubset</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">tags</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">          </span><span class="nt">kuma.io/service</span><span class="p">:</span><span class="w"> </span><span class="l">backend_demo_svc_3001</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">          </span><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l">v2</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">default</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">http</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">          </span><span class="nt">requestTimeout</span><span class="p">:</span><span class="w"> </span><span class="l">5s</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nn">---</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l">kuma.io/v1alpha1</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshRetry</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">metadata</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">web-retry</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l">demo</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">labels</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kuma.io/mesh</span><span class="p">:</span><span class="w"> </span><span class="l">default</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">spec</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">targetRef</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">Mesh</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">to</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span>- <span class="nt">targetRef</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshService</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">backend_demo_svc_3001</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">default</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">http</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">          </span><span class="nt">numRetries</span><span class="p">:</span><span class="w"> </span><span class="m">2</span><span class="w">
-</span></span></span></code></pre><p>Output with <code>--to-latest v2</code>:</p>
-<pre class="chroma"><code><span class="line"><span class="cl"><span class="c"># resiliency/MeshTimeout-kong-mesh-system-web-to-backend.yaml</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l">kuma.io/v1alpha1</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshTimeout</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">metadata</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">labels</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kuma.io/mesh</span><span class="p">:</span><span class="w"> </span><span class="l">default</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">web-to-backend</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l">kong-mesh-system</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">spec</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">targetRef</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">Dataplane</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">labels</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">app</span><span class="p">:</span><span class="w"> </span><span class="l">web</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">k8s.kuma.io/namespace</span><span class="p">:</span><span class="w"> </span><span class="l">demo</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">to</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span>- <span class="nt">default</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">http</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">requestTimeout</span><span class="p">:</span><span class="w"> </span><span class="l">5s</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">targetRef</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshService</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">labels</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">k8s.kuma.io/namespace</span><span class="p">:</span><span class="w"> </span><span class="l">demo</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">kuma.io/display-name</span><span class="p">:</span><span class="w"> </span><span class="l">backend</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l">v2</span><span class="w">
-</span></span></span></code></pre><pre class="chroma"><code><span class="line"><span class="cl"><span class="c"># resiliency/MeshRetry-demo-web-retry.yaml</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l">kuma.io/v1alpha1</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshRetry</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">metadata</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">labels</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kuma.io/mesh</span><span class="p">:</span><span class="w"> </span><span class="l">default</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">web-retry</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l">demo</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">spec</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">targetRef</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">Mesh</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">to</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span>- <span class="nt">default</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">http</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">numRetries</span><span class="p">:</span><span class="w"> </span><span class="m">2</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">targetRef</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshService</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">backend</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l">demo</span><span class="w">
-</span></span></span></code></pre><p>With <code>--to-latest v3</code> the <code>MeshTimeout</code> is identical (it already uses labels) and the <code>MeshRetry</code>
-destination becomes a label selector:</p>
-<pre class="chroma"><code><span class="line"><span class="cl"><span class="c"># resiliency/MeshRetry-demo-web-retry.yaml (v3)</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">targetRef</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l">MeshService</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">labels</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">k8s.kuma.io/namespace</span><span class="p">:</span><span class="w"> </span><span class="l">demo</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nt">kuma.io/display-name</span><span class="p">:</span><span class="w"> </span><span class="l">backend</span><span class="w">
-</span></span></span></code></pre><p>Warning on both targets:</p>
-<pre><code>⚠  spec.targetRef Dataplane labels use 'app: web' as a best-guess pod label — verify this
+<div class="code"><pre class="chroma" data-lang="yaml"><code><span class="nt">apiVersion</span><span class="p">:</span> <span class="l">kuma.io/v1alpha1</span>
+<span class="nt">kind</span><span class="p">:</span> <span class="l">MeshTimeout</span>
+<span class="nt">metadata</span><span class="p">:</span>
+  <span class="nt">name</span><span class="p">:</span> <span class="l">web-to-backend</span>
+  <span class="nt">namespace</span><span class="p">:</span> <span class="l">kong-mesh-system</span>
+  <span class="nt">labels</span><span class="p">:</span>
+    <span class="nt">kuma.io/mesh</span><span class="p">:</span> <span class="l">default</span>
+<span class="nt">spec</span><span class="p">:</span>
+  <span class="nt">targetRef</span><span class="p">:</span>
+    <span class="nt">kind</span><span class="p">:</span> <span class="l">MeshSubset</span>
+    <span class="nt">tags</span><span class="p">:</span>
+      <span class="nt">kuma.io/service</span><span class="p">:</span> <span class="l">web_demo_svc_8080</span>
+  <span class="nt">to</span><span class="p">:</span>
+    - <span class="nt">targetRef</span><span class="p">:</span>
+        <span class="nt">kind</span><span class="p">:</span> <span class="l">MeshSubset</span>
+        <span class="nt">tags</span><span class="p">:</span>
+          <span class="nt">kuma.io/service</span><span class="p">:</span> <span class="l">backend_demo_svc_3001</span>
+          <span class="nt">version</span><span class="p">:</span> <span class="l">v2</span>
+      <span class="nt">default</span><span class="p">:</span>
+        <span class="nt">http</span><span class="p">:</span>
+          <span class="nt">requestTimeout</span><span class="p">:</span> <span class="l">5s</span>
+<span class="nn">---</span>
+<span class="nt">apiVersion</span><span class="p">:</span> <span class="l">kuma.io/v1alpha1</span>
+<span class="nt">kind</span><span class="p">:</span> <span class="l">MeshRetry</span>
+<span class="nt">metadata</span><span class="p">:</span>
+  <span class="nt">name</span><span class="p">:</span> <span class="l">web-retry</span>
+  <span class="nt">namespace</span><span class="p">:</span> <span class="l">demo</span>
+  <span class="nt">labels</span><span class="p">:</span>
+    <span class="nt">kuma.io/mesh</span><span class="p">:</span> <span class="l">default</span>
+<span class="nt">spec</span><span class="p">:</span>
+  <span class="nt">targetRef</span><span class="p">:</span>
+    <span class="nt">kind</span><span class="p">:</span> <span class="l">Mesh</span>
+  <span class="nt">to</span><span class="p">:</span>
+    - <span class="nt">targetRef</span><span class="p">:</span>
+        <span class="nt">kind</span><span class="p">:</span> <span class="l">MeshService</span>
+        <span class="nt">name</span><span class="p">:</span> <span class="l">backend_demo_svc_3001</span>
+      <span class="nt">default</span><span class="p">:</span>
+        <span class="nt">http</span><span class="p">:</span>
+          <span class="nt">numRetries</span><span class="p">:</span> <span class="m">2</span>
+</code></pre></div>
+<p>Output with <code>--to-latest v2</code>:</p>
+<div class="code"><pre class="chroma" data-lang="yaml"><code><span class="c"># resiliency/MeshTimeout-kong-mesh-system-web-to-backend.yaml</span>
+<span class="nt">apiVersion</span><span class="p">:</span> <span class="l">kuma.io/v1alpha1</span>
+<span class="nt">kind</span><span class="p">:</span> <span class="l">MeshTimeout</span>
+<span class="nt">metadata</span><span class="p">:</span>
+  <span class="nt">labels</span><span class="p">:</span>
+    <span class="nt">kuma.io/mesh</span><span class="p">:</span> <span class="l">default</span>
+  <span class="nt">name</span><span class="p">:</span> <span class="l">web-to-backend</span>
+  <span class="nt">namespace</span><span class="p">:</span> <span class="l">kong-mesh-system</span>
+<span class="nt">spec</span><span class="p">:</span>
+  <span class="nt">targetRef</span><span class="p">:</span>
+    <span class="nt">kind</span><span class="p">:</span> <span class="l">Dataplane</span>
+    <span class="nt">labels</span><span class="p">:</span>
+      <span class="nt">app</span><span class="p">:</span> <span class="l">web</span>
+      <span class="nt">k8s.kuma.io/namespace</span><span class="p">:</span> <span class="l">demo</span>
+  <span class="nt">to</span><span class="p">:</span>
+  - <span class="nt">default</span><span class="p">:</span>
+      <span class="nt">http</span><span class="p">:</span>
+        <span class="nt">requestTimeout</span><span class="p">:</span> <span class="l">5s</span>
+    <span class="nt">targetRef</span><span class="p">:</span>
+      <span class="nt">kind</span><span class="p">:</span> <span class="l">MeshService</span>
+      <span class="nt">labels</span><span class="p">:</span>
+        <span class="nt">k8s.kuma.io/namespace</span><span class="p">:</span> <span class="l">demo</span>
+        <span class="nt">kuma.io/display-name</span><span class="p">:</span> <span class="l">backend</span>
+        <span class="nt">version</span><span class="p">:</span> <span class="l">v2</span>
+</code></pre></div>
+<div class="code"><pre class="chroma" data-lang="yaml"><code><span class="c"># resiliency/MeshRetry-demo-web-retry.yaml</span>
+<span class="nt">apiVersion</span><span class="p">:</span> <span class="l">kuma.io/v1alpha1</span>
+<span class="nt">kind</span><span class="p">:</span> <span class="l">MeshRetry</span>
+<span class="nt">metadata</span><span class="p">:</span>
+  <span class="nt">labels</span><span class="p">:</span>
+    <span class="nt">kuma.io/mesh</span><span class="p">:</span> <span class="l">default</span>
+  <span class="nt">name</span><span class="p">:</span> <span class="l">web-retry</span>
+  <span class="nt">namespace</span><span class="p">:</span> <span class="l">demo</span>
+<span class="nt">spec</span><span class="p">:</span>
+  <span class="nt">targetRef</span><span class="p">:</span>
+    <span class="nt">kind</span><span class="p">:</span> <span class="l">Mesh</span>
+  <span class="nt">to</span><span class="p">:</span>
+  - <span class="nt">default</span><span class="p">:</span>
+      <span class="nt">http</span><span class="p">:</span>
+        <span class="nt">numRetries</span><span class="p">:</span> <span class="m">2</span>
+    <span class="nt">targetRef</span><span class="p">:</span>
+      <span class="nt">kind</span><span class="p">:</span> <span class="l">MeshService</span>
+      <span class="nt">name</span><span class="p">:</span> <span class="l">backend</span>
+      <span class="nt">namespace</span><span class="p">:</span> <span class="l">demo</span>
+</code></pre></div>
+<p>With <code>--to-latest v3</code> the <code>MeshTimeout</code> is identical (it already uses labels) and the <code>MeshRetry</code>
+destination becomes a label selector. The <code>MeshRetry</code> is a producer policy (its <code>to[]</code> names a
+service in its own namespace), and 3.0 keeps it one only if the selector also carries
+<code>kuma.io/zone</code>; the input has no <code>kuma.io/zone</code> label, so a warning names the selector to add
+<code>kuma.io/zone: &lt;zone-name&gt;</code> to (see <a href="../policy-targeting/#policy-roles">Policy targeting</a>):</p>
+<div class="code"><pre class="chroma" data-lang="yaml"><code><span class="c"># resiliency/MeshRetry-demo-web-retry.yaml (v3)</span>
+    <span class="nt">targetRef</span><span class="p">:</span>
+      <span class="nt">kind</span><span class="p">:</span> <span class="l">MeshService</span>
+      <span class="nt">labels</span><span class="p">:</span>
+        <span class="nt">k8s.kuma.io/namespace</span><span class="p">:</span> <span class="l">demo</span>
+        <span class="nt">kuma.io/display-name</span><span class="p">:</span> <span class="l">backend</span>
+</code></pre></div>
+<p>Warning on both targets:</p>
+<div class="code"><pre class="chroma" data-lang="text"><code><span class="o-warn">⚠</span>  spec.targetRef Dataplane labels use 'app: web' as a best-guess pod label — verify this
    matches your actual pod labels before applying
-</code></pre>
+</code></pre></div>
 <p>A Universal <code>MeshService</code> still selecting by <code>dataplaneTags: {kuma.io/service: backend}</code> is
 reported but not rewritten under <code>v3</code>, because <code>kuma.io/service</code> cannot be a <code>Dataplane</code> label:</p>
-<pre><code>⚠  MeshService &quot;backend&quot;: spec.selector.dataplaneTags is removed in 3.0 and dropped silently,
+<div class="code"><pre class="chroma" data-lang="text"><code><span class="o-warn">⚠</span>  MeshService "backend": spec.selector.dataplaneTags is removed in 3.0 and dropped silently,
    leaving a MeshService that matches no proxies. Not converted: kuma.io/service=backend cannot
    be a Dataplane label (reserved kuma.io/ prefix), and dropping it would widen the selector. …
-</code></pre>
+</code></pre></div>
 <h2 id="related">Related</h2>
 <ul>
 <li><a href="../policy-targeting/">Policy targeting</a> — labels-only selection and policy roles</li>
@@ -396,5 +419,6 @@ reported but not rewritten under <code>v3</code>, because <code>kuma.io/service<
 </footer>
 <script src="../../static/search-index.js"></script>
 <script src="../../static/search.js"></script>
+<script src="../../static/copy.js"></script>
 </body>
 </html>

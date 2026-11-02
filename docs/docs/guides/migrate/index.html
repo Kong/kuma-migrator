@@ -15,8 +15,8 @@
 <meta property="og:image" content="https://kong.github.io/kuma-migrator/assets/migration-overview.svg">
 <meta name="twitter:card" content="summary_large_image">
 
+<link rel="stylesheet" href="../../static/shared.css">
 <link rel="stylesheet" href="../../static/style.css">
-<link rel="stylesheet" href="../../static/chroma.css">
 </head>
 <body data-root="../../">
 <a class="skip" href="#content">Skip to content</a>
@@ -30,6 +30,7 @@
       <a href="../../policies/">Policies</a>
       <a href="https://github.com/Kong/kuma-migrator">GitHub</a>
     </nav>
+    <!-- release-tag --><a class="release-badge" href="https://github.com/Kong/kuma-migrator/releases/latest" title="Latest release: v0.8.0">v0.8.0</a><!-- /release-tag -->
     <div class="search">
       <input id="search-input" type="search" placeholder="Search docs" aria-label="Search docs" autocomplete="off">
       <ul id="search-results" hidden></ul>
@@ -60,23 +61,25 @@ control plane.</p>
 no YAML is written, and the report is <code>migration-plan.md</code> instead of <code>migration-report.md</code>.</p>
 <h2 id="dry-run">Dry run</h2>
 <p>Point <code>--input-dir</code> at the whole extracted tree. Filter to one mesh with <code>--mesh</code> if needed.</p>
-<pre class="chroma"><code><span class="line"><span class="cl"><span class="c1"># All meshes</span>
-</span></span><span class="line"><span class="cl">kuma-migrator migrate --input-dir ./raw-policies --output-dir ./migrated --dry-run
-</span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl"><span class="c1"># One mesh</span>
-</span></span><span class="line"><span class="cl">kuma-migrator migrate --input-dir ./raw-policies --output-dir ./migrated --mesh default --dry-run
-</span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl"><span class="c1"># Target 3.0 instead of the latest 2.x</span>
-</span></span><span class="line"><span class="cl">kuma-migrator migrate --input-dir ./raw-policies --output-dir ./migrated --to-latest v3 --dry-run
-</span></span></code></pre><p>The console lists every file with its scenario, where it came from and where it would be
+<div class="code"><pre class="chroma" data-lang="bash"><code><span class="c1"># All meshes</span>
+<span class="k-bin">kuma-migrator</span> <span class="k-sub">migrate</span> <span class="k-flag">--input-dir</span> <span class="k-val">./raw-policies</span> <span class="k-flag">--output-dir</span> <span class="k-val">./migrated</span> <span class="k-flag">--dry-run</span>
+
+<span class="c1"># One mesh</span>
+<span class="k-bin">kuma-migrator</span> <span class="k-sub">migrate</span> <span class="k-flag">--input-dir</span> <span class="k-val">./raw-policies</span> <span class="k-flag">--output-dir</span> <span class="k-val">./migrated</span> <span class="k-flag">--mesh</span> <span class="k-val">default</span> <span class="k-flag">--dry-run</span>
+
+<span class="c1"># Target 3.0 instead of the latest 2.x</span>
+<span class="k-bin">kuma-migrator</span> <span class="k-sub">migrate</span> <span class="k-flag">--input-dir</span> <span class="k-val">./raw-policies</span> <span class="k-flag">--output-dir</span> <span class="k-val">./migrated</span> <span class="k-flag">--to-latest</span> <span class="k-val">v3</span> <span class="k-flag">--dry-run</span>
+</code></pre></div>
+<p>The console lists every file with its scenario, where it came from and where it would be
 written, followed by warnings and errors. <code>migration-plan.md</code> in the output directory holds the
 same information. See <a href="../output-and-reports/">Output and reports</a>.</p>
 <h2 id="write-the-output">Write the output</h2>
 <p>Run the same command without <code>--dry-run</code>:</p>
-<pre class="chroma"><code><span class="line"><span class="cl">kuma-migrator migrate --input-dir ./raw-policies --output-dir ./migrated
-</span></span><span class="line"><span class="cl">kuma-migrator migrate --input-dir ./raw-policies --output-dir ./migrated --mesh default
-</span></span><span class="line"><span class="cl">kuma-migrator migrate --input-dir ./raw-policies --output-dir ./migrated --to-latest v3
-</span></span></code></pre><p>This writes the migrated YAML and <code>migration-report.md</code>. The input directory is never
+<div class="code"><pre class="chroma" data-lang="bash"><code><span class="k-bin">kuma-migrator</span> <span class="k-sub">migrate</span> <span class="k-flag">--input-dir</span> <span class="k-val">./raw-policies</span> <span class="k-flag">--output-dir</span> <span class="k-val">./migrated</span>
+<span class="k-bin">kuma-migrator</span> <span class="k-sub">migrate</span> <span class="k-flag">--input-dir</span> <span class="k-val">./raw-policies</span> <span class="k-flag">--output-dir</span> <span class="k-val">./migrated</span> <span class="k-flag">--mesh</span> <span class="k-val">default</span>
+<span class="k-bin">kuma-migrator</span> <span class="k-sub">migrate</span> <span class="k-flag">--input-dir</span> <span class="k-val">./raw-policies</span> <span class="k-flag">--output-dir</span> <span class="k-val">./migrated</span> <span class="k-flag">--to-latest</span> <span class="k-val">v3</span>
+</code></pre></div>
+<p>This writes the migrated YAML and <code>migration-report.md</code>. The input directory is never
 modified. Use a separate output directory per target, for example <code>./migrated-v2</code> and
 <code>./migrated-v3</code>: the two targets produce different files, and a run does not delete files left
 by a previous run in the same directory.</p>
@@ -127,9 +130,10 @@ Every file ending in <code>.yaml</code> or <code>.yml</code> is read; a file can
 <p>The output mirrors the input layout. Each document is written to the kind subfolder of its
 <strong>output</strong> kind, named <code>&lt;Kind&gt;-&lt;name&gt;.yaml</code>, or <code>&lt;Kind&gt;-&lt;namespace&gt;-&lt;name&gt;.yaml</code> when it has a
 namespace.</p>
-<pre><code>migrated/
+<div class="code"><pre class="chroma" data-lang="text"><code>migrated/
   konnect-global-prod-global-ctx/
     mesh-default/
+      backends/                      <span class="o-dim">← MeshOpenTelemetryBackend, applied first</span>
       resiliency/
         MeshTimeout-my-timeout.yaml
       routing/
@@ -144,13 +148,13 @@ namespace.</p>
         HTTPRoute-gateways-edge.yaml
       other/
         ReferenceGrant-apps-gateways-edge.yaml
-    _manual/                         ← --to-latest v3 only
+    _manual/                         <span class="o-dim">← --to-latest v3 only</span>
       mesh-default/routing/TrafficRoute-route-all.yaml
   zone-eu-west1-prod-zone-ctx/
     mesh-default/
       resiliency/
   migration-report.md
-</code></pre>
+</code></pre></div>
 <div class="table-wrap"><table>
 <thead>
 <tr>
@@ -172,7 +176,7 @@ namespace.</p>
 <td><code>&lt;ctx&gt;/global-scoped-resources/&lt;sub&gt;/</code>, even when the source came from a mesh directory. <code>ReferenceGrant</code> has no kind subfolder of its own and lands in <code>other/</code></td>
 </tr>
 <tr>
-<td>Documents a 3.0 control plane cannot accept (<code>--to-latest v3</code>)</td>
+<td>Documents a 3.0 control plane cannot accept (<code>--to-latest v3</code>), and converted output the target rejects as written (either target)</td>
 <td><code>&lt;ctx&gt;/_manual/&lt;same relative path&gt;</code></td>
 </tr>
 <tr>
@@ -215,7 +219,7 @@ See <a href="../../topics/gateways/">Gateways</a>.</p>
 </tr>
 <tr>
 <td>Inline OpenTelemetry endpoint under <code>--to-latest v3</code></td>
-<td><code>MeshOpenTelemetryBackend</code> in <code>other/</code></td>
+<td><code>MeshOpenTelemetryBackend</code> in <code>backends/</code>, which the Apply Checklist applies before the policies that select it</td>
 </tr>
 <tr>
 <td><code>MeshGatewayRoute</code> with a cross-namespace backend</td>
@@ -229,7 +233,9 @@ See <a href="../../topics/gateways/">Gateways</a>.</p>
 </table></div>
 <p>Errored documents are copied unchanged. Under <code>--to-latest v2</code> the copy stays in the apply
 tree, since applying it back to the 2.x control plane it came from changes nothing. Under
-<code>--to-latest v3</code> it goes to <code>_manual/</code>, which no apply step uses.</p>
+<code>--to-latest v3</code> it goes to <code>_manual/</code>, which no apply step uses. When a transform knowingly
+produces output the target rejects, that output (not the original) goes to <code>_manual/</code> on
+either target, and the report lists it under <strong>Action Items → Errors</strong> with the reason.</p>
 <h2 id="scenarios">Scenarios</h2>
 <p>Each document is classified into one scenario, which decides the transform:</p>
 <div class="table-wrap"><table>
@@ -309,5 +315,6 @@ pipeline is put together is in <a href="../architecture/">Architecture</a>.</p>
 </footer>
 <script src="../../static/search-index.js"></script>
 <script src="../../static/search.js"></script>
+<script src="../../static/copy.js"></script>
 </body>
 </html>

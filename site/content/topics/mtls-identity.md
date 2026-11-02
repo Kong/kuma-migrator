@@ -47,7 +47,9 @@ underneath it: on 3.0 that is `MeshIdentity`. Moving to `MeshIdentity` does not 
 |---|---|---|
 | `Mesh.spec.mtls` | Kept. Advisory: `MeshIdentity` migration required before 3.0 | Removed from the output. **Blocking** warning: create a `MeshIdentity` (and `MeshTrust`) that selects every proxy before upgrading |
 | Enabled backend with `mode: PERMISSIVE` | Kept. Warning to add a `MeshTLS` `Permissive` before 3.0 | Companion `MeshTLS` `<mesh>-tls-permissive` with `rules[].default.mode: Permissive` |
-| Kong Mesh `vault` / `acmpca` / `certmanager` backend | Advisory names the `MeshIdentity` `Extension` provider | Same, in the blocking warning |
+| `builtin` backend | Advisory: the CA is in the `<mesh>.ca-builtin-cert/key-<backend>` Secrets; a `Bundled` `MeshIdentity` with `autogenerate` mints a new CA, or reuses the current one through `spec.provider.bundled.ca.certificate`/`privateKey` | Same, in the blocking warning, plus: delete the `ca-builtin` Secrets yourself after the upgrade |
+| `provided` backend | Advisory: reference the same `conf.cert`/`conf.key` material from `spec.provider.bundled.ca` | Same, in the blocking warning |
+| Kong Mesh `vault` / `acmpca` / `certmanager` backend | Advisory names the `MeshIdentity` `Extension` provider; the CA stays in the external system, so no new CA is generated | Same, in the blocking warning |
 | `MeshTLS` with `from[]` | Converted to `rules[]` (Rules scenario) | Same; a `from[]` source that is not `kind: Mesh` is warned, because `rules[]` widens it |
 | `MeshTrust` `spec.origin` | Warning (removed in 2.13) | Warning |
 | `MeshMetric` Prometheus `tls.mode: ActiveMTLSBackend` | — | Warning: on 3.0 remote scrapers need a client certificate the mesh trusts ([UPGRADE](https://github.com/kumahq/kuma/blob/master/UPGRADE.md#meshmetric-activemtlsbackend-requires-a-client-certificate)) |
@@ -67,8 +69,11 @@ The tool never writes a `MeshIdentity`. The move is a CA cutover, not a field re
   Kubernetes and `/workload/{{ .Workload }}` on Universal. Neither the service accounts nor the
   `kuma.io/workload` labels are in the `Mesh` manifest.
 - **CA material.** A `builtin` backend's CA lives in a control-plane Secret; a `provided` backend
-  references Secrets or files. A generated `Bundled` identity with `autogenerate` would mint a
-  new CA, which is a new trust root, not a translation.
+  references Secrets or files; a Kong Mesh `vault`/`acmpca`/`certmanager` backend keeps it in the
+  external system. For `builtin` and `provided`, a generated `Bundled` identity with
+  `autogenerate` would mint a new CA, which is a new trust root, not a translation. The warning
+  text is specific to each backend type, so builtin-only advice (new CA, `ca-builtin` Secrets) is
+  not given for the others.
 - **Rollout order.** Which workloads move first, and when `MeshTrafficPermission` `rules[]` (which
   match SPIFFE IDs) replace `from[]`, depends on the mesh. See [Access control](access-control.md).
 
@@ -189,14 +194,14 @@ spec:
 ```
 
 ```yaml
-# zero-trust/MeshTLS-kong-mesh-system-default-tls-permissive.yaml
+# zero-trust/MeshTLS-kuma-system-default-tls-permissive.yaml
 apiVersion: kuma.io/v1alpha1
 kind: MeshTLS
 metadata:
   labels:
     kuma.io/mesh: default
   name: default-tls-permissive
-  namespace: kong-mesh-system
+  namespace: kuma-system
 spec:
   rules:
   - default:
@@ -207,7 +212,7 @@ spec:
 
 The `v3` blocking warning (shortened):
 
-```
+```text
 ⚠  Mesh "default": spec.mtls is REMOVED in 3.0 and has been dropped from the Mesh output.
    BLOCKING: before upgrading, create a MeshIdentity (and MeshTrust) that selects every proxy in
    this mesh, unless one already does. On 3.0 spec.mtls issues no certificates: a mesh whose only

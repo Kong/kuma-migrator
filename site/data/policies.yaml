@@ -27,9 +27,12 @@
       | `grpc.streamIdleTimeout`, `grpc.maxStreamDuration` | `http.*` (no `grpc` section exists) |
 
       Any `conf` leaf no rule consumed is reported as a warning. A `kuma.io/service: '*'`
-      selector becomes `kind: Mesh`. A specific service becomes `kind: Dataplane` at the top
-      level and `kind: MeshService` in `to[]`; `<name>_<ns>_svc_<port>` values are decoded
-      into name and namespace. A selector with only non-service tags stays a `MeshSubset`.
+      selector becomes `kind: Mesh`. A specific service becomes
+      `kind: Dataplane, labels: {app: <name>, k8s.kuma.io/namespace: <ns>}` at the top level
+      (`app` is a best guess, warned) and `kind: MeshService` in `to[]`;
+      `<name>_<ns>_svc_<port>` values are decoded into name and namespace. Reserved tags that
+      are not labels (`kuma.io/protocol`, …) are dropped from label selectors, with a warning.
+      A selector with only non-service tags stays a `MeshSubset`.
   v3:
     status: converted
     output: [MeshTimeout]
@@ -166,6 +169,10 @@
       If the Mesh is not in the input set, or the name is not found, the policy is emitted
       without the backend and a warning names the backend you must write by hand. With no
       `conf.backend`, the Mesh `defaultBackend` is used.
+
+      The `TrafficLog` is what turns access logging on. The `Mesh` conversion does not
+      generate a mesh-wide `MeshAccessLog` from `spec.logging`; this conversion is the only
+      place a logging backend ends up in the output. See [Meshes](../topics/meshes.md#logging-and-tracing).
   v3:
     status: converted
     output: [MeshAccessLog]
@@ -191,6 +198,10 @@
       no `to[]`). `conf.backend` is resolved against `Mesh.spec.tracing.backends` in the input
       set and written inline: `zipkin`/`datadog` backends become `spec.default.backends[]`,
       `sampling` becomes `sampling.overall`. An unresolved backend is reported by name.
+
+      The `TrafficTrace` is what turns tracing on. The `Mesh` conversion does not generate a
+      mesh-wide `MeshTrace` from `spec.tracing`; this conversion is the only place a tracing
+      backend ends up in the output. See [Meshes](../topics/meshes.md#logging-and-tracing).
   v3:
     status: converted
     output: [MeshTrace]
@@ -213,9 +224,12 @@
     output: [MeshTrafficPermission]
     notes: |
       Inbound shape: `destinations` → `spec.targetRef`, `sources` → `from[]` with
-      `default.action: Allow`. A specific source becomes `from[].targetRef.kind: MeshService`,
-      which the scanner then reports as deprecated since 2.7, and every `from[]` is reported as
-      deprecated in favour of the `rules[]` API (removed in 3.0).
+      `default.action: Allow`. A specific source becomes
+      `from[].targetRef: {kind: MeshSubset, tags: <the source's tags>}`, the form 2.7+ documents
+      in place of the deprecated `kind: MeshService`; a `kuma.io/service: '*'` source becomes
+      `kind: Mesh`. The destination becomes `kind: Dataplane` with
+      `labels: {app: <name>, k8s.kuma.io/namespace: <ns>}` (`app` is a best guess, warned).
+      Every `from[]` is reported as deprecated in favour of the `rules[]` API (removed in 3.0).
   v3:
     status: error
     output: []
@@ -243,8 +257,11 @@
     status: converted
     output: [MeshFaultInjection]
     notes: |
-      Inbound shape: `destinations` → `spec.targetRef`, `sources` → `from[]`. The single legacy
-      `conf` becomes a one-element `default.http[]` list (`delay`, `abort`,
+      Inbound shape: `destinations` → `spec.targetRef` (`Dataplane` labels), `sources` →
+      `from[]` as `kind: MeshSubset` with the source's tags (`kind: Mesh` for
+      `kuma.io/service: '*'`), not the 2.7-deprecated `MeshService`. Reserved tags such as
+      `kuma.io/protocol` are dropped from the `Dataplane` labels, with a warning. The single
+      legacy `conf` becomes a one-element `default.http[]` list (`delay`, `abort`,
       `responseBandwidth`). Percentages are numbers when whole and strings when fractional.
       The scanner then warns that `from[]` is deprecated in favour of `rules[]`.
   v3:
@@ -397,6 +414,10 @@
       | `networking.tls.serverName` | `spec.tls.verification.serverName` |
       | `networking.tls.{caCert,clientCert,clientKey}` | `spec.tls.verification.*`, same DataSource shape |
 
+      The output keeps the input format: a Universal `ExternalService` becomes a Universal
+      `MeshExternalService` (`type`/`name`/`mesh`), a Kubernetes one becomes a CRD in the
+      system namespace (see [Meshes](../topics/meshes.md#system-namespace)).
+
       `spec.match.type` is `HostnameGenerator`. Warnings remind you to check the virtual port,
       the generated hostname and `verification.mode` (defaults to `Secured`). The copied TLS
       DataSources then get the [MeshExternalService](policy:MeshExternalService) 3.0
@@ -439,32 +460,36 @@
         `Dataplane` with labels.
 
       A policy whose refs still use `MeshSubset` with `kuma.io/service` tags, or old
-      `<name>_<ns>_svc_<port>` names, is rewritten first (Subset scenario): top level to
-      `Dataplane`, `from[]` to `MeshService`.
+      `<name>_<ns>_svc_<port>` names, is rewritten first (Subset scenario): the top level
+      becomes `Dataplane` with labels. `from[]` keeps `MeshSubset` with the `kuma.io/service`
+      tag (the 2.7+ form); a `from[]` `MeshService` with an old `_svc_` name is turned back
+      into that `MeshSubset`.
   v3:
-    status: warned
+    status: error
     output: [MeshTrafficPermission]
     notes: |
-      The v2 checks apply, and the `from[]` warning states that 3.0 rejects the policy as it
-      stands (`spec.from: unknown field`, then "policy must define rules"). The policy is still
-      written to the apply tree, so translate `from[]` to `rules[]` before applying.
+      The v2 checks apply. A policy that keeps `from[]` is rejected by 3.0 as it stands
+      (`spec.from: unknown field`, then "policy must define rules"), so it is written to
+      `_manual/` instead of the apply tree and listed under **Action Items → Errors** with the
+      reason. Translate `from[]` to `rules[]`, then apply it.
 
       Also under v3:
 
       - Empty match entries (`{}`) in `rules[].default.{allow,deny,allowWithShadowDeny}` are
         reported; 3.0 rejects them.
       - A top-level `MeshService` ref is rewritten from `name`/`namespace` to labels, but the
-        kind stays and 3.0 accepts only `Mesh` and `Dataplane` there, so it is also reported.
+        kind stays and 3.0 accepts only `Mesh` and `Dataplane` there, so the policy is
+        reported as an error and written to `_manual/`.
       - Control-plane-owned labels are removed.
   timeline:
     - version: "2.7"
-      change: "`from[].targetRef.kind: MeshService` deprecated."
+      change: "`from[].targetRef.kind: MeshService` deprecated; use `MeshSubset` with the `kuma.io/service` tag."
     - version: "2.14"
       change: "`from[]` deprecated in favour of the SPIFFE-based `rules[]` API."
     - version: "3.0"
       change: "`spec.from` removed. Empty match entries rejected. Top-level `targetRef` limited to `Mesh` and `Dataplane`."
   topics: [access-control, mtls-identity, policy-targeting]
-  code: [pkg/migrator/deprecation.go, pkg/migrator/v3_policy.go]
+  code: [pkg/migrator/deprecation.go, pkg/migrator/v3_policy.go, pkg/migrator/rejected.go]
 
 - kind: MeshTimeout
   group: mesh
@@ -593,20 +618,23 @@
       Copied unchanged. `from[]` is reported as deprecated in favour of `rules[]` and is not
       converted: `rules[].matches[]` selects clients by SPIFFE ID or SNI. Omitting `matches[]`
       applies the fault to all clients. `from[].targetRef.kind: MeshService` is reported as
-      deprecated since 2.7.
+      deprecated since 2.7. A Subset-scenario policy keeps `from[]` `MeshSubset` with the
+      `kuma.io/service` tag (the 2.7+ form) instead of rewriting it to `MeshService`.
   v3:
     status: rewritten
     output: [MeshFaultInjection]
     notes: |
       When every `from[]` entry targets `kind: Mesh`, `from[]` is rewritten to `rules[]`
       without `matches[]`, which keeps the "every client" scope. Any narrower entry blocks the
-      rewrite and the policy is reported as rejected by 3.0.
+      rewrite: the policy is reported as an error and written to `_manual/`, not to the apply
+      tree.
 
       `to[]` accepts only `kind: Mesh`, and only when `spec.targetRef` is `kind: Mesh`; other
-      combinations are reported. Labels-only refs and control-plane label removal apply.
+      combinations are reported as an error and written to `_manual/`. Labels-only refs and
+      control-plane label removal apply.
   timeline:
     - version: "2.7"
-      change: "`from[].targetRef.kind: MeshService` deprecated."
+      change: "`from[].targetRef.kind: MeshService` deprecated; use `MeshSubset` with the `kuma.io/service` tag."
     - version: "2.13"
       change: "`rules[]` API added."
     - version: "2.14"
@@ -614,7 +642,7 @@
     - version: "3.0"
       change: "`from` removed. `to[]` accepts `kind: Mesh` only."
   topics: [policy-targeting]
-  code: [pkg/migrator/deprecation.go, pkg/migrator/v3_policy.go]
+  code: [pkg/migrator/deprecation.go, pkg/migrator/v3_policy.go, pkg/migrator/rejected.go]
 
 - kind: MeshRateLimit
   group: mesh
@@ -662,8 +690,9 @@
     notes: |
       v2 rewrites, plus each inline `openTelemetry.endpoint` is replaced by
       `backendRef: {kind: MeshOpenTelemetryBackend, labels: {kuma.io/display-name: <name>-otel}}`
-      and a matching `MeshOpenTelemetryBackend` is generated (`kuma-system` on Kubernetes,
-      protocol `grpc`). Apply the backend before the policy. Allowed `to[].targetRef.kind`:
+      and a matching `MeshOpenTelemetryBackend` is generated (in the system namespace on
+      Kubernetes, see [Meshes](../topics/meshes.md#system-namespace); protocol `grpc`). Apply
+      the backend before the policy. Allowed `to[].targetRef.kind`:
       `Mesh`, `MeshService`, `MeshExternalService`, `MeshMultiZoneService`, `MeshHTTPRoute`.
   timeline:
     - version: "2.10"
@@ -962,20 +991,24 @@
     notes: |
       | `OPAPolicy` | `MeshOPA` |
       |---|---|
-      | `conf.policies[].inlineString` / `.secret` | `spec.default.appendPolicies[].rego.*` |
-      | `conf.agentConfig` | `spec.default.agentConfig` |
+      | `conf.policies[].inlineString` / `.inline` / `.secret` | `spec.default.appendPolicies[].rego.*` (same key) |
+      | `conf.agentConfig.inlineString` / `.inline` / `.secret` | `spec.default.agentConfig.*` (same key) |
       | other `conf` fields | `spec.default.*`, with a warning |
       | `selectors[]` | `spec.targetRef` (`kuma.io/service: '*'` → `Mesh`); several selectors split into one `MeshOPA` each |
       | top-level `mesh` (Kubernetes layout) | `metadata.labels["kuma.io/mesh"]` |
 
-      The output keeps the flat DataSource shape and gets the [MeshOPA](policy:MeshOPA) v2
-      advisories.
+      The output keeps the flat DataSource shape, which the 2.x `MeshOPA` accepts for all three
+      keys (`inline` stays base64). A `policies[]` entry or `agentConfig` with none of the three
+      keys is left out with a "NOT migrated" warning instead of being emitted as an empty
+      `rego: {}`; unrecognised extra keys are reported as dropped. The output then gets the
+      [MeshOPA](policy:MeshOPA) v2 advisories.
   v3:
     status: converted
     output: [MeshOPA]
     notes: |
       Same conversion, then the [MeshOPA](policy:MeshOPA) v3 rewrites: DataSources to
-      `SecureDataSource`, `targetRef.name`/`namespace`/`mesh` to labels. The source object is
+      `SecureDataSource` (a base64 `inline` is decoded into `insecureInline.value`),
+      `targetRef.name`/`namespace`/`mesh` to labels. The source object is
       listed under "Delete Before Upgrading to 3.0".
   timeline:
     - version: "2.13"
@@ -1138,22 +1171,28 @@
     status: converted
     output: [Gateway]
     notes: |
-      Converted to a Gateway API `Gateway`:
+      Converted to a Gateway API `Gateway` named after the `MeshGateway`:
 
-      - `conf.listeners[]` → `spec.listeners[]` (`name` from the `port` tag or
-        `<protocol>-<port>`, `hostname`, `tls.mode` recased, `certificates[].secret` →
-        `certificateRefs[]`).
-      - `spec.gatewayClassName` is the name of the GatewayClass generated from the companion
+      - `conf.listeners[]` → `spec.listeners[]` (`name` is `<protocol>-<port>`, with a `-2`,
+        `-3`, … suffix when two listeners share protocol and port; `hostname`, `tls.mode`
+        recased, `certificates[].secret` → `certificateRefs[]`).
+      - `metadata.namespace` is the namespace of the companion
         [MeshGatewayInstance](policy:MeshGatewayInstance), matched on the shared
-        `kuma.io/service` tag. Several matches pick the first and warn; none leaves
-        `REPLACE-WITH-YOUR-GATEWAYCLASS` and warns.
+        `kuma.io/service` tag. `MeshGateway` is cluster-scoped, the gateway pods run in the
+        instance's namespace, and Kuma creates a Gateway's instance in the Gateway's own
+        namespace. Instances in several namespaces pick the first and warn; none omits the
+        field and warns (apply with `-n`). An empty namespace is never emitted.
+      - `spec.gatewayClassName` is the name of the GatewayClass generated from the same
+        instance. An instance without `spec.tags["kuma.io/service"]` matches on the
+        `<name>_<namespace>_svc` tag Kuma gives it. Several matches pick the first and warn;
+        none leaves `REPLACE-WITH-YOUR-GATEWAYCLASS` and warns.
       - `spec.selectors` has no Gateway API equivalent and is reported.
   v3:
     status: converted
     output: [Gateway]
     notes: |
-      The listener block is converted as on v2, but `gatewayClassName` is always
-      `REPLACE-WITH-YOUR-GATEWAYCLASS`: 3.0 has no Gateway or GatewayClass reconciler. Set it to
+      The listener block and `metadata.namespace` are converted as on v2, but
+      `gatewayClassName` is always `REPLACE-WITH-YOUR-GATEWAYCLASS`: 3.0 has no Gateway or GatewayClass reconciler. Set it to
       the class of the gateway implementation you adopt, and rejoin the workload as a delegated
       gateway (`traffic.kuma.io/exclude-inbound-ports` on the pod, `kuma.io/ignore: "true"` on
       its Service).
@@ -1178,13 +1217,21 @@
     notes: |
       `conf.http` → Gateway API `HTTPRoute`, `conf.tcp` → `TCPRoute`.
 
-      - `parentRefs[]` come from `spec.selectors[]`: the `kuma.io/service` tag gives the
-        Gateway name (decoded from `<name>_<ns>_svc` when it has that form) and the remaining
-        tags give `sectionName`.
+      - `parentRefs[]` come from `spec.selectors[]`. The `kuma.io/service` tag is matched
+        against the [MeshGateway](policy:MeshGateway) documents in the input, so the parentRef
+        names the converted Gateway (named after the `MeshGateway`, not after the tag) in the
+        namespace that Gateway gets. The remaining tags select listeners by their `tags`, and
+        each match becomes a parentRef whose `sectionName` is that listener's emitted name.
+        A tag selected by several `MeshGateway`s emits one parentRef per Gateway and warns.
+        When no `MeshGateway` in the input selects the tag, the name is decoded from
+        `<name>_<ns>_svc` (or the raw tag is used) and a warning asks you to verify it.
+      - `MeshGatewayRoute` is cluster-scoped. When every parent Gateway resolves to one
+        namespace, the route is placed there: a Gateway listener accepts routes only from its
+        own namespace by default.
       - `backends[].destination["kuma.io/service"]` → `backendRefs[]` of `kind: Service` with
         the decoded name, namespace and port.
-      - A backend in another namespace than the route gets a `ReferenceGrant`. A route with no
-        namespace is reported instead.
+      - A backend in another namespace than the route gets a `ReferenceGrant`. A route whose
+        namespace is still unknown is reported instead.
 
       A warning states the alternative successor: if Kuma should keep routing this traffic,
       write a `MeshHTTPRoute`/`MeshTCPRoute`. Kuma never reconciles `TCPRoute`; only the
@@ -1211,12 +1258,20 @@
     status: converted
     output: [GatewayClass, MeshGatewayConfig]
     notes: |
-      Converted to a cluster-scoped `GatewayClass` named after the instance
+      Converted to a `GatewayClass` named after the instance
       (`controllerName: gateways.kuma.io/controller`) whose `parametersRef` points at a
       `MeshGatewayConfig` carrying the instance `spec` (`replicas`, `serviceType`, `tags`).
-      Set `gatewayClassName` on your Gateways to this name; the converted
-      [MeshGateway](policy:MeshGateway) does so automatically when the `kuma.io/service`
-      tags match.
+      Both are cluster-scoped, so neither the `MeshGatewayConfig` nor the `parametersRef`
+      has a namespace: Kuma marks a class whose `parametersRef` names a namespace as
+      `InvalidParameters` and ignores its Gateways.
+
+      `tags["kuma.io/service"]` is dropped from the `MeshGatewayConfig`, with a warning: Kuma
+      copies those tags onto the instance it creates for each Gateway, which must keep the
+      generated `<gateway>_<namespace>_svc` value.
+
+      Set `gatewayClassName` on your Gateways to this name and create them in the instance's
+      namespace; the converted [MeshGateway](policy:MeshGateway) does both automatically
+      when the `kuma.io/service` tags match.
   v3:
     status: error
     output: []
@@ -1243,15 +1298,18 @@
     status: passthrough
     output: [MeshGatewayConfig]
     notes: |
-      Copied unchanged when found in the input. Also emitted from a
-      [MeshGatewayInstance](policy:MeshGatewayInstance) conversion.
+      Copied unchanged when found in the input. Also emitted, cluster-scoped and without a
+      namespace, from a [MeshGatewayInstance](policy:MeshGatewayInstance) conversion.
   v3:
-    status: passthrough
-    output: [MeshGatewayConfig]
+    status: removed
+    output: []
     notes: |
-      Copied unchanged into the apply tree. 3.0 removes `MeshGatewayConfig` with the rest of
-      the built-in gateway API; the migrator does not report it yet. Delete it before
-      upgrading.
+      Copied to `_manual/` (file labelled `MANUAL`), never to the apply tree, with a warning:
+      3.0 removes `MeshGatewayConfig` with the rest of the built-in gateway API, and the Helm
+      upgrade deletes the `meshgatewayconfigs.kuma.io` CRD and every object stored under it.
+      Carry its settings (replicas, service type, resources) over to the Deployment and Service
+      of the gateway you run. Listed under "Delete Before Upgrading to 3.0" with a
+      `kubectl delete` command (it is a cluster-scoped Kubernetes-only CRD, so never `kumactl`).
   timeline:
     - version: "3.0"
       change: Removed with the built-in gateway API (`meshgatewayconfigs.kuma.io` CRD deleted).
@@ -1268,27 +1326,38 @@
   summary: "Mesh-wide settings: mTLS backends, legacy observability backends, routing and networking defaults."
   v2:
     status: rewritten
-    output: [Mesh, MeshMetric, MeshTrace, MeshAccessLog]
+    output: [Mesh, MeshMetric, MeshPassthrough]
     notes: |
       Rewritten when it has observability sections, sets `networking.outbound.passthrough`, or
       does not set `meshServices.mode: Exclusive`:
 
-      - `spec.metrics`, `spec.tracing`, `spec.logging` are removed and turned into companion
-        `MeshMetric`, `MeshTrace` and `MeshAccessLog` policies with `targetRef: Mesh`.
+      - `spec.metrics` is removed. Its `enabledBackend` turns metrics on for every proxy, so
+        that backend becomes a companion `MeshMetric` `<mesh>-metrics` with `targetRef: Mesh`.
+        Backends that are not enabled are dropped; no `enabledBackend` means no `MeshMetric`.
+      - `spec.tracing` and `spec.logging` are removed **without** a companion. On 2.x they only
+        declare backends: a [TrafficTrace](policy:TrafficTrace) or [TrafficLog](policy:TrafficLog)
+        activates one, and its conversion carries the backend inline. A mesh-wide
+        `MeshTrace`/`MeshAccessLog` would turn tracing/logging on for every proxy. The warning
+        lists which backends a `TrafficLog`/`TrafficTrace` in the input references and which
+        none does (those were inactive, nothing is lost).
+      - `networking.outbound.passthrough: false` becomes a `MeshPassthrough` `<mesh>-passthrough`
+        with `passthroughMode: None`.
       - `spec.meshServices.mode: Exclusive` is injected: 3.0 requires it, and a 2.x zone reads
         a missing field as `Disabled`.
       - `networking.outbound.passthrough: true` is removed (it is the 2.x default) with a
         warning to add a `MeshPassthrough` with `passthroughMode: All` before 3.0.
 
       Kept, with advisories: `spec.mtls` (the move to `MeshIdentity` + `MeshTrust` is a CA
-      cutover, not a rewrite; Kong Mesh `vault`/`acmpca`/`cert-manager` backends name their
-      `MeshIdentity` provider), a `PERMISSIVE` mTLS backend,
+      cutover, not a rewrite; the advisory is specific to the backend type: `builtin` names the
+      `ca-builtin-*` Secrets to reuse from a `Bundled` `MeshIdentity`, `provided` names its
+      `conf.cert`/`conf.key` DataSources, and Kong Mesh `vault`/`acmpca`/`cert-manager` name
+      their `Extension` provider), a `PERMISSIVE` mTLS backend,
       `routing.defaultForbidMeshExternalServiceAccess`, `routing.zoneEgress`,
       `routing.localityAwareLoadBalancing`, `skipCreatingInitialPolicies`. Names that are not
       RFC 1035 labels are reported.
   v3:
     status: rewritten
-    output: [Mesh, MeshMetric, MeshTrace, MeshAccessLog, MeshTLS, MeshPassthrough]
+    output: [Mesh, MeshMetric, MeshTLS, MeshPassthrough]
     notes: |
       v2 rewrites, plus:
 
@@ -1305,8 +1374,9 @@
         deleted.
       - The `meshServices` warning adds: drop the field once every zone runs 3.0.
 
-      Companion policies are written as Kubernetes-format documents in the mesh's namespace
-      (default `kong-mesh-system`).
+      Companion policies keep the format of the `Mesh`: Universal input gives Universal
+      documents (`type`/`name`/`mesh`), Kubernetes input gives CRDs in the system namespace
+      (see [Meshes](../topics/meshes.md#system-namespace)).
   timeline:
     - version: "2.10"
       change: Names that are not RFC 1035 labels deprecated.
@@ -1325,7 +1395,8 @@
     status: warned
     output: [Dataplane]
     notes: |
-      Skipped on Kubernetes (CP-generated). On Universal it is scanned and copied unchanged:
+      Skipped on Kubernetes (CP-generated). On Universal it is scanned and copied unchanged;
+      a Dataplane with a finding is labelled `SCANNED`, one without `SKIP`:
 
       - `transparentProxying.redirectPortInboundV6` is reported (removed in 2.9).
       - `transparentProxying.reachableServices` is reported: in `Exclusive` mode the names must
@@ -1335,7 +1406,8 @@
     status: rewritten
     output: [Dataplane]
     notes: |
-      Universal only. Rewrites:
+      Universal only. The file is labelled `SCANNED` ("rewritten by the deprecation scan")
+      on stdout and listed under **Scanned Non-Policy Resources** in the report. Rewrites:
 
       - `networking.gateway` (any type) removed; its non-reserved tags move to labels.
       - Inbound `kuma.io/protocol` tag → `inbound[].protocol`.
@@ -1463,8 +1535,9 @@
     output: [MeshOpenTelemetryBackend]
     notes: |
       Copied unchanged. Also generated, one per inline `openTelemetry.endpoint` found in a
-      `MeshMetric`, `MeshTrace` or `MeshAccessLog`: named `<policy>-otel`, in `kuma-system` on
-      Kubernetes, protocol `grpc`, selected from the policy by `kuma.io/display-name`.
+      `MeshMetric`, `MeshTrace` or `MeshAccessLog`: named `<policy>-otel`, in the system
+      namespace on Kubernetes (see [Meshes](../topics/meshes.md#system-namespace)), protocol
+      `grpc`, selected from the policy by `kuma.io/display-name`.
   timeline:
     - version: "2.14"
       change: Introduced.
@@ -1530,8 +1603,8 @@
     status: removed
     output: []
     notes: |
-      Universal input is copied to `_manual/` with a blocking warning: deploy mesh-scoped zone
-      proxies (a regular `Dataplane` with a `ZoneIngress` listener, token reissued without
+      Universal input is copied to `_manual/` (file labelled `MANUAL`, never in the apply tree)
+      with a blocking warning: deploy mesh-scoped zone proxies (a regular `Dataplane` with a `ZoneIngress` listener, token reissued without
       `--proxy-type`) before upgrading the zone control plane. A second warning gives the
       `MeshZoneAddress` to apply with the old `advertisedAddress`/`advertisedPort`; without it
       cross-zone traffic to the zone stops. Listed under "Delete Before Upgrading to 3.0".
@@ -1554,8 +1627,8 @@
     status: removed
     output: []
     notes: |
-      Universal input is copied to `_manual/` with a blocking warning: deploy a mesh-scoped
-      zone proxy (a regular `Dataplane` with a `ZoneEgress` listener) per mesh before upgrading
+      Universal input is copied to `_manual/` (file labelled `MANUAL`, never in the apply tree)
+      with a blocking warning: deploy a mesh-scoped zone proxy (a regular `Dataplane` with a `ZoneEgress` listener) per mesh before upgrading
       the zone control plane. Listed under "Delete Before Upgrading to 3.0".
   timeline:
     - version: "3.0"

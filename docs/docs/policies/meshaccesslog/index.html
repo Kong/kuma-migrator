@@ -15,8 +15,8 @@
 <meta property="og:image" content="https://kong.github.io/kuma-migrator/assets/migration-overview.svg">
 <meta name="twitter:card" content="summary_large_image">
 
+<link rel="stylesheet" href="../../static/shared.css">
 <link rel="stylesheet" href="../../static/style.css">
-<link rel="stylesheet" href="../../static/chroma.css">
 </head>
 <body data-root="../../">
 <a class="skip" href="#content">Skip to content</a>
@@ -30,6 +30,7 @@
       <a href="../" class="active" aria-current="true">Policies</a>
       <a href="https://github.com/Kong/kuma-migrator">GitHub</a>
     </nav>
+    <!-- release-tag --><a class="release-badge" href="https://github.com/Kong/kuma-migrator/releases/latest" title="Latest release: v0.8.0">v0.8.0</a><!-- /release-tag -->
     <div class="search">
       <input id="search-input" type="search" placeholder="Search docs" aria-label="Search docs" autocomplete="off">
       <ul id="search-results" hidden></ul>
@@ -86,8 +87,9 @@ non-lowercase, placeholders) are reported.</li>
     <p class="outputs">Output: <a href="./"><code>MeshAccessLog</code></a>, <a href="../meshopentelemetrybackend/"><code>MeshOpenTelemetryBackend</code></a></p>
     <div class="notes"><p>v2 rewrites, plus each inline <code>openTelemetry.endpoint</code> is replaced by
 <code>backendRef: {kind: MeshOpenTelemetryBackend, labels: {kuma.io/display-name: &lt;name&gt;-otel}}</code>
-and a matching <code>MeshOpenTelemetryBackend</code> is generated (<code>kuma-system</code> on Kubernetes,
-protocol <code>grpc</code>). Apply the backend before the policy. Allowed <code>to[].targetRef.kind</code>:
+and a matching <code>MeshOpenTelemetryBackend</code> is generated (in the system namespace on
+Kubernetes, see <a href="../../topics/meshes/#system-namespace">Meshes</a>; protocol <code>grpc</code>). Apply
+the backend before the policy. Allowed <code>to[].targetRef.kind</code>:
 <code>Mesh</code>, <code>MeshService</code>, <code>MeshExternalService</code>, <code>MeshMultiZoneService</code>, <code>MeshHTTPRoute</code>.</p>
 </div>
   </section>
@@ -128,5 +130,6 @@ protocol <code>grpc</code>). Apply the backend before the policy. Allowed <code>
 </footer>
 <script src="../../static/search-index.js"></script>
 <script src="../../static/search.js"></script>
+<script src="../../static/copy.js"></script>
 </body>
 </html>

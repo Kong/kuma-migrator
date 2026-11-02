@@ -15,8 +15,8 @@
 <meta property="og:image" content="https://kong.github.io/kuma-migrator/assets/migration-overview.svg">
 <meta name="twitter:card" content="summary_large_image">
 
+<link rel="stylesheet" href="../../static/shared.css">
 <link rel="stylesheet" href="../../static/style.css">
-<link rel="stylesheet" href="../../static/chroma.css">
 </head>
 <body data-root="../../">
 <a class="skip" href="#content">Skip to content</a>
@@ -30,6 +30,7 @@
       <a href="../" class="active" aria-current="true">Policies</a>
       <a href="https://github.com/Kong/kuma-migrator">GitHub</a>
     </nav>
+    <!-- release-tag --><a class="release-badge" href="https://github.com/Kong/kuma-migrator/releases/latest" title="Latest release: v0.8.0">v0.8.0</a><!-- /release-tag -->
     <div class="search">
       <input id="search-input" type="search" placeholder="Search docs" aria-label="Search docs" autocomplete="off">
       <ul id="search-results" hidden></ul>
@@ -73,7 +74,8 @@
     <div class="notes"><p>Copied unchanged. <code>from[]</code> is reported as deprecated in favour of <code>rules[]</code> and is not
 converted: <code>rules[].matches[]</code> selects clients by SPIFFE ID or SNI. Omitting <code>matches[]</code>
 applies the fault to all clients. <code>from[].targetRef.kind: MeshService</code> is reported as
-deprecated since 2.7.</p>
+deprecated since 2.7. A Subset-scenario policy keeps <code>from[]</code> <code>MeshSubset</code> with the
+<code>kuma.io/service</code> tag (the 2.7+ form) instead of rewriting it to <code>MeshService</code>.</p>
 </div>
   </section>
   <section class="target-card">
@@ -81,9 +83,11 @@ deprecated since 2.7.</p>
     <p class="outputs">Output: <a href="./"><code>MeshFaultInjection</code></a></p>
     <div class="notes"><p>When every <code>from[]</code> entry targets <code>kind: Mesh</code>, <code>from[]</code> is rewritten to <code>rules[]</code>
 without <code>matches[]</code>, which keeps the &quot;every client&quot; scope. Any narrower entry blocks the
-rewrite and the policy is reported as rejected by 3.0.</p>
+rewrite: the policy is reported as an error and written to <code>_manual/</code>, not to the apply
+tree.</p>
 <p><code>to[]</code> accepts only <code>kind: Mesh</code>, and only when <code>spec.targetRef</code> is <code>kind: Mesh</code>; other
-combinations are reported. Labels-only refs and control-plane label removal apply.</p>
+combinations are reported as an error and written to <code>_manual/</code>. Labels-only refs and
+control-plane label removal apply.</p>
 </div>
   </section>
 </div>
@@ -91,14 +95,14 @@ combinations are reported. Labels-only refs and control-plane label removal appl
 <h2 id="timeline">Timeline</h2>
 <div class="table-wrap"><table>
   <thead><tr><th>Version</th><th>Change</th></tr></thead>
-  <tbody><tr><td class="version">2.7</td><td><code>from[].targetRef.kind: MeshService</code> deprecated.</td></tr><tr><td class="version">2.13</td><td><code>rules[]</code> API added.</td></tr><tr><td class="version">2.14</td><td><code>from[]</code> deprecated.</td></tr><tr><td class="version">3.0</td><td><code>from</code> removed. <code>to[]</code> accepts <code>kind: Mesh</code> only.</td></tr></tbody>
+  <tbody><tr><td class="version">2.7</td><td><code>from[].targetRef.kind: MeshService</code> deprecated; use <code>MeshSubset</code> with the <code>kuma.io/service</code> tag.</td></tr><tr><td class="version">2.13</td><td><code>rules[]</code> API added.</td></tr><tr><td class="version">2.14</td><td><code>from[]</code> deprecated.</td></tr><tr><td class="version">3.0</td><td><code>from</code> removed. <code>to[]</code> accepts <code>kind: Mesh</code> only.</td></tr></tbody>
 </table></div>
 
 <h2 id="related-topics">Related topics</h2>
 <ul class="link-list"><li><a href="../../topics/policy-targeting/">Policy targeting</a> — Which targetRef kinds each policy accepts at each position on 2.14 and 3.0, labels-only selection, policy roles, and control-plane-owned labels.</li></ul>
 
 <h2 id="source-files">Source files</h2>
-<ul class="link-list"><li><a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/deprecation.go"><code>pkg/migrator/deprecation.go</code></a></li><li><a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/v3_policy.go"><code>pkg/migrator/v3_policy.go</code></a></li></ul>
+<ul class="link-list"><li><a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/deprecation.go"><code>pkg/migrator/deprecation.go</code></a></li><li><a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/v3_policy.go"><code>pkg/migrator/v3_policy.go</code></a></li><li><a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/rejected.go"><code>pkg/migrator/rejected.go</code></a></li></ul>
 
     </article>
     <nav class="pager" aria-label="Previous and next page">
@@ -123,5 +127,6 @@ combinations are reported. Labels-only refs and control-plane label removal appl
 </footer>
 <script src="../../static/search-index.js"></script>
 <script src="../../static/search.js"></script>
+<script src="../../static/copy.js"></script>
 </body>
 </html>

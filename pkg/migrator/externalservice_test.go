@@ -109,17 +109,14 @@ networking:
 	if err := yaml.Unmarshal(docs[0], &mes); err != nil {
 		t.Fatalf("unmarshal MeshExternalService: %v", err)
 	}
-	if mes["kind"] != "MeshExternalService" {
-		t.Errorf("expected kind MeshExternalService, got %v", mes["kind"])
+	// Universal input → Universal output: type/name/mesh, no Kubernetes metadata.
+	if mes["type"] != "MeshExternalService" || mes["name"] != "postgres" || mes["mesh"] != "default" {
+		t.Errorf("expected Universal type/name/mesh, got %v", mes)
 	}
-
-	meta := mes["metadata"].(map[string]interface{})
-	if meta["name"] != "postgres" {
-		t.Errorf("expected name=postgres, got %v", meta["name"])
-	}
-	// Universal style — no namespace.
-	if ns, ok := meta["namespace"]; ok && ns != "" {
-		t.Errorf("expected no namespace for Universal-style output, got %v", ns)
+	for _, k := range []string{"kind", "apiVersion", "metadata"} {
+		if _, ok := mes[k]; ok {
+			t.Errorf("Universal output must not carry %q: %v", k, mes)
+		}
 	}
 
 	spec := mes["spec"].(map[string]interface{})

@@ -38,9 +38,19 @@ type TransformOptions struct {
 	// GatewayClasses resolves the GatewayClass a converted MeshGateway must name,
 	// which lives on the companion MeshGatewayInstance.
 	GatewayClasses GatewayClassIndex
+	// Gateways resolves the name, namespace and listener names of the Gateway
+	// converted from the MeshGateway a MeshGatewayRoute selects.
+	Gateways *GatewayRefIndex
 	// MeshIdentities records the meshes that have a MeshIdentity, which every
 	// MeshExternalService needs on 3.0 (see warnMESRequiresMeshIdentity).
 	MeshIdentities MeshIdentityIndex
+	// SystemNamespace is the control-plane namespace generated companions go in
+	// on Kubernetes (config override, else inferred by the pre-pass; "" means
+	// not known — see resolveSystemNamespace).
+	SystemNamespace string
+	// LegacyObservability records which Mesh logging/tracing backends the
+	// TrafficLog/TrafficTrace resources reference. nil when no pre-pass ran.
+	LegacyObservability LegacyObservabilityIndex
 }
 
 // TransformDocumentWithOptions is TransformDocument with the cross-document
@@ -75,33 +85,22 @@ func TransformDocumentWithOptions(raw []byte, opts TransformOptions) ([][]byte, 
 		}
 
 	case ScenarioSubset:
-		var policy KubePolicy
-		if err := yaml.Unmarshal(raw, &policy); err != nil {
-			return nil, nil, scenario, fmt.Errorf("unmarshal intermediate policy: %w", err)
-		}
-		outputs, w, err := transformScenarioSubset(policy, target)
+		var err error
+		docs, warnings, err = transformScenarioSubset(raw, target)
 		if err != nil {
 			return nil, nil, scenario, err
-		}
-		warnings = w
-		for _, out := range outputs {
-			b, err := yaml.Marshal(out)
-			if err != nil {
-				return nil, nil, scenario, fmt.Errorf("marshal output policy: %w", err)
-			}
-			docs = append(docs, b)
 		}
 
 	case ScenarioMesh:
 		var err error
-		docs, warnings, err = TransformMeshForTarget(raw, target)
+		docs, warnings, err = TransformMeshWithOptions(raw, opts)
 		if err != nil {
 			return nil, nil, scenario, err
 		}
 
 	case ScenarioExternalService:
 		var err error
-		docs, warnings, err = TransformExternalService(raw)
+		docs, warnings, err = TransformExternalServiceWithOptions(raw, opts)
 		if err != nil {
 			return nil, nil, scenario, err
 		}
@@ -115,7 +114,7 @@ func TransformDocumentWithOptions(raw []byte, opts TransformOptions) ([][]byte, 
 
 	case ScenarioGatewayRoute:
 		var err error
-		docs, warnings, err = TransformMeshGatewayRoute(raw)
+		docs, warnings, err = TransformMeshGatewayRouteWithOptions(raw, opts)
 		if err != nil {
 			return nil, nil, scenario, err
 		}
@@ -141,10 +140,9 @@ func TransformDocumentWithOptions(raw []byte, opts TransformOptions) ([][]byte, 
 			return nil, nil, scenario, err
 		}
 
-
 	default: // ScenarioPassthrough, ScenarioSkipped, ScenarioUnknown
 		docs = [][]byte{raw}
-		if out, w, ok := transformPassthroughMeshForV3(raw, target); ok {
+		if out, w, ok := transformPassthroughMeshForV3(raw, opts); ok {
 			docs, warnings = out, w
 		}
 	}
@@ -152,7 +150,7 @@ func TransformDocumentWithOptions(raw []byte, opts TransformOptions) ([][]byte, 
 	// 3.0 removes the inline OpenTelemetry endpoint; generate MeshOpenTelemetryBackends.
 	if target.IsV3() {
 		var otelWarns []string
-		docs, otelWarns = convertInlineOtelEndpointsForV3(docs)
+		docs, otelWarns = convertInlineOtelEndpointsForV3(docs, opts)
 		warnings = append(warnings, otelWarns...)
 	}
 
@@ -171,6 +169,26 @@ func TransformDocumentWithOptions(raw []byte, opts TransformOptions) ([][]byte, 
 		docs[i] = fixed
 		warnings = append(warnings, depWarns...)
 		warnings = append(warnings, warnMESRequiresMeshIdentity(fixed, opts)...)
+	}
+
+	// Guard: a generated document without kind/type or name lost its identity in a
+	// conversion. Input passed through untouched is exempt — it is the user's own
+	// document, not something this tool produced.
+	for i, doc := range docs {
+		passedThrough := (scenario == ScenarioPassthrough || scenario == ScenarioSkipped ||
+			scenario == ScenarioUnknown) && string(doc) == string(raw)
+		if passedThrough {
+			continue
+		}
+		if err := unnamedOutputError(doc, i); err != nil {
+			return nil, nil, scenario, err
+		}
+	}
+
+	// Documents the target rejects as they stand are returned WITH the marker
+	// error; see RejectedByTargetError for the contract.
+	if err := rejectedByTarget(docs, target); err != nil {
+		return docs, warnings, scenario, err
 	}
 
 	return docs, warnings, scenario, nil
@@ -494,6 +512,12 @@ func transformInboundLegacy(policy UniversalPolicy, newKind, policyNamespace str
 	} else {
 		fromEntries = make([]PolicyEntry, 0, len(sources))
 		for _, src := range sources {
+			if !target.IsV3() && meshSubsetFromKinds[newKind] {
+				// 2.x: MeshService in from[] is deprecated since 2.7 for these kinds;
+				// MeshSubset with the kuma.io/service tag is the documented form.
+				fromEntries = append(fromEntries, PolicyEntry{TargetRef: fromSubsetRefV2(src), Default: conf})
+				continue
+			}
 			ref, warn, err := ConvertSelectorToTargetRefForTarget(src, policyNamespace, false, target)
 			if err != nil {
 				return nil, nil, fmt.Errorf("%s %q source: %w", policy.Type, policy.Name, err)
@@ -578,81 +602,173 @@ func transformSelectorLegacy(policy UniversalPolicy, newKind, policyNamespace st
 // transformScenarioSubset rewrites all targetRef entries that use service-identity tags,
 // leaving the rest of the policy document (including Default configs) untouched.
 //
-// Returns one policy, or two when the from[] → rules[] second pass leaves both
+// The document is handled as a generic map, so every field the converter does not
+// rewrite survives: the Universal layout (top-level type/name/mesh/labels, the
+// CP-written kri/creationTime/modificationTime) as well as Kubernetes metadata
+// (annotations, …) and targetRef fields outside TargetRef (proxyTypes). Universal
+// input therefore yields Universal output.
+//
+// Returns one document, or two when the from[] → rules[] second pass leaves both
 // rules[] and to[] in the spec: Kuma rejects that combination ("fields 'to' must be
 // empty when 'rules' is defined") on 2.x and 3.0 alike, so the policy is split the
 // same way TransformFromToRules splits it — rules[] keeps the name, to[] moves to
 // "<name>-outbound".
-func transformScenarioSubset(policy KubePolicy, target TargetVersion) ([]KubePolicy, []string, error) {
-	ns := policy.Metadata.Namespace
-	var warnings []string
+func transformScenarioSubset(raw []byte, target TargetVersion) ([][]byte, []string, error) {
+	var obj map[string]interface{}
+	if err := yaml.Unmarshal(raw, &obj); err != nil {
+		return nil, nil, fmt.Errorf("unmarshal policy: %w", err)
+	}
+	kind, _ := obj["kind"].(string)
+	if kind == "" {
+		kind, _ = obj["type"].(string)
+	}
+	name := extractNameFromObj(obj)
+	spec, ok := obj["spec"].(map[string]interface{})
+	if !ok {
+		return nil, nil, fmt.Errorf("%s %q: no spec to convert", kind, name)
+	}
+	ns := ""
+	if md, ok := obj["metadata"].(map[string]interface{}); ok {
+		ns, _ = md["namespace"].(string)
+	}
 
-	if policy.Spec.TargetRef != nil {
-		converted, warn, err := ConvertTargetRefForTarget(*policy.Spec.TargetRef, ns, true, target)
+	var warnings []string
+	if tr, ok := spec["targetRef"].(map[string]interface{}); ok {
+		out, warn, err := convertTargetRefMap(tr, func(ref TargetRef) (TargetRef, string, error) {
+			return ConvertTargetRefForTarget(ref, ns, true, target)
+		})
 		if err != nil {
-			return nil, nil, fmt.Errorf("%s %q spec.targetRef: %w", policy.Kind, policy.Metadata.Name, err)
+			return nil, nil, fmt.Errorf("%s %q spec.targetRef: %w", kind, name, err)
 		}
-		policy.Spec.TargetRef = &converted
+		spec["targetRef"] = out
 		if warn != "" {
 			warnings = append(warnings, warn)
 		}
 	}
-	for i, entry := range policy.Spec.To {
-		converted, warn, err := ConvertTargetRefForTarget(entry.TargetRef, ns, false, target)
-		if err != nil {
-			return nil, nil, fmt.Errorf("%s %q spec.to[%d].targetRef: %w", policy.Kind, policy.Metadata.Name, i, err)
+	to, _ := spec["to"].([]interface{})
+	for i, entry := range to {
+		em, ok := entry.(map[string]interface{})
+		if !ok {
+			continue
 		}
-		policy.Spec.To[i].TargetRef = converted
+		tr, ok := em["targetRef"].(map[string]interface{})
+		if !ok {
+			continue
+		}
+		out, warn, err := convertTargetRefMap(tr, func(ref TargetRef) (TargetRef, string, error) {
+			return ConvertTargetRefForTarget(ref, ns, false, target)
+		})
+		if err != nil {
+			return nil, nil, fmt.Errorf("%s %q spec.to[%d].targetRef: %w", kind, name, i, err)
+		}
+		em["targetRef"] = out
 		if warn != "" {
 			warnings = append(warnings, warn)
 		}
 	}
-	for i, entry := range policy.Spec.From {
+	from, _ := spec["from"].([]interface{})
+	for _, entry := range from {
+		em, ok := entry.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		tr, ok := em["targetRef"].(map[string]interface{})
+		if !ok {
+			continue
+		}
 		// A from[] ref that cannot be expressed on 3.0 is not fatal here: from[] is
 		// either rewritten to rules[] below (source refs dropped) or, for
-		// MeshTrafficPermission/MeshFaultInjection, flagged as rejected by
-		// warnFromDeprecatedForRulesAPI.
-		converted, warn, _ := ConvertTargetRefForTarget(entry.TargetRef, ns, false, target)
-		policy.Spec.From[i].TargetRef = converted
+		// MeshTrafficPermission/MeshFaultInjection, reported as rejected by the
+		// target (RejectedByTargetError).
+		out, warn, _ := convertTargetRefMap(tr, func(ref TargetRef) (TargetRef, string, error) {
+			return fromRefForTarget(ref, kind, ns, target)
+		})
+		em["targetRef"] = out
 		if warn != "" {
 			warnings = append(warnings, warn)
 		}
 	}
+
 	// Second pass: if this kind uses the Rules API and still has from[], migrate it.
-	if rulesAPIMigrationKinds[policy.Kind] && len(policy.Spec.From) > 0 {
-		w := applyFromToRules(&policy, target)
+	if rulesAPIMigrationKinds[kind] && len(from) > 0 {
+		var widening []string
+		if target.IsV3() {
+			widening = fromScopeWideningWarnings(kind, name, fromSourceKinds(from))
+		}
+		w, _ := applyFromToRulesMap(obj, kind, name)
 		warnings = append(warnings, w...)
+		warnings = append(warnings, widening...)
 	}
 
-	if rulesAPIMigrationKinds[policy.Kind] && len(policy.Spec.Rules) > 0 && len(policy.Spec.To) > 0 {
-		inbound, outbound := splitRulesAndTo(policy)
-		warnings = append(warnings, splitWarning(policy.Kind, inbound.Metadata.Name, outbound.Metadata.Name))
-		return []KubePolicy{inbound, outbound}, warnings, nil
+	objs := []map[string]interface{}{obj}
+	if rulesAPIMigrationKinds[kind] {
+		split, warn, err := splitRulesAndToMap(obj, kind, name)
+		if err != nil {
+			return nil, warnings, err
+		}
+		objs = split
+		if warn != "" {
+			warnings = append(warnings, warn)
+		}
 	}
 
-	return []KubePolicy{policy}, warnings, nil
+	docs := make([][]byte, 0, len(objs))
+	for _, o := range objs {
+		b, err := yaml.Marshal(o)
+		if err != nil {
+			return nil, warnings, fmt.Errorf("marshal output policy: %w", err)
+		}
+		docs = append(docs, b)
+	}
+	return docs, warnings, nil
 }
 
-// splitRulesAndTo splits a policy carrying both rules[] and to[] into an inbound
-// policy (rules[], original name) and an outbound one (to[], "-outbound" suffix).
-// kuma.io/display-name is not copied onto the outbound half: the control plane
-// derives it from the resource name, so the copied value would name the wrong
-// resource (and 3.0 rejects a supplied value that differs from the computed one).
-func splitRulesAndTo(policy KubePolicy) (KubePolicy, KubePolicy) {
-	inbound := policy
-	inbound.Spec.To = nil
-	inbound.Metadata.Labels = copyStringMap(policy.Metadata.Labels)
+// targetRefKeys are the targetRef fields TargetRef models. convertTargetRefMap
+// carries every other key (proxyTypes, …) over from the input unchanged.
+var targetRefKeys = map[string]bool{
+	"kind": true, "name": true, "namespace": true, "tags": true,
+	"labels": true, "mesh": true, "sectionName": true,
+}
 
-	outbound := policy
-	outbound.Metadata.Name = policy.Metadata.Name + "-outbound"
-	outbound.Metadata.Labels = copyStringMap(policy.Metadata.Labels)
-	delete(outbound.Metadata.Labels, displayNameLabel)
-	if len(outbound.Metadata.Labels) == 0 {
-		outbound.Metadata.Labels = nil
+// convertTargetRefMap runs a typed TargetRef conversion on a targetRef held as a
+// generic map. When conversion changes nothing the input map is returned as is;
+// otherwise the converted fields replace the modelled ones and every unmodelled
+// key is preserved.
+func convertTargetRefMap(in map[string]interface{}, conv func(TargetRef) (TargetRef, string, error)) (map[string]interface{}, string, error) {
+	b, err := json.Marshal(in)
+	if err != nil {
+		return in, "", err
 	}
-	outbound.Spec.Rules = nil
-	outbound.Spec.From = nil
-	return inbound, outbound
+	var ref TargetRef
+	if err := json.Unmarshal(b, &ref); err != nil {
+		return in, "", fmt.Errorf("parse targetRef: %w", err)
+	}
+	converted, warn, err := conv(ref)
+	if err != nil {
+		return in, warn, err
+	}
+	cb, err := json.Marshal(converted)
+	if err != nil {
+		return in, warn, err
+	}
+	if string(cb) == mustJSON(ref) {
+		return in, warn, nil
+	}
+	var out map[string]interface{}
+	if err := json.Unmarshal(cb, &out); err != nil {
+		return in, warn, err
+	}
+	for k, v := range in {
+		if !targetRefKeys[k] {
+			out[k] = v
+		}
+	}
+	return out, warn, nil
+}
+
+func mustJSON(v interface{}) string {
+	b, _ := json.Marshal(v)
+	return string(b)
 }
 
 // splitWarning is the advisory emitted whenever a policy is split into a rules[]

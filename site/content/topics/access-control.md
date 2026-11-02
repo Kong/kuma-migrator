@@ -70,15 +70,15 @@ applies to every client, so `from[]` entries that all use `kind: Mesh` convert m
 
 | Input | `--to-latest v2` | `--to-latest v3` |
 |---|---|---|
-| Legacy `TrafficPermission` | `MeshTrafficPermission` with `from[]` and `action: Allow`. `destinations` → `spec.targetRef`, `sources` → `from[]` | **Error**. Original written to `_manual/`. Re-run with `v2` for the `from[]` form |
-| `MeshTrafficPermission` with `from[]` | Warning: deprecated, not converted, manual steps listed | Warning: rejected by 3.0 as it stands |
+| Legacy `TrafficPermission` | `MeshTrafficPermission` with `from[]` and `action: Allow`. `destinations` → `spec.targetRef` (`Dataplane` labels), `sources` → `from[]` as `MeshSubset` with the source's `kuma.io/service` tag (the form 2.7+ documents) | **Error**. Original written to `_manual/`. Re-run with `v2` for the `from[]` form |
+| `MeshTrafficPermission` with `from[]` | Warning: deprecated, not converted, manual steps listed | **Error**: rejected by 3.0 as it stands, written to `_manual/` instead of the apply tree |
 | `MeshTrafficPermission` `rules[]` with an empty match entry | Warning | Warning |
 | `MeshTrafficPermission` `action: ALLOW`/`DENY` | Warning: use `Allow`/`Deny` | Same |
 | `MeshTrafficPermission` `spiffeId` | Rewritten to `spiffeID` | Same |
 | `from[].targetRef.kind: MeshService` | Warning | Warning |
-| Legacy `FaultInjection` | `MeshFaultInjection` with `from[]` | `rules[]` when every source is `kuma.io/service: '*'`; error otherwise |
-| `MeshFaultInjection` with `from[]` | Warning | `rules[]` when every entry is `kind: Mesh`; warning otherwise |
-| `OPAPolicy` | `MeshOPA`: `conf.policies[]` → `default.appendPolicies[].rego`, `conf.agentConfig` → `default.agentConfig`, `targetRef` kept, with 3.0 advisories | Same, plus the 3.0 rewrites below |
+| Legacy `FaultInjection` | `MeshFaultInjection` with `from[]` (`MeshSubset` sources, as for `TrafficPermission`) | `rules[]` when every source is `kuma.io/service: '*'`; error otherwise |
+| `MeshFaultInjection` with `from[]` | Warning | `rules[]` when every entry is `kind: Mesh`; otherwise **error**, written to `_manual/` |
+| `OPAPolicy` | `MeshOPA`: `conf.policies[]` → `default.appendPolicies[].rego`, `conf.agentConfig` → `default.agentConfig`, each keeping its `inlineString`/`inline`/`secret` key; an entry with none of them is left out with a "NOT migrated" warning, never emitted as an empty `rego`. `targetRef` kept, with 3.0 advisories | Same, plus the 3.0 rewrites below |
 | `MeshOPA` `targetRef.kind: MeshService` / `name` | Advisory | `kind: Dataplane`, `name` → `labels.app` (scope kept); refuses to overwrite a conflicting label |
 | `MeshOPA` flat `DataSource` (`inlineString`/`inline`/`secret`) | Advisory | Rewritten to `SecureDataSource`, including base64 `inline` (rego is not credential material) |
 | `AccessRole`/`AccessAudit` `rules[].types` with legacy kinds | Advisory | Renamed to the `Mesh*` successor; types with no successor removed |
@@ -221,29 +221,33 @@ spec:
   - default:
       action: Allow
     targetRef:
-      kind: MeshService
-      name: web
-      namespace: demo
+      kind: MeshSubset
+      tags:
+        kuma.io/service: web_demo_svc_8080
   targetRef:
     kind: Dataplane
-    name: backend
-    namespace: demo
+    labels:
+      app: backend
+      k8s.kuma.io/namespace: demo
 ```
 
-```
-⚠  MeshTrafficPermission "web-to-backend": from[].targetRef.kind MeshService is deprecated in
-   Kuma 2.7+ — use kind: Dataplane with labels instead.
+```text
+⚠  spec.targetRef Dataplane labels use 'app: backend' as a best-guess pod label — verify this
+   matches your actual pod labels before applying
 ⚠  MeshTrafficPermission "web-to-backend": the from[] field is deprecated in favour of the rules[]
    API (Kuma 2.14, removed in 3.0) and is NOT auto-converted. …
 ```
 
-> **Warning:** In this output `spec.targetRef` is `kind: Dataplane` with `name: backend`, which
-> selects the single `Dataplane` resource named `backend`. On Kubernetes a `Dataplane` is named
-> after its pod, so check that it selects the proxies you expect, or replace it with `labels`.
+`from[]` keeps the source's `kuma.io/service` tag in a `MeshSubset`, the form the 2.7 upgrade notes
+give in place of the deprecated `kind: MeshService`
+([UPGRADE](https://github.com/kumahq/kuma/blob/master/UPGRADE.md#deprecation-of-fromtargetrefkind-meshservice)).
+`spec.targetRef` selects `Dataplane` labels, never a `name`: a `Dataplane` name is its pod's name.
+`app` comes from the pod labels and `k8s.kuma.io/namespace` is set by the control plane; check
+that your pods carry `app: backend`.
 
 With `--to-latest v3` the `TrafficPermission` is refused and written to `_manual/`, the
-`MeshTrafficPermission` is copied with a "rejected by 3.0" warning, and the `AccessRole` is
-rewritten:
+`MeshTrafficPermission` is rejected by 3.0 as it stands (it still has `from[]`) and is also
+written to `_manual/`, and the `AccessRole` is rewritten:
 
 ```yaml
 # other/AccessRole-team-a-policies.yaml (v3)
@@ -264,7 +268,7 @@ rules:
 type: AccessRole
 ```
 
-```
+```text
 ✗  TrafficPermission "web-to-backend" requires manual migration for Kuma 3.0: 3.0 removes
    MeshTrafficPermission spec.from … its replacement selects clients with
    rules[].default.{allow,deny,allowWithShadowDeny}[].spiffeID matches. Those need a MeshIdentity

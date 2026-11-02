@@ -62,7 +62,7 @@ command in the report (`tool`, `context`, `isKonnect`).
 
 ## On-disk layout
 
-```
+```text
 <dir>/
   <context>-<mode>-ctx/
     .kuma-migrator.json

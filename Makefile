@@ -44,10 +44,13 @@ site:
 site-test:
 	cd site/gen && go vet ./... && go test ./...
 
-# Fails when the committed output differs from a fresh build. <lastmod> lines are
-# ignored: the date comes from git and moves with every commit touching site/.
+# Fails when the committed output differs from a fresh build. Two kinds of line are
+# ignored because they come from git, not from site/: <lastmod> (moves with every
+# commit touching site/) and the header's release-tag badge (moves when a tag is
+# pushed, and is empty in a shallow clone). docs/index.html is checked because the
+# generator rewrites its release-tag, shared.css and copy.js regions.
 site-check: site
-	git diff --exit-code -I '<lastmod>' -- docs/docs docs/sitemap.xml
+	git diff --exit-code -I '<lastmod>' -I '<!-- release-tag -->' -- docs/docs docs/sitemap.xml docs/index.html
 	@untracked=$$(git ls-files --others --exclude-standard -- docs/docs); \
 	if [ -n "$$untracked" ]; then \
 		echo "site-check: generated files are not committed:"; echo "$$untracked"; exit 1; \

@@ -31,9 +31,10 @@ func opaLegacyBody(obj map[string]interface{}) map[string]interface{} {
 //
 // Structural change (Kong Mesh 2.5+):
 //   - kind: OPAPolicy → kind: MeshOPA
-//   - spec.conf.policies[].inlineString → spec.default.appendPolicies[].rego.inlineString
-//   - spec.conf.policies[].secret      → spec.default.appendPolicies[].rego.secret
-//   - spec.conf.agentConfig            → spec.default.agentConfig (preserved as-is)
+//   - spec.conf.policies[].{inlineString,inline,secret} → spec.default.appendPolicies[].rego.<same key>
+//   - spec.conf.agentConfig.{inlineString,inline,secret} → spec.default.agentConfig.<same key>
+//     (an entry with none of the three keys is reported, never emitted empty;
+//     see convertLegacyOPADataSource)
 //   - spec.targetRef                   → spec.targetRef (preserved under a v2 target)
 //
 // Under TargetV3 the targetRef is additionally rewritten: 3.0 removes
@@ -123,20 +124,15 @@ func TransformOPAPolicy(raw []byte, target TargetVersion) ([][]byte, []string, e
 		// Migrate policies[] → appendPolicies[].
 		if policies, ok := conf["policies"].([]interface{}); ok && len(policies) > 0 {
 			appendPolicies := make([]interface{}, 0, len(policies))
-			for _, p := range policies {
-				pol, ok := p.(map[string]interface{})
-				if !ok {
+			for i, p := range policies {
+				field := fmt.Sprintf("conf.policies[%d]", i)
+				rego, ws := convertLegacyOPADataSource(p, name, field)
+				warnings = append(warnings, ws...)
+				if rego == nil {
 					continue
 				}
-				regoEntry := map[string]interface{}{}
-				if inlineStr, ok := pol["inlineString"].(string); ok && inlineStr != "" {
-					regoEntry["inlineString"] = inlineStr
-				}
-				if secret, ok := pol["secret"].(string); ok && secret != "" {
-					regoEntry["secret"] = secret
-				}
 				appendPolicies = append(appendPolicies, map[string]interface{}{
-					"rego": regoEntry,
+					"rego": rego,
 				})
 			}
 			if len(appendPolicies) > 0 {
@@ -145,8 +141,12 @@ func TransformOPAPolicy(raw []byte, target TargetVersion) ([][]byte, []string, e
 		}
 
 		// Migrate agentConfig → default.agentConfig.
-		if agentConfig, ok := conf["agentConfig"]; ok {
-			newDefault["agentConfig"] = agentConfig
+		if agentConfig, ok := conf["agentConfig"]; ok && agentConfig != nil {
+			ds, ws := convertLegacyOPADataSource(agentConfig, name, "conf.agentConfig")
+			warnings = append(warnings, ws...)
+			if ds != nil {
+				newDefault["agentConfig"] = ds
+			}
 		}
 
 		// Preserve any other conf fields as top-level default fields (best-effort).
@@ -198,6 +198,61 @@ func TransformOPAPolicy(raw []byte, target TargetVersion) ([][]byte, []string, e
 		return nil, nil, err
 	}
 	return docs, warnings, nil
+}
+
+// convertLegacyOPADataSource copies one legacy OPAPolicy DataSource
+// (conf.policies[] entry or conf.agentConfig) into the MeshOPA DataSource shape.
+//
+// The legacy type (kuma.system.v1alpha1.DataSource) is a oneof of secret,
+// inline (base64) and inlineString. The 2.x MeshOPA rego/agentConfig fields accept
+// the same three keys, so the value is copied unchanged; under a v3 target
+// fixMeshOPADataSourcesForV3 then rewrites it to SecureDataSource (decoding inline).
+//
+// An entry with none of the three keys returns nil and a warning: emitting an
+// empty `rego: {}` would drop an authorization rule without a trace. Keys other
+// than the three are reported as dropped.
+func convertLegacyOPADataSource(v interface{}, name, field string) (map[string]interface{}, []string) {
+	ds, ok := v.(map[string]interface{})
+	if !ok {
+		return nil, []string{fmt.Sprintf(
+			"OPAPolicy %q: spec.%s is not a data source object (%T) — NOT migrated; add it to the "+
+				"MeshOPA by hand before applying, or the policy runs without it.", name, field, v)}
+	}
+	out := map[string]interface{}{}
+	var unknown []string
+	for k, val := range ds {
+		switch k {
+		case "secret", "inline", "inlineString":
+			if s, ok := val.(string); ok && s != "" {
+				out[k] = s
+			}
+		default:
+			unknown = append(unknown, k)
+		}
+	}
+	sort.Strings(unknown)
+	var warnings []string
+	if len(out) == 0 {
+		desc := "is empty"
+		if len(unknown) > 0 {
+			desc = "has only unrecognised key(s) " + strings.Join(unknown, ", ")
+		}
+		return nil, []string{fmt.Sprintf(
+			"OPAPolicy %q: spec.%s %s (expected one of secret, inline, inlineString) — NOT migrated; "+
+				"add it to the MeshOPA by hand before applying, or the policy runs without it.",
+			name, field, desc)}
+	}
+	if len(out) > 1 {
+		warnings = append(warnings, fmt.Sprintf(
+			"OPAPolicy %q: spec.%s sets more than one of secret, inline, inlineString; they were all "+
+				"copied, but a data source takes exactly one — keep the intended one.", name, field))
+	}
+	if len(unknown) > 0 {
+		warnings = append(warnings, fmt.Sprintf(
+			"OPAPolicy %q: spec.%s key(s) %s have no MeshOPA data source equivalent and were dropped.",
+			name, field, strings.Join(unknown, ", ")))
+	}
+	return out, warnings
 }
 
 // applyOPASelectors converts legacy spec.selectors[] into spec.targetRef and

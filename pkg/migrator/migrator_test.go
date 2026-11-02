@@ -714,12 +714,17 @@ spec:
 	}
 	body := string(content)
 
-	if !strings.Contains(body, "## Skipped") {
-		t.Fatalf("expected a plain Deployment to land in Skipped, got:\n%s", body)
+	// A flagged non-policy file is reported as scanned, not skipped: it is
+	// written to the output tree and carries a warning.
+	if !strings.Contains(body, "## Scanned Non-Policy Resources") {
+		t.Fatalf("expected a flagged Deployment to land in Scanned, got:\n%s", body)
+	}
+	if strings.Contains(body, "## Skipped") {
+		t.Errorf("a flagged Deployment must not be listed under Skipped, got:\n%s", body)
 	}
 	if !strings.Contains(body, "virtual-probes") {
 		t.Errorf("expected the deprecated kuma.io/virtual-probes annotation warning to be "+
-			"surfaced for a Skipped file, got:\n%s", body)
+			"surfaced for a scanned file, got:\n%s", body)
 	}
 }
 

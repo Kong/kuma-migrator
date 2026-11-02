@@ -155,17 +155,24 @@ type gwTCPRule struct {
 // TransformMeshGatewayRoute converts a legacy MeshGatewayRoute into one or
 // more Gateway API HTTPRoute or TCPRoute resources.
 func TransformMeshGatewayRoute(raw []byte) ([][]byte, []string, error) {
+	return TransformMeshGatewayRouteWithOptions(raw, TransformOptions{})
+}
+
+// TransformMeshGatewayRouteWithOptions is TransformMeshGatewayRoute with the
+// cross-document context needed to point parentRefs at the Gateway actually
+// emitted for the selected MeshGateway (opts.Gateways, see GatewayRefIndex).
+func TransformMeshGatewayRouteWithOptions(raw []byte, opts TransformOptions) ([][]byte, []string, error) {
 	var route meshGatewayRoute
 	if err := yaml.Unmarshal(raw, &route); err != nil {
 		return nil, nil, fmt.Errorf("unmarshal MeshGatewayRoute: %w", err)
 	}
 
 	if route.Spec.Conf.HTTP != nil {
-		docs, warnings, err := transformGWHTTPRoute(route)
+		docs, warnings, err := transformGWHTTPRoute(route, opts.Gateways)
 		return docs, append(warnings, gatewayRouteSuccessorNote(route.Metadata.Name, false)), err
 	}
 	if route.Spec.Conf.TCP != nil {
-		docs, warnings, err := transformGWTCPRoute(route)
+		docs, warnings, err := transformGWTCPRoute(route, opts.Gateways)
 		return docs, append(warnings, gatewayRouteSuccessorNote(route.Metadata.Name, true)), err
 	}
 	return nil, []string{fmt.Sprintf("MeshGatewayRoute %q: no conf.http or conf.tcp section found — skipped", route.Metadata.Name)}, nil
@@ -206,14 +213,16 @@ func gatewayRouteSuccessorNote(name string, tcp bool) string {
 
 // ---- HTTP -------------------------------------------------------------------
 
-func transformGWHTTPRoute(route meshGatewayRoute) ([][]byte, []string, error) {
+func transformGWHTTPRoute(route meshGatewayRoute, gateways *GatewayRefIndex) ([][]byte, []string, error) {
 	name := route.Metadata.Name
 	namespace := route.Metadata.Namespace
 	http := route.Spec.Conf.HTTP
 	var warnings []string
 
 	// parentRefs — one per selector entry.
-	parentRefs, w := parentRefsFromSelectors(route.Spec.Selectors, name, namespace)
+	parentRefs, gatewayNS, w := parentRefsFromSelectors(route.Spec.Selectors, name, namespace, gateways)
+	warnings = append(warnings, w...)
+	namespace, w = placeRouteWithParentGateway("HTTPRoute", name, namespace, gatewayNS, parentRefs)
 	warnings = append(warnings, w...)
 
 	// rules
@@ -293,13 +302,15 @@ func transformGWHTTPRoute(route meshGatewayRoute) ([][]byte, []string, error) {
 
 // ---- TCP --------------------------------------------------------------------
 
-func transformGWTCPRoute(route meshGatewayRoute) ([][]byte, []string, error) {
+func transformGWTCPRoute(route meshGatewayRoute, gateways *GatewayRefIndex) ([][]byte, []string, error) {
 	name := route.Metadata.Name
 	namespace := route.Metadata.Namespace
 	tcp := route.Spec.Conf.TCP
 	var warnings []string
 
-	parentRefs, w := parentRefsFromSelectors(route.Spec.Selectors, name, namespace)
+	parentRefs, gatewayNS, w := parentRefsFromSelectors(route.Spec.Selectors, name, namespace, gateways)
+	warnings = append(warnings, w...)
+	namespace, w = placeRouteWithParentGateway("TCPRoute", name, namespace, gatewayNS, parentRefs)
 	warnings = append(warnings, w...)
 
 	var rules []interface{}
@@ -464,60 +475,206 @@ func sortedMapKeys[V any](m map[string]V) []string {
 // ---- parentRefs -------------------------------------------------------------
 
 // parentRefsFromSelectors converts MeshGatewayRoute selectors into Gateway API parentRefs.
-// Each selector becomes one parentRef. The kuma.io/service tag is used to derive the
-// Gateway name/namespace; remaining tags are used to derive sectionName.
-func parentRefsFromSelectors(selectors []gwSelector, routeName, routeNS string) ([]interface{}, []string) {
-	var refs []interface{}
-	var warnings []string
+//
+// A selector's kuma.io/service tag is the service name of the gateway's pods
+// (the MeshGatewayInstance's tag), not the name of the Gateway this tool emits —
+// that Gateway is named after the MeshGateway. The tag is resolved through
+// GatewayRefIndex to the MeshGateway(s) selecting it, giving the Gateway's name,
+// its namespace (the same rule TransformMeshGateway uses) and its listener
+// names. The remaining selector tags pick listeners by their tags, the way Kuma
+// attached a MeshGatewayRoute to MeshGateway listeners; each matched listener
+// becomes one parentRef with sectionName set to that listener's emitted name.
+//
+// When the tag resolves to no MeshGateway in the input set, the Gateway name is
+// derived from the tag itself and flagged for verification.
+//
+// gatewayNS is the namespace shared by every parent Gateway when all of them
+// were resolved through the index, "" otherwise (see placeRouteWithParentGateway).
+func parentRefsFromSelectors(selectors []gwSelector, routeName, routeNS string, gateways *GatewayRefIndex) (refs []interface{}, gatewayNS string, warnings []string) {
+	allResolved := len(selectors) > 0
+	var resolvedNS []string
 
 	for i, sel := range selectors {
-		ref := map[string]interface{}{
-			"group": "gateway.networking.k8s.io",
-			"kind":  "Gateway",
-		}
-
-		svcTag := sel.Match["kuma.io/service"]
-		if svcTag == "" {
-			warnings = append(warnings, fmt.Sprintf(
-				"MeshGatewayRoute %q selectors[%d]: no kuma.io/service tag — cannot derive Gateway name; set parentRefs[%d].name manually", routeName, i, i))
-			ref["name"] = "(unknown-gateway)"
-		} else {
-			gwName, gwNS := parseGatewaySvcTag(svcTag)
-			if gwName != "" {
-				ref["name"] = gwName
-			} else {
-				// Universal-mode: use the raw value as name.
-				ref["name"] = svcTag
-				warnings = append(warnings, fmt.Sprintf(
-					"MeshGatewayRoute %q selectors[%d]: kuma.io/service=%q does not follow the K8s _svc_ pattern — "+
-						"used as Gateway name directly; verify this is correct", routeName, i, svcTag))
-			}
-			// Only set namespace when it differs from route namespace (avoids redundancy).
-			if gwNS != "" && gwNS != routeNS {
-				ref["namespace"] = gwNS
-			}
-		}
-
-		// Remaining tags (excluding kuma.io/service) → attempt sectionName derivation.
 		otherTags := map[string]string{}
 		for k, v := range sel.Match {
-			if k != "kuma.io/service" {
+			if k != serviceTagKey {
 				otherTags[k] = v
 			}
 		}
-		if len(otherTags) > 0 {
-			if sn := sectionNameFromTags(otherTags); sn != "" {
-				ref["sectionName"] = sn
-			} else {
-				warnings = append(warnings, fmt.Sprintf(
-					"MeshGatewayRoute %q selectors[%d]: listener tags %v could not be mapped to a sectionName — "+
-						"set parentRefs[%d].sectionName to the listener name of the migrated Gateway (e.g. 'http-8080')", routeName, i, otherTags, i))
-			}
+
+		svcTag := sel.Match[serviceTagKey]
+		if svcTag == "" {
+			warnings = append(warnings, fmt.Sprintf(
+				"MeshGatewayRoute %q selectors[%d]: no kuma.io/service tag — cannot derive Gateway name; set parentRefs[%d].name manually", routeName, i, i))
+			ref := newGatewayParentRef("(unknown-gateway)")
+			warnings = append(warnings, setHeuristicSectionName(ref, otherTags, routeName, i)...)
+			refs = append(refs, ref)
+			allResolved = false
+			continue
 		}
 
-		refs = append(refs, ref)
+		matched := gateways.gatewaysFor(svcTag)
+		if len(matched) == 0 {
+			ref, w := heuristicParentRef(svcTag, otherTags, routeName, routeNS, i)
+			warnings = append(warnings, w...)
+			refs = append(refs, ref)
+			allResolved = false
+			continue
+		}
+		if len(matched) > 1 {
+			names := make([]string, len(matched))
+			for j, g := range matched {
+				names[j] = g.name
+			}
+			warnings = append(warnings, fmt.Sprintf(
+				"MeshGatewayRoute %q selectors[%d]: kuma.io/service=%q is selected by more than one MeshGateway (%s) — "+
+					"emitted a parentRef for each; remove the ones this route should not attach to",
+				routeName, i, svcTag, strings.Join(names, ", ")))
+		}
+
+		for _, g := range matched {
+			gwNS := ""
+			if nss := gateways.gatewayNamespace(g); len(nss) > 0 {
+				gwNS = nss[0]
+				resolvedNS = appendUniqueSorted(resolvedNS, gwNS)
+			} else {
+				allResolved = false
+				warnings = append(warnings, fmt.Sprintf(
+					"MeshGatewayRoute %q selectors[%d]: the namespace of parent Gateway %q is unknown (no "+
+						"MeshGatewayInstance in the input set declares kuma.io/service=%q) — parentRefs[].namespace "+
+						"omitted, so it defaults to the route's own namespace; set it to the Gateway's namespace",
+					routeName, i, g.name, svcTag))
+			}
+
+			sections, w := listenerSections(g, otherTags, routeName, i)
+			warnings = append(warnings, w...)
+			if len(sections) == 0 {
+				sections = []string{""}
+			}
+			for _, section := range sections {
+				ref := newGatewayParentRef(g.name)
+				if gwNS != "" {
+					ref["namespace"] = gwNS
+				}
+				if section != "" {
+					ref["sectionName"] = section
+				}
+				refs = append(refs, ref)
+			}
+		}
 	}
-	return refs, warnings
+	if allResolved && len(resolvedNS) == 1 {
+		gatewayNS = resolvedNS[0]
+	}
+	return refs, gatewayNS, warnings
+}
+
+func newGatewayParentRef(name string) map[string]interface{} {
+	return map[string]interface{}{
+		"group": "gateway.networking.k8s.io",
+		"kind":  "Gateway",
+		"name":  name,
+	}
+}
+
+// listenerSections returns the emitted names of the listeners of g whose tags
+// carry every selector tag besides kuma.io/service. No extra tags means the
+// route attaches to the whole Gateway (nil, no sectionName).
+func listenerSections(g indexedGateway, otherTags map[string]string, routeName string, i int) ([]string, []string) {
+	if len(otherTags) == 0 {
+		return nil, nil
+	}
+	var out []string
+	for _, l := range g.listeners {
+		ok := true
+		for k, v := range otherTags {
+			if l.tags[k] != v {
+				ok = false
+				break
+			}
+		}
+		if ok {
+			out = append(out, l.name)
+		}
+	}
+	if len(out) > 0 {
+		return out, nil
+	}
+	return nil, []string{fmt.Sprintf(
+		"MeshGatewayRoute %q selectors[%d]: no listener of MeshGateway %q carries tags %v — parentRef attaches to "+
+			"every listener of Gateway %q; set parentRefs[%d].sectionName to one of its listener names if that is too broad",
+		routeName, i, g.name, otherTags, g.name, i)}
+}
+
+// heuristicParentRef derives a parentRef from the kuma.io/service tag alone,
+// for a selector whose MeshGateway is not part of the input set.
+func heuristicParentRef(svcTag string, otherTags map[string]string, routeName, routeNS string, i int) (map[string]interface{}, []string) {
+	var warnings []string
+	gwName, gwNS := parseGatewaySvcTag(svcTag)
+	ref := newGatewayParentRef(gwName)
+	if gwName == "" {
+		// Universal-mode: use the raw value as name.
+		ref["name"] = svcTag
+		warnings = append(warnings, fmt.Sprintf(
+			"MeshGatewayRoute %q selectors[%d]: no MeshGateway in the input set selects kuma.io/service=%q, which "+
+				"does not follow the K8s _svc_ pattern — used as Gateway name directly; verify this is correct "+
+				"(the converted Gateway is named after the MeshGateway, not its service tag)", routeName, i, svcTag))
+	} else {
+		warnings = append(warnings, fmt.Sprintf(
+			"MeshGatewayRoute %q selectors[%d]: no MeshGateway in the input set selects kuma.io/service=%q — "+
+				"derived parent Gateway %q from the tag; verify parentRefs[%d] names the converted Gateway, which "+
+				"is named after the MeshGateway rather than its service tag", routeName, i, svcTag, gwName, i))
+	}
+	if gwNS != "" && gwNS != routeNS {
+		ref["namespace"] = gwNS
+	}
+	warnings = append(warnings, setHeuristicSectionName(ref, otherTags, routeName, i)...)
+	return ref, warnings
+}
+
+// setHeuristicSectionName derives sectionName from listener tags by naming
+// convention (a "port: http-8080" tag), used only when the MeshGateway and its
+// listener tags are not available.
+func setHeuristicSectionName(ref map[string]interface{}, otherTags map[string]string, routeName string, i int) []string {
+	if len(otherTags) == 0 {
+		return nil
+	}
+	if sn := sectionNameFromTags(otherTags); sn != "" {
+		ref["sectionName"] = sn
+		return nil
+	}
+	return []string{fmt.Sprintf(
+		"MeshGatewayRoute %q selectors[%d]: listener tags %v could not be mapped to a sectionName — "+
+			"set parentRefs[%d].sectionName to the listener name of the migrated Gateway (e.g. 'http-8080')", routeName, i, otherTags, i)}
+}
+
+// placeRouteWithParentGateway picks the route's namespace. MeshGatewayRoute is
+// cluster-scoped, so the converted route usually has none — but a Gateway
+// listener only accepts routes from its own namespace unless its allowedRoutes
+// says otherwise (the converted Gateway sets none). When every parentRef names a
+// Gateway resolved to the same namespace (gatewayNS), the route is placed there
+// and the then redundant parentRefs[].namespace is dropped. A namespace derived
+// only from a service tag's naming pattern is not used: that would be a guess.
+func placeRouteWithParentGateway(routeKind, routeName, routeNS, gatewayNS string, parentRefs []interface{}) (string, []string) {
+	var warnings []string
+	if routeNS == "" {
+		if gatewayNS != "" {
+			routeNS = gatewayNS
+			warnings = append(warnings, fmt.Sprintf(
+				"%s %q: MeshGatewayRoute is cluster-scoped; placed the route in namespace %q, the namespace of its "+
+					"parent Gateway — a Gateway listener only accepts routes from its own namespace by default "+
+					"(allowedRoutes.namespaces.from: Same)", routeKind, routeName, routeNS))
+		}
+	}
+	if routeNS != "" {
+		for _, r := range parentRefs {
+			ref := r.(map[string]interface{})
+			if ref["namespace"] == routeNS {
+				delete(ref, "namespace")
+			}
+		}
+	}
+	return routeNS, warnings
 }
 
 // parseGatewaySvcTag parses a MeshGateway selector service tag.

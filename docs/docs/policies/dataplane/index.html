@@ -15,8 +15,8 @@
 <meta property="og:image" content="https://kong.github.io/kuma-migrator/assets/migration-overview.svg">
 <meta name="twitter:card" content="summary_large_image">
 
+<link rel="stylesheet" href="../../static/shared.css">
 <link rel="stylesheet" href="../../static/style.css">
-<link rel="stylesheet" href="../../static/chroma.css">
 </head>
 <body data-root="../../">
 <a class="skip" href="#content">Skip to content</a>
@@ -30,6 +30,7 @@
       <a href="../" class="active" aria-current="true">Policies</a>
       <a href="https://github.com/Kong/kuma-migrator">GitHub</a>
     </nav>
+    <!-- release-tag --><a class="release-badge" href="https://github.com/Kong/kuma-migrator/releases/latest" title="Latest release: v0.8.0">v0.8.0</a><!-- /release-tag -->
     <div class="search">
       <input id="search-input" type="search" placeholder="Search docs" aria-label="Search docs" autocomplete="off">
       <ul id="search-results" hidden></ul>
@@ -70,7 +71,8 @@
   <section class="target-card">
     <header><span class="target-label">--to-latest v2 (2.x)</span> <span class="status status-warned">warned</span></header>
     <p class="outputs">Output: <a href="./"><code>Dataplane</code></a></p>
-    <div class="notes"><p>Skipped on Kubernetes (CP-generated). On Universal it is scanned and copied unchanged:</p>
+    <div class="notes"><p>Skipped on Kubernetes (CP-generated). On Universal it is scanned and copied unchanged;
+a Dataplane with a finding is labelled <code>SCANNED</code>, one without <code>SKIP</code>:</p>
 <ul>
 <li><code>transparentProxying.redirectPortInboundV6</code> is reported (removed in 2.9).</li>
 <li><code>transparentProxying.reachableServices</code> is reported: in <code>Exclusive</code> mode the names must
@@ -82,7 +84,8 @@ be MeshService display names, and 3.0 removes the field.</li>
   <section class="target-card">
     <header><span class="target-label">--to-latest v3 (3.0)</span> <span class="status status-rewritten">rewritten</span></header>
     <p class="outputs">Output: <a href="./"><code>Dataplane</code></a></p>
-    <div class="notes"><p>Universal only. Rewrites:</p>
+    <div class="notes"><p>Universal only. The file is labelled <code>SCANNED</code> (&quot;rewritten by the deprecation scan&quot;)
+on stdout and listed under <strong>Scanned Non-Policy Resources</strong> in the report. Rewrites:</p>
 <ul>
 <li><code>networking.gateway</code> (any type) removed; its non-reserved tags move to labels.</li>
 <li>Inbound <code>kuma.io/protocol</code> tag → <code>inbound[].protocol</code>.</li>
@@ -135,5 +138,6 @@ use <code>backendRef</code>), <code>advertisedAddress</code>, <code>redirectPort
 </footer>
 <script src="../../static/search-index.js"></script>
 <script src="../../static/search.js"></script>
+<script src="../../static/copy.js"></script>
 </body>
 </html>

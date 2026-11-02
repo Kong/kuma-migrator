@@ -54,7 +54,7 @@ func writeFile(t *testing.T, root, rel, content string) {
 
 func build(t *testing.T, root string) (int, error) {
 	t.Helper()
-	return Build(Config{Root: root, LastMod: "2026-01-02"})
+	return Build(Config{Root: root, LastMod: "2026-01-02", Release: "v1.2.3"})
 }
 
 func read(t *testing.T, root, rel string) string {
@@ -140,7 +140,7 @@ func TestBuildFixture(t *testing.T) {
 		`src="../../../img/pipeline.svg"`,
 		`href="#commands"`,
 		`<h2 id="commands">Commands</h2>`,
-		`<pre class="chroma">`,
+		`<div class="code"><pre class="chroma" data-lang="go"><code>`,
 		`<span class="kd">func</span>`,
 		`<div class="table-wrap"><table>`,
 		`<blockquote class="callout callout-note">`,
@@ -150,6 +150,9 @@ func TestBuildFixture(t *testing.T) {
 		`class="toc-l3"><a href="#sub-heading">`,
 		`<span>Next</span>Extracting`,
 		`>CLI</a>`, // nav_title in sidebar
+		`<!-- release-tag --><a class="release-badge" href="https://github.com/Kong/kuma-migrator/releases/latest" title="Latest release: v1.2.3">v1.2.3</a><!-- /release-tag -->`,
+		`href="../../static/shared.css"`,
+		`src="../../static/copy.js"`,
 	)
 	if strings.Contains(cli, `style="`) {
 		t.Error("highlighted code must use classes, not inline styles")
@@ -185,11 +188,78 @@ func TestBuildFixture(t *testing.T) {
 		"<loc>https://kong.github.io/kuma-migrator/docs/policies/timeout/</loc>",
 		"<lastmod>2026-01-02</lastmod>",
 	)
-	for _, f := range []string{"static/chroma.css", "static/search-index.js", "static/search.js", "static/style.css", "static/favicon.svg"} {
+	for _, f := range []string{"static/shared.css", "static/copy.js", "static/search-index.js", "static/search.js", "static/style.css", "static/favicon.svg"} {
 		read(t, root, "docs/docs/"+f)
 	}
-	css := read(t, root, "docs/docs/static/chroma.css")
-	mustContain(t, "chroma css", css, "@media (prefers-color-scheme: dark)", ".chroma .kd")
+	css := read(t, root, "docs/docs/static/shared.css")
+	mustContain(t, "shared css", css, "@media (prefers-color-scheme: dark)", ".chroma .kd", ".chroma .k-bin", "--c-key")
+}
+
+func TestHighlight(t *testing.T) {
+	cases := []struct {
+		lang, code string
+		want       []string
+	}{
+		{"yaml", "kind: MeshTimeout # c\nspec:\n  port: 8080\n  on: true\n  s: \"x\"\n", []string{
+			`<span class="nt">kind</span><span class="p">:</span> <span class="l">MeshTimeout</span> <span class="c"># c</span>`,
+			`<span class="m">8080</span>`, `<span class="kc">true</span>`, `<span class="s2">"x"</span>`,
+		}},
+		{"bash", "# extract\nkuma-migrator migrate --input-dir ./in \\\n  --dry-run --to-latest=v3\nkubectl --context prod apply -f ./out/\nless ./out/plan.md\n", []string{
+			`<span class="c1"># extract</span>`,
+			`<span class="k-bin">kuma-migrator</span> <span class="k-sub">migrate</span> <span class="k-flag">--input-dir</span> <span class="k-val">./in</span>`,
+			`<span class="k-flag">--dry-run</span> <span class="k-flag">--to-latest</span><span class="o">=</span><span class="k-val">v3</span>`,
+			`<span class="k-manual">kubectl</span> <span class="k-flag">--context</span> <span class="k-val">prod</span> <span class="k-manual-b">apply</span> <span class="k-flag">-f</span> <span class="k-val">./out/</span>`,
+			`<span class="k-cmd">less</span> ./out/plan.md`,
+		}},
+		{"console", "$ kuma-migrator version\nkuma-migrator v0.8.0\n", []string{
+			`<span class="gp">$</span> <span class="k-bin">kuma-migrator</span> <span class="k-sub">version</span>`,
+		}},
+		{"text", "  ✓  LEGACY  a.yaml\n       ←  in/a.yaml\n  ⚠  careful\na → b\ndir/   ← what\n", []string{
+			`  <span class="o-ok">✓</span>  LEGACY  a.yaml`,
+			`       <span class="o-dim">←  in/a.yaml</span>`,
+			`<span class="o-warn">⚠</span>  careful`,
+			"\na → b\n",
+			`dir/   <span class="o-dim">← what</span>`,
+		}},
+	}
+	for _, c := range cases {
+		got := highlight(c.lang, c.code)
+		for _, w := range c.want {
+			if !strings.Contains(got, w) {
+				t.Errorf("%s: missing %q in\n%s", c.lang, w, got)
+			}
+		}
+	}
+}
+
+func TestLandingSync(t *testing.T) {
+	root := fixture(t)
+	writeFile(t, root, "docs/index.html", "<html><head><style>\n/* shared.css: generated */\nold css\n/* /shared.css */\n</style></head><body>\n"+
+		"<!-- release-tag -->v0.0.1<!-- /release-tag -->\n<a href=\"docs/\">Docs</a>\n"+
+		"<script>\n/* copy.js: generated */\n/* /copy.js */\n</script></body></html>\n")
+	if _, err := build(t, root); err != nil {
+		t.Fatal(err)
+	}
+	got := read(t, root, "docs/index.html")
+	mustContain(t, "landing", got,
+		`<!-- release-tag --><a class="release-badge" href="https://github.com/Kong/kuma-migrator/releases/latest" title="Latest release: v1.2.3">v1.2.3</a><!-- /release-tag -->`,
+		"/* shared.css: generated */\n/* Shared by the /docs/ pages",
+		".chroma .k-bin",
+		"/* copy.js: generated */\n// Copy-to-clipboard",
+	)
+	if strings.Contains(got, "old css") {
+		t.Error("shared.css region not replaced")
+	}
+	if _, err := build(t, root); err != nil {
+		t.Fatal(err)
+	}
+	if again := read(t, root, "docs/index.html"); again != got {
+		t.Error("landing sync is not idempotent")
+	}
+	if _, err := Build(Config{Root: root, LastMod: "2026-01-02", Release: "none"}); err != nil {
+		t.Fatal(err)
+	}
+	mustContain(t, "landing without release", read(t, root, "docs/index.html"), "<!-- release-tag --><!-- /release-tag -->\n")
 }
 
 func TestStaleFilesRemoved(t *testing.T) {
@@ -277,6 +347,14 @@ func TestBuildFailures(t *testing.T) {
 			`site/data/policies.yaml:9: dangling link "policy:Nope"`},
 		{"landing link", map[string]string{"docs/index.html": `<a href="docs/guides/nope/">x</a>`},
 			`docs/index.html:1: link "docs/guides/nope/" does not match a generated page`},
+		{"untagged fence", map[string]string{"site/content/guides/p.md": page("text\n\n```\nx\n```")},
+			"site/content/guides/p.md:9: code block without a language tag"},
+		{"unknown fence language", map[string]string{"site/content/guides/p.md": page("```nosuchlang\nx\n```")},
+			`site/content/guides/p.md:7: code block language "nosuchlang" is not known to chroma`},
+		{"indented code block", map[string]string{"site/content/guides/p.md": page("para\n\n    indented\n")},
+			"site/content/guides/p.md:9: indented code block"},
+		{"untagged fence in notes", map[string]string{"site/data/policies.yaml": "- kind: X\n  group: legacy\n  product: kuma\n  summary: s\n  v2:\n    status: error\n    notes: |\n      line one\n\n      ```\n      x\n      ```\n  v3: {status: removed}\n"},
+			"site/data/policies.yaml:10: code block without a language tag"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

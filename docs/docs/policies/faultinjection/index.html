@@ -15,8 +15,8 @@
 <meta property="og:image" content="https://kong.github.io/kuma-migrator/assets/migration-overview.svg">
 <meta name="twitter:card" content="summary_large_image">
 
+<link rel="stylesheet" href="../../static/shared.css">
 <link rel="stylesheet" href="../../static/style.css">
-<link rel="stylesheet" href="../../static/chroma.css">
 </head>
 <body data-root="../../">
 <a class="skip" href="#content">Skip to content</a>
@@ -30,6 +30,7 @@
       <a href="../" class="active" aria-current="true">Policies</a>
       <a href="https://github.com/Kong/kuma-migrator">GitHub</a>
     </nav>
+    <!-- release-tag --><a class="release-badge" href="https://github.com/Kong/kuma-migrator/releases/latest" title="Latest release: v0.8.0">v0.8.0</a><!-- /release-tag -->
     <div class="search">
       <input id="search-input" type="search" placeholder="Search docs" aria-label="Search docs" autocomplete="off">
       <ul id="search-results" hidden></ul>
@@ -70,8 +71,11 @@
   <section class="target-card">
     <header><span class="target-label">--to-latest v2 (2.x)</span> <span class="status status-converted">converted</span></header>
     <p class="outputs">Output: <a href="../meshfaultinjection/"><code>MeshFaultInjection</code></a></p>
-    <div class="notes"><p>Inbound shape: <code>destinations</code> → <code>spec.targetRef</code>, <code>sources</code> → <code>from[]</code>. The single legacy
-<code>conf</code> becomes a one-element <code>default.http[]</code> list (<code>delay</code>, <code>abort</code>,
+    <div class="notes"><p>Inbound shape: <code>destinations</code> → <code>spec.targetRef</code> (<code>Dataplane</code> labels), <code>sources</code> →
+<code>from[]</code> as <code>kind: MeshSubset</code> with the source's tags (<code>kind: Mesh</code> for
+<code>kuma.io/service: '*'</code>), not the 2.7-deprecated <code>MeshService</code>. Reserved tags such as
+<code>kuma.io/protocol</code> are dropped from the <code>Dataplane</code> labels, with a warning. The single
+legacy <code>conf</code> becomes a one-element <code>default.http[]</code> list (<code>delay</code>, <code>abort</code>,
 <code>responseBandwidth</code>). Percentages are numbers when whole and strings when fractional.
 The scanner then warns that <code>from[]</code> is deprecated in favour of <code>rules[]</code>.</p>
 </div>
@@ -122,5 +126,6 @@ does not carry. The original goes to <code>_manual/</code>.</p>
 </footer>
 <script src="../../static/search-index.js"></script>
 <script src="../../static/search.js"></script>
+<script src="../../static/copy.js"></script>
 </body>
 </html>

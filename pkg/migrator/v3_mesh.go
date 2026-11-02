@@ -41,7 +41,8 @@ func meshServicesV3Note(target TargetVersion) string {
 // Under 3.0 a transparent-proxy data plane that no MeshPassthrough selects behaves
 // as passthroughMode: None (UPGRADE.md "Outbound passthrough defaults to None"), so
 // the old allow-all default has to be written down as a policy.
-func passthroughTrueCompanion(meshName, ns string, target TargetVersion) ([][]byte, []string) {
+func passthroughTrueCompanion(cm companionMeta, target TargetVersion) ([][]byte, []string) {
+	meshName := cm.Mesh
 	alternatives := "Narrower alternatives: a MeshPassthrough with passthroughMode: Matched and " +
 		"appendMatch listing the allowed destinations, a MeshExternalService per external " +
 		"destination, or the CP setting defaults.restrictOutbound=false (KUMA_DEFAULTS_RESTRICT_OUTBOUND)."
@@ -53,7 +54,7 @@ func passthroughTrueCompanion(meshName, ns string, target TargetVersion) ([][]by
 				"MeshPassthrough with targetRef.kind: Mesh and default.passthroughMode: All to keep the "+
 				"current behaviour. %s", meshName, alternatives)}
 	}
-	crd, warns, err := buildMeshPassthroughMode(meshName, ns, "All")
+	crd, warns, err := buildMeshPassthroughMode(cm, "All")
 	if err != nil {
 		return nil, append(warns, fmt.Sprintf("Mesh %q: MeshPassthrough marshal error: %v", meshName, err))
 	}
@@ -84,7 +85,8 @@ func passthroughUnsetV3Warning(meshName string) string {
 // applyMeshRemovalsForV3 deletes the Mesh fields that 3.0 removes and returns the
 // companion documents and warnings that replace them. obj is the whole document;
 // spec is obj["spec"] on Kubernetes and obj itself on Universal.
-func applyMeshRemovalsForV3(obj, spec map[string]interface{}, meshName, ns string) ([][]byte, []string) {
+func applyMeshRemovalsForV3(obj, spec map[string]interface{}, cm companionMeta) ([][]byte, []string) {
+	meshName := cm.Mesh
 	var companions [][]byte
 	var warnings []string
 	var dropped []string
@@ -93,7 +95,7 @@ func applyMeshRemovalsForV3(obj, spec map[string]interface{}, meshName, ns strin
 	if mtls, ok := spec["mtls"].(map[string]interface{}); ok || spec["mtls"] != nil {
 		warnings = append(warnings, warnMeshMtlsBackends(obj, meshName, TargetV3)...)
 		if mtls != nil && enabledBackendMode(mtls) == "PERMISSIVE" {
-			crd, w := buildPermissiveMeshTLS(meshName, ns)
+			crd, w := buildPermissiveMeshTLS(cm)
 			if crd != nil {
 				companions = append(companions, crd)
 			}
@@ -231,29 +233,21 @@ func enabledBackendMode(mtls map[string]interface{}) string {
 // buildPermissiveMeshTLS emits the MeshTLS that replaces mtls.backends[].mode:
 // PERMISSIVE, using the shape from UPGRADE.md "mtls.backends[].mode: PERMISSIVE
 // no longer makes inbounds permissive".
-func buildPermissiveMeshTLS(meshName, ns string) ([]byte, []string) {
+func buildPermissiveMeshTLS(cm companionMeta) ([]byte, []string) {
+	meshName := cm.Mesh
 	outName := meshName + "-tls-permissive"
 	var warnings []string
 	if w := ValidateResourceName(outName, "MeshTLS"); w != "" {
 		warnings = append(warnings, w)
 	}
-	crd := map[string]interface{}{
-		"apiVersion": kumaAPIVersion,
-		"kind":       "MeshTLS",
-		"metadata": map[string]interface{}{
-			"name":      outName,
-			"namespace": ns,
-			"labels":    map[string]interface{}{meshLabel: meshName},
-		},
-		"spec": map[string]interface{}{
-			"targetRef": map[string]interface{}{"kind": "Mesh"},
-			"rules": []interface{}{
-				map[string]interface{}{
-					"default": map[string]interface{}{"mode": "Permissive"},
-				},
+	crd := buildCompanion("MeshTLS", outName, cm, map[string]interface{}{
+		"targetRef": map[string]interface{}{"kind": "Mesh"},
+		"rules": []interface{}{
+			map[string]interface{}{
+				"default": map[string]interface{}{"mode": "Permissive"},
 			},
 		},
-	}
+	})
 	b, err := yaml.Marshal(crd)
 	if err != nil {
 		return nil, append(warnings, fmt.Sprintf("MeshTLS marshal error: %v", err))
@@ -269,15 +263,15 @@ func buildPermissiveMeshTLS(meshName, ns string) ([]byte, []string) {
 // passthrough (already Exclusive, nothing to extract) through
 // TransformMeshForTarget under a v3 target, so the 3.0 removals apply to every
 // Mesh. Returns ok=false for any other document or target.
-func transformPassthroughMeshForV3(raw []byte, target TargetVersion) ([][]byte, []string, bool) {
-	if !target.IsV3() {
+func transformPassthroughMeshForV3(raw []byte, opts TransformOptions) ([][]byte, []string, bool) {
+	if !opts.Target.IsV3() {
 		return nil, nil, false
 	}
 	kind, _ := probeKindName(raw)
 	if kind != "Mesh" {
 		return nil, nil, false
 	}
-	docs, warnings, err := TransformMeshForTarget(raw, target)
+	docs, warnings, err := TransformMeshWithOptions(raw, opts)
 	if err != nil {
 		return nil, nil, false
 	}
@@ -331,7 +325,8 @@ var motbNameInvalidChars = regexp.MustCompile(`[^a-z0-9-]+`)
 // backend uses protocol: grpc and no path. An endpoint that does not parse as
 // host:port (a URL with a scheme or path, or a missing port) is left in place;
 // ScanForDeprecations then reports it for manual migration.
-func convertInlineOtelEndpointsForV3(docs [][]byte) ([][]byte, []string) {
+func convertInlineOtelEndpointsForV3(docs [][]byte, opts TransformOptions) ([][]byte, []string) {
+	systemNS := resolveSystemNamespace(opts, "")
 	var out [][]byte
 	var warnings []string
 	for _, doc := range docs {
@@ -398,7 +393,8 @@ func convertInlineOtelEndpointsForV3(docs [][]byte) ([][]byte, []string) {
 		for _, ep := range order {
 			host, port, _ := parseOtelHostPort(ep)
 			bn := backendFor[ep]
-			b, err := yaml.Marshal(buildMOTB(bn, mesh, host, port, universal))
+			cm := companionMeta{Mesh: mesh, Namespace: systemNS, Universal: universal}
+			b, err := yaml.Marshal(buildMOTB(bn, host, port, cm))
 			if err != nil {
 				warnings = append(warnings, fmt.Sprintf("MeshOpenTelemetryBackend marshal error: %v", err))
 				continue
@@ -414,10 +410,10 @@ func convertInlineOtelEndpointsForV3(docs [][]byte) ([][]byte, []string) {
 				"backendRef selecting a generated MeshOpenTelemetryBackend by its kuma.io/display-name "+
 				"label: %s. The backend uses protocol grpc, which is what the inline endpoint used. Apply "+
 				"the MeshOpenTelemetryBackend before the policy. On Kubernetes it must stay in the system "+
-				"namespace (kuma-system); change the namespace if your control plane uses another one. "+
-				"If several policies point at the same collector, you can keep one backend and point every "+
-				"backendRef at it.",
-			kind, policyName, strings.Join(created, ", ")))
+				"namespace; it was placed in %s (set systemNamespace in the kuma-migrator config file if "+
+				"your control plane uses another one). If several policies point at the same collector, "+
+				"you can keep one backend and point every backendRef at it.",
+			kind, policyName, strings.Join(created, ", "), systemNS))
 		if len(unparsed) > 0 {
 			sort.Strings(unparsed)
 			warnings = append(warnings, fmt.Sprintf(
@@ -499,39 +495,15 @@ func policyMeshName(obj map[string]interface{}) string {
 }
 
 // buildMOTB builds a MeshOpenTelemetryBackend in the same format as the policy it
-// was extracted from. On Kubernetes it goes in kuma-system: the backend must live in
-// the system namespace. No kuma.io/display-name label is set on it, because the CP
-// computes that label from the name and rejects a supplied value that differs.
-func buildMOTB(name, mesh, host string, port int, universal bool) map[string]interface{} {
-	spec := map[string]interface{}{
+// was extracted from. On Kubernetes it goes in the system namespace (cm.Namespace),
+// where the backend must live. No kuma.io/display-name label is set on it, because
+// the CP computes that label from the name and rejects a supplied value that differs.
+func buildMOTB(name, host string, port int, cm companionMeta) map[string]interface{} {
+	return buildCompanion("MeshOpenTelemetryBackend", name, cm, map[string]interface{}{
 		"endpoint": map[string]interface{}{
 			"address": host,
 			"port":    port,
 		},
 		"protocol": "grpc",
-	}
-	if universal {
-		out := map[string]interface{}{
-			"type": "MeshOpenTelemetryBackend",
-			"name": name,
-			"spec": spec,
-		}
-		if mesh != "" {
-			out["mesh"] = mesh
-		}
-		return out
-	}
-	meta := map[string]interface{}{
-		"name":      name,
-		"namespace": "kuma-system",
-	}
-	if mesh != "" {
-		meta["labels"] = map[string]interface{}{meshLabel: mesh}
-	}
-	return map[string]interface{}{
-		"apiVersion": kumaAPIVersion,
-		"kind":       "MeshOpenTelemetryBackend",
-		"metadata":   meta,
-		"spec":       spec,
-	}
+	})
 }

@@ -52,6 +52,11 @@ Code: [`externalservice.go`](https://github.com/Kong/kuma-migrator/blob/main/pkg
 [`v3_mes.go`](https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/v3_mes.go),
 [`v3_scan.go`](https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/v3_scan.go).
 
+The converted `MeshExternalService` keeps the input format. A Universal `ExternalService` gives a
+Universal `MeshExternalService` (`type`, `name`, `mesh`). A Kubernetes one gives a CRD in the
+control-plane namespace, inferred from the input or set with `systemNamespace` in the config file
+(see [Meshes](meshes.md#system-namespace)).
+
 The `MeshIdentity` check looks only at the input directory. If the `MeshIdentity` exists on the
 control plane but was not extracted, ignore the warning.
 
@@ -112,14 +117,14 @@ spec:
 Output with `--to-latest v2`:
 
 ```yaml
-# routing/MeshExternalService-kong-mesh-system-httpbin.yaml
+# routing/MeshExternalService-kuma-system-httpbin.yaml
 apiVersion: kuma.io/v1alpha1
 kind: MeshExternalService
 metadata:
   labels:
     kuma.io/mesh: default
   name: httpbin
-  namespace: kong-mesh-system
+  namespace: kuma-system
 spec:
   endpoints:
   - address: httpbin.org
@@ -157,7 +162,7 @@ Output with `--to-latest v3` — the same, with the CA in the `SecureDataSource`
 
 `v3` warnings (shortened):
 
-```
+```text
 ⚠  spec.tls.verification.caCert.inlineString rewritten to the SecureDataSource shape (type:
    InsecureInline) that Kuma 3.0 requires. Apply it while every control plane runs 2.14.6 or
    later and before upgrading the global control plane to 3.0 …

@@ -50,8 +50,8 @@ spec:
 	if len(docs) != 1 {
 		t.Fatalf("expected 1 output doc, got %d", len(docs))
 	}
-	// No warnings: producer policy is same-namespace, uses name/namespace.
-	if len(warnings) != 0 {
+	// Only the best-guess advisory on the top-level Dataplane 'app' label.
+	if len(warnings) != 1 || !strings.Contains(warnings[0], "best-guess pod label") {
 		t.Errorf("unexpected warnings: %v", warnings)
 	}
 
@@ -60,18 +60,19 @@ spec:
 		t.Fatalf("unmarshal output: %v", err)
 	}
 
-	// spec.targetRef → Dataplane with name+namespace (same namespace as policy).
+	// spec.targetRef → Dataplane with labels even in the same namespace: a Dataplane
+	// name is the pod name, so {name: demo-app} would select nothing.
 	if out.Spec.TargetRef == nil {
 		t.Fatal("spec.targetRef is nil")
 	}
 	if out.Spec.TargetRef.Kind != "Dataplane" {
 		t.Errorf("spec.targetRef.kind = %q, want Dataplane", out.Spec.TargetRef.Kind)
 	}
-	if out.Spec.TargetRef.Name == nil || *out.Spec.TargetRef.Name != "demo-app" {
-		t.Errorf("spec.targetRef.name = %v, want demo-app", out.Spec.TargetRef.Name)
+	if out.Spec.TargetRef.Name != nil || out.Spec.TargetRef.Namespace != nil {
+		t.Errorf("spec.targetRef must not use name/namespace: %+v", out.Spec.TargetRef)
 	}
-	if out.Spec.TargetRef.Namespace == nil || *out.Spec.TargetRef.Namespace != "kuma-demo" {
-		t.Errorf("spec.targetRef.namespace = %v, want kuma-demo", out.Spec.TargetRef.Namespace)
+	if got := out.Spec.TargetRef.Labels; got["app"] != "demo-app" || got["k8s.kuma.io/namespace"] != "kuma-demo" || len(got) != 2 {
+		t.Errorf("spec.targetRef.labels = %v, want {app: demo-app, k8s.kuma.io/namespace: kuma-demo}", got)
 	}
 
 	// to[0].targetRef → MeshService with name+namespace (producer: same namespace).
@@ -146,9 +147,9 @@ spec:
 	if out.Spec.TargetRef.Kind != "Dataplane" {
 		t.Errorf("spec.targetRef.kind = %q, want Dataplane", out.Spec.TargetRef.Kind)
 	}
-	// policy ns == target ns → name/namespace form
-	if out.Spec.TargetRef.Name == nil || *out.Spec.TargetRef.Name != "consumer-app" {
-		t.Errorf("spec.targetRef.name = %v, want consumer-app", out.Spec.TargetRef.Name)
+	// Top-level Dataplane is always labels-selected.
+	if out.Spec.TargetRef.Name != nil || out.Spec.TargetRef.Labels["app"] != "consumer-app" {
+		t.Errorf("spec.targetRef = %+v, want labels {app: consumer-app, ...}", out.Spec.TargetRef)
 	}
 
 	// to[0].targetRef → MeshService with labels using kuma.io/display-name (cross-namespace consumer).
@@ -176,10 +177,9 @@ spec:
 		t.Errorf("to[0].targetRef.name should be nil for labels-based consumer targeting, got %q", *toRef.Name)
 	}
 
-	// No warning expected: MeshService labels use kuma.io/display-name which is
-	// deterministic (derived from the service name). Warnings are only emitted for
-	// Dataplane labels where the "app" key is a best-guess.
-	if len(warnings) != 0 {
+	// The only warning is for the Dataplane "app" best-guess label; MeshService
+	// labels use kuma.io/display-name, which is deterministic.
+	if len(warnings) != 1 || !strings.Contains(warnings[0], "best-guess pod label") {
 		t.Errorf("unexpected warnings: %v", warnings)
 	}
 }
@@ -308,8 +308,8 @@ conf:
 	if len(docs) != 1 {
 		t.Fatalf("expected 1 doc (single source), got %d", len(docs))
 	}
-	// Scenario A has no policy namespace → name/namespace used, no warning.
-	if len(warnings) != 0 {
+	// Only the top-level Dataplane 'app' best-guess advisory.
+	if len(warnings) != 1 || !strings.Contains(warnings[0], "best-guess pod label") {
 		t.Errorf("unexpected warnings for Scenario A: %v", warnings)
 	}
 
@@ -325,11 +325,11 @@ conf:
 	if out.Spec.TargetRef.Kind != "Dataplane" {
 		t.Errorf("spec.targetRef.kind = %q, want Dataplane", out.Spec.TargetRef.Kind)
 	}
-	if out.Spec.TargetRef.Name == nil || *out.Spec.TargetRef.Name != "backend" {
-		t.Errorf("spec.targetRef.name = %v, want backend", out.Spec.TargetRef.Name)
+	if out.Spec.TargetRef.Name != nil || out.Spec.TargetRef.Namespace != nil {
+		t.Errorf("spec.targetRef must not use name/namespace: %+v", out.Spec.TargetRef)
 	}
-	if out.Spec.TargetRef.Namespace == nil || *out.Spec.TargetRef.Namespace != "demo" {
-		t.Errorf("spec.targetRef.namespace = %v, want demo", out.Spec.TargetRef.Namespace)
+	if got := out.Spec.TargetRef.Labels; got["app"] != "backend" || got["k8s.kuma.io/namespace"] != "demo" {
+		t.Errorf("spec.targetRef.labels = %v, want {app: backend, k8s.kuma.io/namespace: demo}", got)
 	}
 
 	// destinations → to[]: MeshService.

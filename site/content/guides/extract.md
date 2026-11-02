@@ -33,7 +33,7 @@ Code: [`pkg/extractor/kube.go`](https://github.com/Kong/kuma-migrator/blob/main/
 
 ## Output layout
 
-```
+```text
 <output-dir>/
   <context>-global-ctx/            ← context name + control plane mode
     .kuma-migrator.json            ← how this context was extracted
@@ -117,7 +117,7 @@ kuma-migrator extract --kube-context global-cp --output-dir ./raw-policies
 
 Console output on a Global control plane:
 
-```
+```text
 CP mode:        global
 Attached zones: zone-eu-west, zone-us-east
 [INFO] MeshGatewayInstance and MeshGatewayConfig are zone-local and skipped here.
@@ -146,7 +146,7 @@ kuma-migrator extract --kube-context prod-zone-us --output-dir ./raw-policies
 
 Console output on a Zone control plane:
 
-```
+```text
 CP mode:        zone (eu-west)
 [WARN] Extracting from a Zone CP. Only resources with kuma.io/origin: zone will be kept.
        For a complete policy set, also run extract against the Global CP.

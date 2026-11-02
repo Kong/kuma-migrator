@@ -15,8 +15,8 @@
 <meta property="og:image" content="https://kong.github.io/kuma-migrator/assets/migration-overview.svg">
 <meta name="twitter:card" content="summary_large_image">
 
+<link rel="stylesheet" href="../../static/shared.css">
 <link rel="stylesheet" href="../../static/style.css">
-<link rel="stylesheet" href="../../static/chroma.css">
 </head>
 <body data-root="../../">
 <a class="skip" href="#content">Skip to content</a>
@@ -30,6 +30,7 @@
       <a href="../../policies/">Policies</a>
       <a href="https://github.com/Kong/kuma-migrator">GitHub</a>
     </nav>
+    <!-- release-tag --><a class="release-badge" href="https://github.com/Kong/kuma-migrator/releases/latest" title="Latest release: v0.8.0">v0.8.0</a><!-- /release-tag -->
     <div class="search">
       <input id="search-input" type="search" placeholder="Search docs" aria-label="Search docs" autocomplete="off">
       <ul id="search-results" hidden></ul>
@@ -57,7 +58,7 @@
 defined in <a href="https://github.com/Kong/kuma-migrator/blob/main/cmd/extract.go"><code>cmd/extract.go</code></a>
 and <a href="https://github.com/Kong/kuma-migrator/blob/main/cmd/migrate.go"><code>cmd/migrate.go</code></a>.</p>
 <h2 id="commands">Commands</h2>
-<pre><code>kuma-migrator extract  --kube-context &lt;ctx&gt; | --kumactl-context &lt;ctx&gt;
+<div class="code"><pre class="chroma" data-lang="text"><code>kuma-migrator extract  --kube-context &lt;ctx&gt; | --kumactl-context &lt;ctx&gt;
                        --output-dir &lt;dir&gt; [--mesh &lt;name&gt;]
                        [--output-format kubernetes|universal] [--tls-skip-verify]
 
@@ -66,7 +67,7 @@ kuma-migrator migrate  --input-dir &lt;dir&gt; --output-dir &lt;dir&gt;
 
 kuma-migrator version
 kuma-migrator completion &lt;bash|zsh|fish|powershell&gt;
-</code></pre>
+</code></pre></div>
 <p>There is no <code>plan</code> command. <code>migrate --dry-run</code> replaces it, with the same flags.</p>
 <h2 id="extract">extract</h2>
 <p>Reads resources from a running control plane and writes one YAML file per resource.
@@ -187,23 +188,25 @@ it writes only <code>migration-plan.md</code>. Without it, it writes the migrate
 </tbody>
 </table></div>
 <p>An invalid <code>--to-latest</code> value fails before any file is read:</p>
-<pre><code>Error: invalid --to-latest value &quot;v4&quot;: want &quot;v2&quot; or &quot;v3&quot;
-</code></pre>
+<div class="code"><pre class="chroma" data-lang="text"><code><span class="o-err">Error:</span> invalid --to-latest value "v4": want "v2" or "v3"
+</code></pre></div>
 <p>See <a href="../migrate/">Migrate</a> and <a href="../target-version/">Target versions</a>.</p>
 <h2 id="version-and-completion">version and completion</h2>
 <p><code>kuma-migrator version</code> and <code>kuma-migrator --version</code> print the build version.
 <code>kuma-migrator completion &lt;shell&gt;</code> prints a shell completion script:</p>
-<pre class="chroma"><code><span class="line"><span class="cl">kuma-migrator completion zsh &gt; <span class="s2">&#34;</span><span class="si">${</span><span class="nv">fpath</span><span class="p">[1]</span><span class="si">}</span><span class="s2">/_kuma-migrator&#34;</span>
-</span></span></code></pre><h2 id="configuration-file">Configuration file</h2>
+<div class="code"><pre class="chroma" data-lang="bash"><code><span class="k-bin">kuma-migrator</span> <span class="k-sub">completion</span> <span class="k-val">zsh</span> <span class="k-val">&gt;</span> <span class="s2">"</span><span class="si">${</span><span class="nv">fpath</span><span class="p">[1]</span><span class="si">}</span><span class="s2">/_kuma-migrator"</span>
+</code></pre></div>
+<h2 id="configuration-file">Configuration file</h2>
 <p>Optional. Read from <code>~/.config/kuma-migrator.yaml</code>, or from the path in
 <code>$KUMA_MIGRATOR_CONFIG</code>. Parsed by
 <a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/config/config.go"><code>pkg/config/config.go</code></a>.</p>
-<pre class="chroma"><code><span class="line"><span class="cl"><span class="nt">skip</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">kubernetes</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="l">Dataplane, AccessRoleBinding, ZoneEgress, ZoneIngress, Zone, Workload, Secret, GlobalSecret]</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">universal</span><span class="p">:</span><span class="w">  </span><span class="p">[</span><span class="l">AccessRoleBinding, Zone, Workload, Secret, GlobalSecret]</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="nt">adminServer</span><span class="p">:</span><span class="w">
-</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">tlsSkipVerify</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="w">
-</span></span></span></code></pre><div class="table-wrap"><table>
+<div class="code"><pre class="chroma" data-lang="yaml"><code><span class="nt">skip</span><span class="p">:</span>
+  <span class="nt">kubernetes</span><span class="p">:</span> <span class="p">[</span><span class="l">Dataplane, AccessRoleBinding, ZoneEgress, ZoneIngress, Zone, Workload, Secret, GlobalSecret]</span>
+  <span class="nt">universal</span><span class="p">:</span>  <span class="p">[</span><span class="l">AccessRoleBinding, Zone, Workload, Secret, GlobalSecret]</span>
+<span class="nt">adminServer</span><span class="p">:</span>
+  <span class="nt">tlsSkipVerify</span><span class="p">:</span> <span class="kc">false</span>
+</code></pre></div>
+<div class="table-wrap"><table>
 <thead>
 <tr>
 <th>Key</th>
@@ -264,5 +267,6 @@ pick up later changes to the defaults. Leave the key out to keep the built-in li
 </footer>
 <script src="../../static/search-index.js"></script>
 <script src="../../static/search.js"></script>
+<script src="../../static/copy.js"></script>
 </body>
 </html>
