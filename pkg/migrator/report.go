@@ -43,6 +43,7 @@ func writeMarkdown(b *strings.Builder, r *MigrationReport) {
 		line(b, "> Output targets **3.0**. It is not safe to apply to a 2.x control plane:")
 		line(b, "> fields this run rewrote or removed are still required there.")
 		line(b, "")
+		writeV3TopologyNote(b, r)
 	}
 	if isPlan {
 		line(b, "> **Dry run** — no files have been written.")
@@ -1280,4 +1281,89 @@ func line(b *strings.Builder, s string) {
 func linef(b *strings.Builder, format string, args ...interface{}) {
 	b.WriteString(fmt.Sprintf(format, args...))
 	b.WriteByte('\n')
+}
+
+// writeV3TopologyNote lists extracted control planes whose deployment 3.0
+// rejects: `standalone` mode, and a Global CP on Kubernetes (environment or
+// store). Fed by each context's .kuma-migrator.json; contexts without one are
+// not checked. Called only for a v3 target.
+func writeV3TopologyNote(b *strings.Builder, r *MigrationReport) {
+	var blocking, check []extractor.ContextDir
+	for _, c := range extractor.ListContextMetas(r.InputDir) {
+		switch c.Meta.V3Topology() {
+		case extractor.V3TopologyStandalone, extractor.V3TopologyKubernetesGlobal:
+			blocking = append(blocking, c)
+		case extractor.V3TopologyCheckMode:
+			check = append(check, c)
+		}
+	}
+	if len(blocking) == 0 && len(check) == 0 {
+		return
+	}
+	const upgradeMD = "https://github.com/kumahq/kuma/blob/master/UPGRADE.md"
+	label := func(c extractor.ContextDir) string {
+		dir := c.Dir
+		if dir == "" {
+			dir = "."
+		}
+		return fmt.Sprintf("`%s` (context `%s`)", dir, c.Meta.Context)
+	}
+
+	line(b, "## Control Plane Topology")
+	line(b, "")
+	if len(blocking) > 0 {
+		line(b, "> **Blocking.** These control planes cannot be upgraded to 3.0 as deployed. Change the")
+		line(b, "> deployment on 2.x first; the migrated policies do not depend on it.")
+		line(b, "")
+	}
+	for _, c := range blocking {
+		if c.Meta.V3Topology() == extractor.V3TopologyStandalone {
+			linef(b, "### %s: `standalone` mode", label(c))
+			line(b, "")
+			line(b, "3.0 removes `standalone`: `kuma-cp` fails config validation at startup and the Helm chart fails")
+			line(b, "at template time. `standalone` and `zone` already behave the same, so the change is a rename:")
+			line(b, "")
+			line(b, "1. Set `KUMA_MODE=zone` (Universal) or `controlPlane.mode: zone` (Helm), and change any other")
+			line(b, "   runtime configuration that still says `standalone`.")
+			line(b, "2. Restart the control plane on 2.x and confirm it starts in `zone` mode.")
+			line(b, "")
+			line(b, "The extract directory keeps its `-standalone-ctx` name; nothing in it has to change.")
+			linef(b, "See [`standalone` mode removed](%s#standalone-mode-removed).", upgradeMD)
+			line(b, "")
+			continue
+		}
+		linef(b, "### %s: Global control plane on Kubernetes", label(c))
+		line(b, "")
+		line(b, "3.0 `kuma-cp` rejects `mode=global` with `environment=kubernetes` and with `store.type=kubernetes`.")
+		line(b, "A Global control plane must run with `environment=universal` on a non-Kubernetes store such as")
+		line(b, "PostgreSQL. It can still be deployed in a Kubernetes cluster. Zone control planes on Kubernetes are")
+		line(b, "unaffected. Before upgrading:")
+		line(b, "")
+		line(b, "1. Deploy a new Global `kuma-cp` with `environment=universal` backed by PostgreSQL (Helm:")
+		line(b, "   `controlPlane.mode: global`, `controlPlane.environment: universal`, PostgreSQL credentials in")
+		line(b, "   `controlPlane.secrets`).")
+		line(b, "2. Recreate this Global's resources on it with `kumactl apply`, which takes Universal YAML: extract")
+		line(b, "   the current Global with `--kumactl-context <ctx> --output-format universal` and migrate that output.")
+		line(b, "   kuma-migrator does not extract `Secret`, `GlobalSecret` or `AccessRoleBinding`: copy those")
+		line(b, "   separately. Without the Mesh CA secrets the new Global generates new CAs.")
+		line(b, "3. Point every Zone control plane at the new Global (`controlPlane.kdsGlobalAddress` /")
+		line(b, "   `KUMA_MULTIZONE_ZONE_GLOBAL_ADDRESS`).")
+		line(b, "4. Decommission the Kubernetes-native Global.")
+		line(b, "")
+		linef(b, "See [Global control plane on Kubernetes is no longer supported](%s#global-control-plane-on-kubernetes-is-no-longer-supported)", upgradeMD)
+		line(b, "and [Universal on Kubernetes using Helm](https://kuma.io/docs/latest/production/cp-deployment/multi-zone/).")
+		line(b, "")
+	}
+	if len(check) > 0 {
+		line(b, "### Zone control planes to check")
+		line(b, "")
+		line(b, "These zones are not connected to a Global CP. A 2.x `kuma-cp` started with `KUMA_MODE=standalone`")
+		line(b, "reports `zone` through its API, so the configured value cannot be read from here. If it still says")
+		linef(b, "`standalone`, rename it to `zone` before upgrading ([`standalone` mode removed](%s#standalone-mode-removed)).", upgradeMD)
+		line(b, "")
+		for _, c := range check {
+			linef(b, "- %s", label(c))
+		}
+		line(b, "")
+	}
 }

@@ -72,13 +72,46 @@ func isZoneOnlyKind(kind string) bool {
 	return zoneOnlyKinds[kind]
 }
 
-// ZoneOriginSkip records a resource that was skipped on a Global CP because it
-// carries kuma.io/origin: zone. These are zone-created policies synced (read-only)
-// to the Global CP and must be extracted from the originating zone instead.
+// ZoneOriginSkip records a resource the origin filter skipped, so the summary
+// can list it instead of dropping it silently. Two cases:
+//
+//   - NoOriginLabel false: skipped on a Global CP because it carries
+//     kuma.io/origin: zone. These are zone-created policies synced (read-only)
+//     to the Global CP and must be extracted from the originating zone instead.
+//   - NoOriginLabel true: skipped on a federated Zone CP because it carries no
+//     kuma.io/origin label at all. Kuma 2.7+ labels everything created on a zone
+//     (webhook defaulter / API server, pkg/core/resources/labels/compute.go) and
+//     KDS labels everything synced from Global, so an unlabelled object is
+//     older than the label (created on Kuma ≤2.6, never updated since) or was
+//     written with the admission webhook bypassed. Its owner cannot be told
+//     from the object.
 type ZoneOriginSkip struct {
-	Kind     string
-	Name     string
-	ZoneName string // value of kuma.io/zone label; empty when label is absent
+	Kind          string
+	Name          string
+	ZoneName      string // value of kuma.io/zone label; empty when label is absent
+	Mesh          string // mesh the resource belongs to; empty for global-scoped
+	NoOriginLabel bool
+}
+
+// zoneOriginDecision is the per-resource origin filter on a federated Zone CP.
+// keep: write the resource. noLabel: it was skipped for carrying no
+// kuma.io/origin label (the caller records it so the summary lists it).
+//
+//   - origin zone  → keep
+//   - origin global → skip silently (a KDS copy; extract it from the Global CP)
+//   - no origin, gateway-local kind → keep (see gatewayLocalKinds)
+//   - no origin, any other kind → skip and report
+func zoneOriginDecision(kind, origin string) (keep, noLabel bool) {
+	switch {
+	case origin == CPModeZone:
+		return true, false
+	case origin == "" && isGatewayLocalKind(kind):
+		return true, false
+	case origin == "":
+		return false, true
+	default:
+		return false, false
+	}
 }
 
 // writeResourceFiles splits a multi-document YAML stream into individual files under outputDir.
@@ -228,14 +261,17 @@ func writeSingleResourceDoc(doc string, outputDir string, skipSet map[string]boo
 		}
 	}
 
+	// On a federated Zone CP keep only what this zone owns. Callers pass "" instead
+	// of CPModeZone for a non-federated zone (originFilterMode), which keeps all.
 	if cpMode == CPModeZone {
 		origin, _ := labels["kuma.io/origin"].(string)
-		switch {
-		case origin == CPModeZone:
-			// explicit zone-origin → keep
-		case origin == "" && isGatewayLocalKind(kind):
-			// gateway-local kinds may lack origin label on zone CPs → keep
-		default:
+		keep, noLabel := zoneOriginDecision(kind, origin)
+		if !keep {
+			// The mesh filter still applies: a resource of another mesh is not
+			// "lost", it was not asked for.
+			if noLabel && skips != nil && (meshFilter == "" || meshName == "" || meshName == meshFilter) {
+				*skips = append(*skips, ZoneOriginSkip{Kind: kind, Name: name, Mesh: meshName, NoOriginLabel: true})
+			}
 			return 0, nil
 		}
 	}
@@ -282,7 +318,6 @@ func writeSingleResourceDoc(doc string, outputDir string, skipSet map[string]boo
 	ui.FileWritten(sub, filename)
 	return 1, nil
 }
-
 
 // universalToKubernetes converts a Universal-format resource map to Kubernetes format.
 //
@@ -338,19 +373,53 @@ func universalToKubernetes(obj map[string]interface{}) map[string]interface{} {
 
 // printZoneOriginSkips prints a terminal summary of resources skipped on a Global CP
 // because they carry kuma.io/origin: zone, telling the user which zone to target.
+//
+// Entries with NoOriginLabel (federated Zone CP) are printed in their own
+// section by printNoOriginSkips.
 func printZoneOriginSkips(skips []ZoneOriginSkip) {
-	if len(skips) == 0 {
+	var zoneOrigin, noOrigin []ZoneOriginSkip
+	for _, s := range skips {
+		if s.NoOriginLabel {
+			noOrigin = append(noOrigin, s)
+		} else {
+			zoneOrigin = append(zoneOrigin, s)
+		}
+	}
+	printNoOriginSkips(noOrigin)
+	if len(zoneOrigin) == 0 {
 		return
 	}
 	fmt.Println()
 	ui.Warn("Zone-origin resources skipped on Global CP — extract from their zone instead:")
-	for _, s := range skips {
+	for _, s := range zoneOrigin {
 		zone := s.ZoneName
 		if zone == "" {
 			zone = "(zone label absent — check kuma.io/zone label)"
 		}
 		ui.WarnIndented(fmt.Sprintf("%s/%s  →  zone: %s", s.Kind, s.Name, zone))
 	}
+}
+
+// printNoOriginSkips lists resources skipped on a federated Zone CP because they
+// carry no kuma.io/origin label, so they do not disappear silently.
+func printNoOriginSkips(skips []ZoneOriginSkip) {
+	if len(skips) == 0 {
+		return
+	}
+	fmt.Println()
+	ui.Warn(fmt.Sprintf("%d resource(s) without a kuma.io/origin label skipped on this federated Zone CP:", len(skips)))
+	for _, s := range skips {
+		where := ""
+		if s.Mesh != "" {
+			where = "  (mesh " + s.Mesh + ")"
+		}
+		ui.WarnIndented(fmt.Sprintf("%s/%s%s", s.Kind, s.Name, where))
+	}
+	ui.WarnIndented("Kuma 2.7+ labels every resource created on a zone (kuma.io/origin: zone) and every")
+	ui.WarnIndented("copy synced from Global (kuma.io/origin: global). An unlabelled one predates the label")
+	ui.WarnIndented("or was written with the admission webhook bypassed, so its owner is unknown.")
+	ui.WarnIndented("If it also exists on the Global CP it is a synced copy: extract it there. Otherwise it")
+	ui.WarnIndented("was created on this zone: label it kuma.io/origin=zone and re-run extract.")
 }
 
 // splitYAMLDocs splits a byte slice on YAML document separators (---).
@@ -383,15 +452,33 @@ func sanitize(s string) string {
 // PrintCPModeInfo prints the CP mode banner and relevant notices.
 // Called from both ExtractViaKubectl and ExtractViaKumactl.
 func PrintCPModeInfo(cpMode, zoneName string, zones []string) {
+	PrintCPInfo(CPInfo{Mode: cpMode, ZoneName: zoneName, Federated: true}, zones)
+}
+
+// PrintCPInfo prints the CP mode banner, including whether a zone CP is
+// federated (connected to a Global CP) and the origin filter that follows.
+func PrintCPInfo(info CPInfo, zones []string) {
+	cpMode, zoneName := info.Mode, info.ZoneName
+	if info.IsNonFederatedZone() {
+		label := "zone, not federated"
+		if zoneName != "" {
+			label = fmt.Sprintf("zone (%s), not federated", zoneName)
+		}
+		ui.KV("CP mode:", label)
+		ui.Info("This Zone CP is not connected to a Global CP: every resource in its store is its own.")
+		ui.InfoIndented("No kuma.io/origin filter is applied — all resources are extracted.")
+		return
+	}
 	switch cpMode {
 	case CPModeZone:
-		ui.KV("CP mode:", fmt.Sprintf("zone (%s)", zoneName))
+		ui.KV("CP mode:", fmt.Sprintf("zone (%s), federated", zoneName))
 		ui.Warn("Extracting from a Zone CP — only kuma.io/origin: zone resources will be kept.")
 		ui.WarnIndented("For a complete policy set, also run extract against the Global CP.")
 		ui.Info("MeshGatewayInstance and MeshGatewayConfig are zone-local and will be extracted here.")
 		ui.Info("MeshGateway and route CRDs (MeshHTTPRoute, MeshTCPRoute, MeshGatewayRoute):")
 		ui.InfoIndented("- Synced from Global CP with kuma.io/origin: global → skipped (extract from Global CP).")
 		ui.InfoIndented("- Created directly on this Zone CP with no origin label → extracted here.")
+		ui.Info("Other resources with no kuma.io/origin label are skipped and listed after extraction.")
 	case CPModeGlobal:
 		ui.KV("CP mode:", "global")
 		if len(zones) > 0 {
@@ -402,6 +489,7 @@ func PrintCPModeInfo(cpMode, zoneName string, zones []string) {
 		ui.InfoIndented("Run extract against each Zone CP to capture gateway instances.")
 	case CPModeStandalone:
 		ui.KV("CP mode:", "standalone")
+		ui.Info("standalone is removed in Kuma 3.0: rename KUMA_MODE / controlPlane.mode to zone before upgrading.")
 	default:
 		ui.KV("CP mode:", "unknown")
 		ui.Warn("Could not detect CP mode — extracting all resources.")

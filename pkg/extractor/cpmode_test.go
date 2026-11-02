@@ -793,4 +793,3 @@ spec: {}
 		t.Errorf("expected no Kubernetes kind field in universal output, got:\n%s", s)
 	}
 }
-
