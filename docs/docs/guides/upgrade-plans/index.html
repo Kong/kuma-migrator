@@ -186,16 +186,6 @@ control plane upgrade steps, and check traffic.</p>
 </code></pre></div>
 </li>
 <li>
-<p><strong>Move every mesh to <code>MeshIdentity</code>.</strong> On 3.0 <code>Mesh.mtls</code> issues nothing: a mesh whose
-only identity source is <code>mtls</code> serves plaintext and <code>MeshTrafficPermission</code>/<code>MeshTLS</code> stop
-applying
-(<a href="https://github.com/kumahq/kuma/blob/v3.0.1/UPGRADE.md#meshmtls-no-longer-produces-mtls">Kuma <code>UPGRADE.md</code></a>).
-This is a CA cutover the manifests cannot describe; the tool reports it and does not
-convert it. Rewrite <code>MeshTrafficPermission</code> <code>from[]</code> to <code>rules[]</code> at the same time. See
-<a href="../../topics/mtls-identity/">mTLS and identity</a> and
-<a href="../../topics/access-control/">Access control</a>.</p>
-</li>
-<li>
 <p><strong>Set <code>meshServices.mode: Exclusive</code> on every mesh</strong> before the Global control plane is
 upgraded. A 2.x zone reads a missing field as <code>Disabled</code> and stops serving <code>MeshService</code>
 outbounds and DNS
@@ -204,6 +194,18 @@ The <code>v3</code> Apply Checklist prints the command for each mesh (<code>kube
 <code>kumactl get | yq | kumactl apply</code>), which changes only <code>meshServices</code>. Run it once every
 workload and policy uses <code>MeshService</code> names. Do not apply the <code>v3</code> <code>Mesh</code> files here: they
 drop <code>spec.mtls</code>. See <a href="../../topics/meshservice/">MeshService</a>.</p>
+</li>
+<li>
+<p><strong>Move every mesh to <code>MeshIdentity</code>.</strong> This needs the previous step: on 2.14 a
+<code>MeshIdentity</code> in a mesh that is not <code>Exclusive</code> stays <code>DependenciesReady=False</code> with reason
+<code>MeshServicesDisabled</code> and never issues certificates. On 3.0 <code>Mesh.mtls</code> issues nothing: a
+mesh whose only identity source is <code>mtls</code> serves plaintext and
+<code>MeshTrafficPermission</code>/<code>MeshTLS</code> stop applying
+(<a href="https://github.com/kumahq/kuma/blob/v3.0.1/UPGRADE.md#meshmtls-no-longer-produces-mtls">Kuma <code>UPGRADE.md</code></a>).
+This is a CA cutover the manifests cannot describe; the tool reports it and does not
+convert it. Rewrite <code>MeshTrafficPermission</code> <code>from[]</code> to <code>rules[]</code> at the same time. See
+<a href="../../topics/mtls-identity/">mTLS and identity</a> and
+<a href="../../topics/access-control/">Access control</a>.</p>
 </li>
 <li>
 <p><strong>Migrate to v3</strong> and review the report.</p>
@@ -280,9 +282,8 @@ order are described in <a href="../apply/">Apply</a>. Two points matter for an u
 <ul>
 <li>The checklist always contains the &quot;Upgrade the Global Control Plane&quot; and &quot;Upgrade Zone
 Control Planes&quot; steps. In a <code>v2</code> run used to prepare on the current version, skip them.</li>
-<li>In a <code>v3</code> run, the checklist orders the steps as: fix errors, finish the <code>MeshIdentity</code>
-cutover (when a <code>Mesh</code> sets <code>spec.mtls</code>), set <code>meshServices.mode: Exclusive</code> on every mesh,
-delete the removed kinds, upgrade, apply backends then policies, apply the <code>Mesh</code> files. The
+<li>In a <code>v3</code> run, the checklist orders the steps as: fix errors, set <code>meshServices.mode: Exclusive</code> on every mesh, finish the <code>MeshIdentity</code> cutover (when a <code>Mesh</code> sets
+<code>spec.mtls</code>; it needs <code>Exclusive</code> first), delete the removed kinds, upgrade, apply backends then policies, apply the <code>Mesh</code> files. The
 first four run on 2.14; the <code>Mesh</code> files, which drop <code>spec.mtls</code>, are applied only on 3.0.</li>
 </ul>
 <h2 id="control-plane-topology">Control Plane Topology</h2>

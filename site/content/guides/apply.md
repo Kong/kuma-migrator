@@ -19,8 +19,8 @@ The steps below appear in this order when present.
 | Fix errors | the report's **Action Items → Errors** is not empty |
 | Update workload env vars | `kuma.io/service`-encoded addresses were found in Deployment or StatefulSet env vars |
 | Fix deprecated annotations | `"yes"`/`"no"` values were found on `kuma.io/*` annotations |
-| Finish the `MeshIdentity` cutover | `--to-latest v3` and a `Mesh` in the input sets `spec.mtls` |
 | Set `meshServices.mode: Exclusive` on every mesh | `--to-latest v3` (always) |
+| Finish the `MeshIdentity` cutover | `--to-latest v3` and a `Mesh` in the input sets `spec.mtls` |
 | Delete the resources 3.0 removes | `--to-latest v3` and the report has a **Delete Before Upgrading to 3.0** section |
 | Upgrade the Global control plane | always |
 | Upgrade the Zone control planes | always |
@@ -34,7 +34,8 @@ The steps below appear in this order when present.
 ### Fix errors
 
 Nothing after this step is safe to apply until every error is resolved. Each error names the
-document and the reason; the original is in the output tree (`v2`) or under `_manual/` (`v3`).
+document and the reason. The original, or the converted output the target rejects, is under
+`_manual/` on both targets, and **Kept Under `_manual/`** lists every file there with its reason.
 
 ### Update workload env vars and annotations
 
@@ -42,17 +43,6 @@ Workloads that address services by their `kuma.io/service` name (for example
 `backend_demo_svc_3001`) stop resolving once the mesh runs `meshServices.mode: Exclusive`. The
 report lists each env var with its replacement address. Annotation values `"yes"`/`"no"` on
 `kuma.io/*` annotations must become `"true"`/`"false"`.
-
-### Finish the MeshIdentity cutover
-
-`--to-latest v3` only, when a `Mesh` in the input sets `spec.mtls`. 3.0 no longer produces
-mTLS from `Mesh.mtls` and drops the legacy CA from the trust bundle, so a mesh without a
-`MeshIdentity` serves plaintext after the upgrade, with no rolling path back. Create a
-`MeshIdentity` and `MeshTrust` that select every proxy of the mesh on the 2.x control plane and
-confirm traffic uses them. See [mTLS and workload identity](../topics/mtls-identity.md).
-
-Do not apply the `--to-latest v3` `Mesh` files at this point: they drop `spec.mtls`, which
-turns mTLS off on a 2.x control plane.
 
 ### Set meshServices.mode: Exclusive
 
@@ -74,6 +64,23 @@ kumactl get mesh default -o yaml | yq '.meshServices.mode = "Exclusive"' | kumac
 It also prints the command to list meshes, for meshes that were not in the input.
 `Exclusive` turns off routing by `kuma.io/service` tags, so workload env vars must already use
 the new addresses (the earlier step).
+
+This step comes before the `MeshIdentity` cutover because the cutover depends on it: on Kong
+Mesh 2.14.7 a `MeshIdentity` in a mesh without `Exclusive` reports `MeshIdentity requires
+MeshServices to be enabled on the mesh` and never becomes ready.
+
+### Finish the MeshIdentity cutover
+
+`--to-latest v3` only, when a `Mesh` in the input sets `spec.mtls`, and after the previous step:
+on 2.14 a `MeshIdentity` in a mesh that is not `Exclusive` stays `DependenciesReady=False` with
+reason `MeshServicesDisabled` and never issues certificates. 3.0 no longer produces
+mTLS from `Mesh.mtls` and drops the legacy CA from the trust bundle, so a mesh without a
+`MeshIdentity` serves plaintext after the upgrade, with no rolling path back. Create a
+`MeshIdentity` and `MeshTrust` that select every proxy of the mesh on the 2.x control plane and
+confirm traffic uses them. See [mTLS and workload identity](../topics/mtls-identity.md).
+
+Do not apply the `--to-latest v3` `Mesh` files at this point: they drop `spec.mtls`, which
+turns mTLS off on a 2.x control plane.
 
 ### Delete the resources 3.0 removes
 
@@ -123,11 +130,13 @@ The command depends on how the context was extracted and on the control plane's 
 both read from `.kuma-migrator.json`:
 
 - **`extract --kumactl-context`** from a Universal control plane, or from Konnect. `kumactl`
-  does not accept a directory for `-f`, so the report lists one command per file, after a
-  reminder to select the context:
+  before 2.14 does not accept a directory for `-f`, so the report lists one command per file,
+  after the command that selects the context (`kumactl config control-planes switch`; there is
+  no `kumactl config use-context`). `kumactl apply` of an existing resource replaces its whole
+  spec and labels, so it removes the fields the migrated file drops:
 
   ```bash
-  kumactl config use-context konnect-global-prod
+  kumactl config control-planes switch --name konnect-global-prod
   kumactl apply -f ./migrated/konnect-global-prod-global-ctx/mesh-default/resiliency/MeshTimeout-my-timeout.yaml
   kumactl apply -f ./migrated/konnect-global-prod-global-ctx/mesh-default/resiliency/MeshRetry-my-retry.yaml
   ```
@@ -137,6 +146,32 @@ both read from `.kuma-migrator.json`:
   ```bash
   kubectl apply -f ./migrated/zone-eu-west1-prod-zone-ctx/mesh-default/resiliency/
   ```
+
+  When the subfolder holds a file that rewrites an object of the input (same kind, namespace and
+  name, different content), the report lists that subfolder file by file instead, with
+  `kubectl replace` for the rewrites and `kubectl apply` for the rest:
+
+  ```bash
+  kubectl replace -f ./migrated/zone-eu-west1-prod-zone-ctx/mesh-default/resiliency/MeshTimeout-kong-mesh-system-mesh-timeout-all-default.yaml --save-config
+  kubectl apply -f ./migrated/zone-eu-west1-prod-zone-ctx/mesh-default/resiliency/MeshTimeout-kong-mesh-system-mesh-timeout-all-default-outbound.yaml
+  ```
+
+  `kubectl apply` merges into the live object. When that object has no
+  `kubectl.kubernetes.io/last-applied-configuration` annotation, because the control plane,
+  Helm or `kubectl create` made it, the merge keeps every field the new file drops. A
+  `from[]` policy split into `rules[]` then still carries its old `to[]` and is rejected with
+  `fields 'to' and 'from' must be empty when 'rules' is defined` (seen on the control-plane
+  default `mesh-timeout-all-default`), and a migrated `Mesh` keeps its embedded backends.
+  `kubectl apply --server-side --force-conflicts` does not remove them either: fields owned by
+  another field manager stay. `kubectl replace` writes the whole object. `--save-config`
+  records the new content, so a later `kubectl apply` of the same file merges correctly.
+  `kubectl replace` fails with `NotFound` when the object was deleted since `extract`; use
+  `kubectl create -f <file>` for that file. Files that only add fields, and files identical to
+  their input, keep `kubectl apply`.
+
+  `migrate` drops `metadata.resourceVersion` and `metadata.uid` that `kubectl get -o yaml`
+  copies into the extracted tree. Both are write preconditions: with them, `kubectl replace` and
+  `kubectl apply` fail with a conflict as soon as the live object changed after `extract`.
 
 - **`extract --kumactl-context`** from a Kubernetes-backed control plane
   (`"environment": "kubernetes"`). `kumactl` cannot create, update or delete resources there:
@@ -158,7 +193,9 @@ context, and its Gateway API output lands in `<zone-ctx>/global-scoped-resources
 **`v2`: last.** The migrated `Mesh` sets `spec.meshServices.mode: Exclusive`. That turns off
 routing by `kuma.io/service` tags, so applying it before every policy and workload is migrated
 breaks any workload still addressed by a tag. If a `Mesh` was not in the input, set the mode
-by hand (`kubectl patch`, or the `kumactl get | yq | kumactl apply` form above).
+by hand (`kubectl patch`, or the `kumactl get | yq | kumactl apply` form above). A migrated
+`Mesh` drops its embedded observability backends, so on a kubectl context it is listed with
+`kubectl replace`, for the reason given under the policy step.
 
 **`v3`: after the upgrade.** The mode is already set by the pre-upgrade step. The v3 `Mesh`
 files drop `spec.mtls` and the other fields 3.0 removed; 3.0 ignores those fields, so applying
@@ -195,16 +232,19 @@ to 3.0** instead, because they must go before the upgrade, not after it.
 
 ## Manual subtree
 
-Under `--to-latest v3`, these documents go to a `_manual/` subtree instead of the apply tree:
+These documents go to a `_manual/` subtree instead of the apply tree:
 
-- originals whose conversion failed (`TrafficRoute`, `VirtualOutbound`, `MeshGatewayInstance`,
-  legacy `TrafficPermission`, …);
-- documents that pass through as a kind 3.0 removes (`MeshGlobalRateLimit`,
-  `MeshGatewayConfig`, Universal `ZoneIngress`/`ZoneEgress`). Their file is labelled `MANUAL`
-  on stdout and listed under **Kept Under `_manual/`** in the report;
+- originals whose conversion failed (`TrafficRoute`, `VirtualOutbound`, and under `v3`
+  `MeshGatewayInstance`, legacy `TrafficPermission`, …), on both targets;
 - converted output the target control plane rejects as written (the transform reports it
-  with a "rejected by --to-latest …" reason). The converted document is kept, not the
-  original. This applies under `v2` as well.
+  with a "rejected by the … control plane as converted" reason). The converted document is
+  kept, not the original;
+- under `v3`, documents that pass through as a kind 3.0 removes (`MeshGlobalRateLimit`,
+  `MeshGatewayConfig`, Universal `ZoneIngress`/`ZoneEgress`). Their file is labelled `MANUAL`
+  on stdout.
+
+The report's **Kept Under `_manual/`** section lists every file of the subtree with its source
+file, kind, name and reason.
 
 ```text
 migrated/
@@ -216,7 +256,8 @@ migrated/
 ```
 
 No checklist step applies `_manual/`: `kubectl apply -f <dir>/` is not recursive, and the
-`kumactl` file list never includes these paths. Each file is listed in **Action Items →
-Errors** or in **Delete Before Upgrading to 3.0** with what to do about it. Under `v2`
-errored originals stay in the apply tree, since they came from the 2.x control plane they are
-applied back to; only rejected output goes to `_manual/`.
+file lists never include these paths. Besides **Kept Under `_manual/`**, each file is listed in
+**Action Items → Errors** or in **Delete Before Upgrading to 3.0** with what to do about it.
+Under `v2` an errored original also goes to `_manual/`: applying it back to the 2.x control
+plane it came from would change nothing, but listing it among the apply steps read as if it had
+been migrated.

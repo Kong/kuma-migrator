@@ -148,7 +148,7 @@ namespace.</p>
         HTTPRoute-gateways-edge.yaml
       other/
         ReferenceGrant-apps-gateways-edge.yaml
-    _manual/                         <span class="o-dim">← --to-latest v3 only</span>
+    _manual/                         <span class="o-dim">← never applied</span>
       mesh-default/routing/TrafficRoute-route-all.yaml
   zone-eu-west1-prod-zone-ctx/
     mesh-default/
@@ -176,7 +176,7 @@ namespace.</p>
 <td><code>&lt;ctx&gt;/global-scoped-resources/&lt;sub&gt;/</code>, even when the source came from a mesh directory. <code>ReferenceGrant</code> has no kind subfolder of its own and lands in <code>other/</code></td>
 </tr>
 <tr>
-<td>Documents a 3.0 control plane cannot accept (<code>--to-latest v3</code>), and converted output the target rejects as written (either target)</td>
+<td>Originals whose conversion failed and converted output the target rejects as written (either target), and kinds 3.0 removes (<code>--to-latest v3</code>)</td>
 <td><code>&lt;ctx&gt;/_manual/&lt;same relative path&gt;</code></td>
 </tr>
 <tr>
@@ -231,11 +231,15 @@ See <a href="../../topics/gateways/">Gateways</a>.</p>
 </tr>
 </tbody>
 </table></div>
-<p>Errored documents are copied unchanged. Under <code>--to-latest v2</code> the copy stays in the apply
-tree, since applying it back to the 2.x control plane it came from changes nothing. Under
-<code>--to-latest v3</code> it goes to <code>_manual/</code>, which no apply step uses. When a transform knowingly
-produces output the target rejects, that output (not the original) goes to <code>_manual/</code> on
-either target, and the report lists it under <strong>Action Items → Errors</strong> with the reason.</p>
+<p>Errored documents are copied unchanged to <code>_manual/</code>, which no apply step uses, on both
+targets. Under <code>--to-latest v2</code> applying the copy back to the 2.x control plane it came from
+would change nothing, but listing it among the apply steps read as if it had been migrated.
+When a transform knowingly produces output the target rejects, that output (not the original)
+goes to <code>_manual/</code>. The report lists every <code>_manual/</code> file under <strong>Kept Under <code>_manual/</code></strong> with
+its reason, and the errored or rejected ones again under <strong>Action Items → Errors</strong>.</p>
+<p><code>migrate</code> drops <code>metadata.resourceVersion</code> and <code>metadata.uid</code> from every written document.
+<code>extract</code> copies them from <code>kubectl get -o yaml</code>, and both make a later <code>kubectl replace</code> or
+<code>kubectl apply</code> fail with a conflict once the live object has changed.</p>
 <h2 id="scenarios">Scenarios</h2>
 <p>Each document is classified into one scenario, which decides the transform:</p>
 <div class="table-wrap"><table>

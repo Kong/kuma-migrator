@@ -95,7 +95,7 @@ migrated/
         HTTPRoute-gateways-edge.yaml
       other/
         ReferenceGrant-apps-gateways-edge.yaml
-    _manual/                         ← --to-latest v3 only
+    _manual/                         ← never applied
       mesh-default/routing/TrafficRoute-route-all.yaml
   zone-eu-west1-prod-zone-ctx/
     mesh-default/
@@ -108,7 +108,7 @@ migrated/
 | Kuma resources from a mesh directory | `<ctx>/mesh-<mesh>/<sub>/` |
 | Kuma resources with no mesh directory | `<ctx>/global-scoped-resources/<sub>/` |
 | Gateway API output (`Gateway`, `HTTPRoute`, `TCPRoute`, `GatewayClass`, `ReferenceGrant`) | `<ctx>/global-scoped-resources/<sub>/`, even when the source came from a mesh directory. `ReferenceGrant` has no kind subfolder of its own and lands in `other/` |
-| Documents a 3.0 control plane cannot accept (`--to-latest v3`), and converted output the target rejects as written (either target) | `<ctx>/_manual/<same relative path>` |
+| Originals whose conversion failed and converted output the target rejects as written (either target), and kinds 3.0 removes (`--to-latest v3`) | `<ctx>/_manual/<same relative path>` |
 | Flat input (no context directory) | `<sub>/` |
 
 Gateway API resources are Kubernetes-native objects applied to the clusters that run the
@@ -132,11 +132,16 @@ One input document can produce several output documents:
 | `MeshGatewayRoute` with a cross-namespace backend | `ReferenceGrant` |
 | `MeshGatewayInstance` under `--to-latest v2` | `GatewayClass` + `MeshGatewayConfig` |
 
-Errored documents are copied unchanged. Under `--to-latest v2` the copy stays in the apply
-tree, since applying it back to the 2.x control plane it came from changes nothing. Under
-`--to-latest v3` it goes to `_manual/`, which no apply step uses. When a transform knowingly
-produces output the target rejects, that output (not the original) goes to `_manual/` on
-either target, and the report lists it under **Action Items → Errors** with the reason.
+Errored documents are copied unchanged to `_manual/`, which no apply step uses, on both
+targets. Under `--to-latest v2` applying the copy back to the 2.x control plane it came from
+would change nothing, but listing it among the apply steps read as if it had been migrated.
+When a transform knowingly produces output the target rejects, that output (not the original)
+goes to `_manual/`. The report lists every `_manual/` file under **Kept Under `_manual/`** with
+its reason, and the errored or rejected ones again under **Action Items → Errors**.
+
+`migrate` drops `metadata.resourceVersion` and `metadata.uid` from every written document.
+`extract` copies them from `kubectl get -o yaml`, and both make a later `kubectl replace` or
+`kubectl apply` fail with a conflict once the live object has changed.
 
 ## Scenarios
 

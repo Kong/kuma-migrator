@@ -72,7 +72,7 @@ the first output path (<code>→</code>), relative to <code>--input-dir</code> a
        <span class="o-dim">→  kind-global-global-ctx/mesh-default/resiliency/MeshTimeout-backend-timeout.yaml</span>
   <span class="o-warn">⚠</span>  PARTIAL ERROR     default  route.yaml
        <span class="o-dim">←  kind-global-global-ctx/mesh-default/routing/route.yaml</span>
-       <span class="o-dim">→  kind-global-global-ctx/mesh-default/routing/TrafficRoute-route-all-default.yaml</span>
+       <span class="o-dim">→  kind-global-global-ctx/_manual/mesh-default/routing/TrafficRoute-route-all-default.yaml</span>
        <span class="o-err">✗</span>  TrafficRoute requires manual migration to MeshHTTPRoute or MeshTCPRoute
   <span class="o-ok">✓</span>  SUBSET            default  meshretry.yaml
        <span class="o-dim">←  kind-zone-eu-zone-ctx/mesh-default/resiliency/meshretry.yaml</span>
@@ -126,7 +126,7 @@ Report written to: migrated/migration-plan.md
 </tr>
 <tr>
 <td><code>PARTIAL ERROR</code></td>
-<td>At least one document in the file could not be converted; the rest were</td>
+<td>At least one document in the file could not be converted, or its output is rejected by the target; the rest were converted. The original (or the rejected output) is written to <code>_manual/</code></td>
 </tr>
 </tbody>
 </table></div>
@@ -170,7 +170,7 @@ are written to <code>--output-dir</code> by
 </tr>
 <tr>
 <td>Kept Under <code>_manual/</code></td>
-<td>Files whose kind the target removes, with the <code>_manual/</code> path of each</td>
+<td>Every file written to <code>_manual/</code>, one row each: source file, kind, name, <code>_manual/</code> path, and the reason (kind removed in 3.0, not converted with the conversion error, or rejected by the target with the rejection reason)</td>
 </tr>
 <tr>
 <td>Skipped</td>
@@ -182,7 +182,7 @@ are written to <code>--output-dir</code> by
 </tr>
 <tr>
 <td>Apply Checklist</td>
-<td>Ordered steps with the <code>kubectl</code> or <code>kumactl</code> commands for each context. A three-step version under <code>--dry-run</code>. See <a href="../apply/">Apply</a></td>
+<td>Ordered steps with the <code>kubectl</code> or <code>kumactl</code> commands for each context: <code>kubectl replace</code> for files that rewrite an input object, <code>kubectl apply</code> for the rest. A three-step version under <code>--dry-run</code>. See <a href="../apply/">Apply</a></td>
 </tr>
 <tr>
 <td>Original Resources to Delete</td>

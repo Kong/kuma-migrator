@@ -204,10 +204,28 @@ for `/config`, so a 401/403 is the expected failure for a role without it.
 `ContextMeta` struct and `WriteContextMeta` / `ReadContextMeta` helpers live in
 `pkg/extractor/cpmode.go`. The migrator's `report.go` imports the extractor package to call
 `ReadContextMeta(inputDir, cpModeDir)` when building the Apply Checklist — it uses `tool`
-to decide between `kubectl apply -f <dir>/` (kubectl) and `kumactl apply -f <file>` per file
-(kumactl). `kumactl` does not accept a directory as the `-f` argument, so each file is listed
-individually. `isKonnect` in the metadata adds a Konnect-specific label to the checklist.
+to decide between `kubectl` and `kumactl apply -f <file>` per file (kumactl). `kumactl`
+before 2.14 does not accept a directory as the `-f` argument (2.14 does: `readDirectory` in
+`app/kumactl/cmd/apply/apply.go`), so each file is listed individually. The context hint is
+`kumactl config control-planes switch --name <ctx>`; `kumactl config use-context` does not exist
+in 2.14.7 or 3.0.1. `isKonnect` in the metadata adds a Konnect-specific label to the checklist.
 Falls back to `kubectl` when the metadata file is absent (older extract output).
+
+**kubectl apply vs replace** — a kubectl directory is `kubectl apply -f <dir>/` unless it holds a
+file in `FileReport.ReplaceRelPaths`: an output whose kind + namespace + name (Universal: kind +
+mesh + name), in the same context, matches an input document **and** whose content differs
+(`markReplacedOutputs`, run after the walk; `resourceKey` builds the identity). Such a directory
+is listed file by file: `kubectl replace -f <file> --save-config` for those, `kubectl apply -f
+<file>` for the rest. Reason: client-side `kubectl apply` on an object with no last-applied
+annotation (created by the CP, Helm or `kubectl create`, e.g. the `mesh-timeout-all-*` defaults)
+keeps every field the new file drops, so a Rules split keeps the live `to[]` and is rejected
+(`fields 'to' and 'from' must be empty when 'rules' is defined`). Verified on a live cluster with a
+ConfigMap created by `kubectl create`: `apply` and `apply --server-side --force-conflicts` both
+keep the dropped keys, `replace` removes them. `kumactl apply` needs no equivalent: its `upsert`
+does Get, `SetSpec` (whole spec), `Update` with the new labels. `processFile` also drops
+`metadata.resourceVersion`/`uid` (`stripServerSetIdentity`) from every written document: `extract`
+copies them from `kubectl get -o yaml` and both are write preconditions (conflict once the live
+object moved on).
 
 ### Konnect (hosted) specifics
 
@@ -305,7 +323,7 @@ Files with `meshDir == ""` (no mesh dir detected) are **always** processed regar
 - `<outputDir>/<cpModeDir>/global-scoped-resources/<sub>/` when only cpModeDir is set (no mesh → global subdir)
 - `<outputDir>/<sub>/` when both are empty (flat / legacy)
 
-`FileReport.CPModeDir` holds the context directory label; `FileReport.MeshDir` holds the plain mesh name (no `mesh-` prefix); `FileReport.InputRelPath` and `FileReport.OutputRelPath` hold the input/output paths relative to their respective root directories (computed in `runMigration` and `processFile` respectively). `FileReport.OutputRelPaths []string` holds **all** output file paths (every doc produced, including split docs like the `-outbound` counterpart from the `from[]`+`to[]` split) — used by the Apply Checklist to enumerate individual files for `kumactl apply`.
+`FileReport.CPModeDir` holds the context directory label; `FileReport.MeshDir` holds the plain mesh name (no `mesh-` prefix); `FileReport.InputRelPath` and `FileReport.OutputRelPath` hold the input/output paths relative to their respective root directories (computed in `runMigration` and `processFile` respectively). `FileReport.OutputRelPaths []string` holds **all** output file paths (every doc produced, including split docs like the `-outbound` counterpart from the `from[]`+`to[]` split) — used by the Apply Checklist to enumerate individual files for `kumactl apply`, and for `kubectl replace`/`kubectl apply` in a directory that holds a `FileReport.ReplaceRelPaths` entry.
 
 **migrate/--dry-run stdout format** — each file line shows: scenario label (fixed 18-char column) · mesh name in bold magenta (omitted for global-scoped) · filename. Two faint gray lines below show `← <inputRelPath>` and `→ <outputRelPath>`. UI helpers: `ui.FileMigrated(scenario, meshName, filename)`, `ui.DocRelPaths(inputRel, outputRel)`.
 
@@ -505,11 +523,15 @@ Behaviour of the conversion paths under v3:
   3.0); `backendRefs[].port` is an integer; a cross-namespace backend gets a `ReferenceGrant`
   (both targets — Gateway-parented routes always needed one).
 
-**Output tree under v3**: originals whose conversion errored and documents that pass through as a
-kind 3.0 removes go to `<out>/<ctx>/_manual/...` (`ManualDir`), never into `OutputRelPaths`, so the
-Apply Checklist cannot apply them. The report adds a "Delete Before Upgrading to 3.0" section and a
-checklist step before the Global CP upgrade. v2 output is unchanged (no `_manual`). The kumactl
-type spellings in the delete commands (`v3DeleteCommand`) were written from memory — verify them.
+**Output tree**: originals whose conversion errored (both targets) and, under v3, documents that
+pass through as a kind 3.0 removes go to `<out>/<ctx>/_manual/...` (`ManualDir`), never into
+`OutputRelPaths`, so the Apply Checklist cannot apply them. Under v2 an errored original
+(`TrafficRoute`, `VirtualOutbound`) used to stay in the apply tree; it moved to `_manual/` because
+re-applying it read as if it had been migrated. The report's **Kept Under `_manual/`** section
+lists every `_manual/` file (`DocChange.ManualRelPaths`) with its reason (`manualReason`). Under v3
+the report adds a "Delete Before Upgrading to 3.0" section and a checklist step before the Global
+CP upgrade. The kumactl type spellings in the delete commands (`kumactlDeleteType`) were checked
+against `KumactlArg` at v2.14.5: `healthcheck`, `zoneegress`, `proxytemplate` are not kebab-case.
 
 **Conversion rules that apply on both targets:**
 - A top-level reference to a service is `Dataplane` + `labels: {app, k8s.kuma.io/namespace}` (best-guess
@@ -538,9 +560,11 @@ real-resource ref, a `to[]` kind the 3.0 validator refuses. `processFile` writes
 
 **Report and checklist:** labels `SCANNED` (non-policy kind the scan rewrote or flagged) and
 `MANUAL` (sent to `_manual/` without an error) exist alongside `SKIP`. Under v3 the checklist runs,
-before the Global upgrade: the MeshIdentity cutover (when an input Mesh has `mtls`), then
-`meshServices.mode: Exclusive` per mesh (`kubectl patch` / `kumactl … | yq … | kumactl apply -f -`);
-the v3 `Mesh` files are applied only after the upgrade. `MeshOpenTelemetryBackend` lands in a
+before the Global upgrade: `meshServices.mode: Exclusive` per mesh (`kubectl patch` / `kumactl …
+| yq … | kumactl apply -f -`), then the MeshIdentity cutover (when an input Mesh has `mtls`). That
+order is required: on 2.14 a `MeshIdentity` in a mesh that is not `Exclusive` stays
+`DependenciesReady=False` (`MeshServicesDisabled`) and never becomes ready (Kong Mesh 2.14.7,
+`test/e2e/results/questions.md`). The v3 `Mesh` files are applied only after the upgrade. `MeshOpenTelemetryBackend` lands in a
 `backends/` subfolder applied before policies. `tool=kumactl` + `environment=kubernetes` (not
 Konnect) gets `kubectl` commands (`resolveContextTool`). `MeshGatewayConfig` is a v3 removed kind.
 

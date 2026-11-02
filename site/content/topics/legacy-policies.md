@@ -264,7 +264,7 @@ spec:
 type: MeshRetry
 ```
 
-The `TrafficRoute` is copied to `routing/TrafficRoute-route-all.yaml` unchanged, with an error:
+The `TrafficRoute` is copied unchanged to `_manual/routing/TrafficRoute-route-all.yaml`, which no apply step uses, with an error:
 
 ```text
 ⚠  Retry "web-retry": conf.http.retriableStatusCodes ([503]) has no MeshRetry equivalent and was
@@ -274,7 +274,7 @@ The `TrafficRoute` is copied to `routing/TrafficRoute-route-all.yaml` unchanged,
 ✗  TrafficRoute requires manual migration to MeshHTTPRoute or MeshTCPRoute
 ```
 
-With `--to-latest v3` the `to[]` selectors use labels too, the `TrafficRoute` goes to `_manual/`, and every
+With `--to-latest v3` the `to[]` selectors use labels too, and every
 converted source gets a delete-before-upgrade advisory:
 
 ```yaml

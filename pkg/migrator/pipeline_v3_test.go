@@ -262,27 +262,43 @@ func TestMigrate_V3ManualSubtree(t *testing.T) {
 	}
 }
 
-// TestMigrate_V2KeepsErroredOriginalsInPlace documents the v2 decision: the
-// original came from the 2.x CP it is applied back to, so it stays in the apply
-// tree, and there is no 3.0 delete section.
-func TestMigrate_V2KeepsErroredOriginalsInPlace(t *testing.T) {
+// TestMigrate_V2MovesErroredOriginalsToManual: under v2 too, an errored
+// original goes to _manual/ instead of the apply tree. Re-applying it to the 2.x
+// CP it came from would change nothing, but listing it among the apply steps
+// reads as if it had been migrated. MeshGlobalRateLimit still exists on 2.x and
+// stays in the apply tree, and there is no 3.0 delete section.
+func TestMigrate_V2MovesErroredOriginalsToManual(t *testing.T) {
 	in, out := v3Fixture(t)
 	r, err := runMigration(in, out, true, "", TargetV2)
 	if err != nil {
 		t.Fatal(err)
 	}
 	fr, dc, _ := findChange(r, "TrafficRoute")
-	if dc.ManualRelPath != "" || len(fr.OutputRelPaths) != 1 {
-		t.Errorf("v2: TrafficRoute original should stay in the apply tree, got manual=%q out=%v", dc.ManualRelPath, fr.OutputRelPaths)
+	want := "prod-global-ctx/" + ManualDir + "/mesh-default/routing/TrafficRoute-tr1.yaml"
+	if dc.ManualRelPath != want || len(fr.OutputRelPaths) != 0 {
+		t.Errorf("v2: TrafficRoute original should be at %q only, got manual=%q out=%v", want, dc.ManualRelPath, fr.OutputRelPaths)
 	}
-	if _, err := os.Stat(filepath.Join(out, "prod-global-ctx", ManualDir)); !os.IsNotExist(err) {
-		t.Error("v2 must not create the manual subtree")
+	if _, err := os.Stat(filepath.Join(out, want)); err != nil {
+		t.Errorf("v2: manual copy not written: %v", err)
+	}
+	mgrl, mdc, _ := findChange(r, "MeshGlobalRateLimit")
+	if mdc.ManualRelPath != "" || len(mgrl.OutputRelPaths) != 1 {
+		t.Errorf("v2: MeshGlobalRateLimit is valid on 2.x and stays in the apply tree: %+v", mgrl)
 	}
 	var b strings.Builder
 	r.Mode = "apply"
 	writeMarkdown(&b, r)
-	if strings.Contains(b.String(), "Delete Before Upgrading to 3.0") {
+	md := b.String()
+	if strings.Contains(md, "Delete Before Upgrading to 3.0") {
 		t.Error("v2 report must not carry the 3.0 delete section")
+	}
+	kept := section(t, md, "## Kept Under `"+ManualDir+"/`")
+	if !strings.Contains(kept, "`"+want+"`") || !strings.Contains(kept, "not converted, original kept") {
+		t.Errorf("v2: Kept Under section should list the original with its reason:\n%s", kept)
+	}
+	cl := section(t, md, "## Apply Checklist")
+	if strings.Contains(cl, "TrafficRoute") || strings.Contains(cl, filepath.Join(out, "prod-global-ctx/mesh-default/routing")) {
+		t.Errorf("v2: no apply step may list the errored original:\n%s", cl)
 	}
 }
 

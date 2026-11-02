@@ -28,8 +28,11 @@ type DocChange struct {
 	Warnings       []string // per-document warnings
 	ErrMsg         string   // non-empty if transformation failed
 	// ManualRelPath is set when the document was written to the ManualDir
-	// subtree instead of the apply tree (relative to outputDir).
+	// subtree instead of the apply tree (relative to outputDir). It is the first
+	// of ManualRelPaths.
 	ManualRelPath string
+	// ManualRelPaths lists every file this document produced under ManualDir.
+	ManualRelPaths []string
 	// Rejected is set when the transform returned a *RejectedByTargetError: the
 	// output exists but the target control plane rejects it, so it went to
 	// ManualDir. ErrMsg carries the reason.
@@ -54,9 +57,22 @@ type FileReport struct {
 	InputRelPath    string   // input file path relative to inputDir
 	OutputRelPath   string   // primary output file path relative to outputDir (first doc, for stdout)
 	OutputRelPaths  []string // all output file paths relative to outputDir (all docs, for report)
-	// ManualRelPaths are the files written under ManualDir (v3 only). They are
-	// not in OutputRelPaths, so no apply step lists them.
+	// ManualRelPaths are the files written under ManualDir. They are not in
+	// OutputRelPaths, so no apply step lists them.
 	ManualRelPaths []string
+	// ReplaceRelPaths is the subset of OutputRelPaths whose document has the
+	// same kind, namespace and name as a document of the input (in the same
+	// context) but different content: it rewrites an object that already exists
+	// on the control plane. The kubectl Apply Checklist uses `kubectl replace`
+	// for these, because `kubectl apply` keeps fields the new document drops on
+	// an object that has no last-applied annotation (one the control plane,
+	// Helm or `kubectl create` made). Set by runMigration once every input file
+	// is read.
+	ReplaceRelPaths []string
+	// outputDocs[i] is the identity and content of OutputRelPaths[i].
+	outputDocs []keyedDoc
+	// inputDocs are the identities and contents of the file's input documents.
+	inputDocs []keyedDoc
 	// UniversalOutput is set when an apply-tree document is in Universal
 	// format (type/name/mesh), which kubectl cannot apply.
 	UniversalOutput bool
@@ -272,6 +288,8 @@ func runMigration(inputDir, outputDir string, writeFiles bool, meshFilter string
 		return nil, fmt.Errorf("walk input directory %q: %w", inputDir, err)
 	}
 
+	markReplacedOutputs(report)
+
 	// Deduplicate and sort address mappings.
 	keys := make([]string, 0, len(allHits))
 	for k := range allHits {
@@ -324,11 +342,12 @@ const (
 	labelPartialError = "PARTIAL ERROR"
 )
 
-// ManualDir is the per-context subdirectory that holds, under --to-latest v3,
-// every document that must not be applied to a 3.0 control plane: originals
-// whose conversion failed (TrafficRoute, VirtualOutbound, MeshGatewayInstance, ...)
-// and objects whose kind 3.0 removes with no conversion (MeshGlobalRateLimit,
-// ZoneIngress, ZoneEgress). It sits next to the mesh-*/ and
+// ManualDir is the per-context subdirectory that holds every document no apply
+// step may use: originals whose conversion failed (TrafficRoute,
+// VirtualOutbound, MeshGatewayInstance, ...; either target), converted output
+// the target rejects as written (RejectedByTargetError), and, under
+// --to-latest v3, objects whose kind 3.0 removes with no conversion
+// (MeshGlobalRateLimit, ZoneIngress, ZoneEgress). It sits next to the mesh-*/ and
 // global-scoped-resources/ directories:
 //
 //	<outputDir>/<ctx>/_manual/mesh-<mesh>/<sub>/<file>
@@ -338,8 +357,8 @@ const (
 // The Apply Checklist never lists it: its kubectl steps apply leaf <sub>/
 // directories (kubectl -f on a directory is not recursive), and its kumactl
 // steps list files from FileReport.OutputRelPaths, which excludes these. The
-// report lists the files under "Delete Before Upgrading to 3.0" and
-// "Action Items -> Errors".
+// report lists every file under "Kept Under _manual/" with its reason, and
+// again under "Delete Before Upgrading to 3.0" or "Action Items -> Errors".
 const ManualDir = "_manual"
 
 // skipPolicy picks the skip list for a document.
@@ -477,6 +496,9 @@ func processFile(inputPath, outputDir, cpModeDir, meshDir string, writeFile bool
 	for _, doc := range docs {
 		kind, name2 := probeKindName(doc)
 		dc := DocChange{InputKind: kind, InputName: name2, InputNamespace: probeNamespace(doc), InputMesh: probeMesh(doc)}
+		if k := resourceKey(cpModeDir, doc); k != "" {
+			fr.inputDocs = append(fr.inputDocs, keyedDoc{key: k, raw: stripServerSetIdentity(doc)})
+		}
 		if kind == "Mesh" {
 			dc.MeshMTLS = meshHasMTLS(doc)
 		}
@@ -516,12 +538,13 @@ func processFile(inputPath, outputDir, cpModeDir, meshDir string, writeFile bool
 		case tErr != nil:
 			dc.ErrMsg = tErr.Error()
 			fr.HasError = true
-			// Preserve the original. Under v3 it goes to ManualDir: it is either a
-			// kind 3.0 removes or a document the migrator could not make valid, and
-			// the apply tree must only hold what a 3.0 CP accepts. Under v2 it stays
-			// in the apply tree: it came from the 2.x CP it is applied back to, so
-			// re-applying it unchanged is a no-op.
-			outputDocs = append(outputDocs, outputDoc{raw: doc, change: changeIdx, manual: v3})
+			// Preserve the original under ManualDir, on either target. Under v3 it
+			// is a kind 3.0 removes or a document the migrator could not make
+			// valid, and the apply tree must only hold what a 3.0 CP accepts. Under
+			// v2 re-applying it to the 2.x CP it came from would change nothing,
+			// but listing it among the apply steps reads as if it had been
+			// migrated (a TrafficRoute next to the MeshHTTPRoutes).
+			outputDocs = append(outputDocs, outputDoc{raw: doc, change: changeIdx, manual: true})
 		default:
 			for _, res := range results {
 				// v3: a result that is still a removed kind (MeshGlobalRateLimit,
@@ -607,7 +630,7 @@ func processFile(inputPath, outputDir, cpModeDir, meshDir string, writeFile bool
 	}
 
 	for _, od := range outputDocs {
-		doc := od.raw
+		doc := stripServerSetIdentity(od.raw)
 		kind, _ := probeKindName(doc)
 		sub := outputSubfolder(kind)
 		// Compute output directory (context-first layout, mirrors extract output):
@@ -644,11 +667,14 @@ func processFile(inputPath, outputDir, cpModeDir, meshDir string, writeFile bool
 			}
 			if od.manual {
 				fr.ManualRelPaths = append(fr.ManualRelPaths, relSlash)
-				if fr.Changes[od.change].ManualRelPath == "" {
-					fr.Changes[od.change].ManualRelPath = relSlash
+				dc := &fr.Changes[od.change]
+				if dc.ManualRelPath == "" {
+					dc.ManualRelPath = relSlash
 				}
+				dc.ManualRelPaths = append(dc.ManualRelPaths, relSlash)
 			} else {
 				fr.OutputRelPaths = append(fr.OutputRelPaths, relSlash)
+				fr.outputDocs = append(fr.outputDocs, keyedDoc{key: resourceKey(cpModeDir, doc), raw: doc})
 				if isUniversalShape(doc) {
 					fr.UniversalOutput = true
 				}
@@ -701,6 +727,94 @@ func processFile(inputPath, outputDir, cpModeDir, meshDir string, writeFile bool
 	}
 
 	return fr
+}
+
+// resourceKey identifies the control-plane object a document describes, within
+// one context directory: kind, namespace and name for Kubernetes format, kind,
+// mesh and name for Universal format. Empty when the document has no kind or
+// name.
+func resourceKey(cpModeDir string, raw []byte) string {
+	var obj map[string]interface{}
+	if err := yaml.Unmarshal(raw, &obj); err != nil || obj == nil {
+		return ""
+	}
+	kind, _ := obj["kind"].(string)
+	if kind == "" {
+		kind, _ = obj["type"].(string)
+	}
+	name := extractNameFromObj(obj)
+	if kind == "" || name == "" || name == "<unknown>" {
+		return ""
+	}
+	scope := ""
+	if meta, ok := obj["metadata"].(map[string]interface{}); ok {
+		ns, _ := meta["namespace"].(string)
+		scope = "ns:" + ns
+	} else {
+		mesh, _ := obj["mesh"].(string)
+		scope = "mesh:" + mesh
+	}
+	return cpModeDir + "\x00" + kind + "\x00" + scope + "\x00" + name
+}
+
+// keyedDoc is a document with its resourceKey.
+type keyedDoc struct {
+	key string
+	raw []byte
+}
+
+// markReplacedOutputs fills FileReport.ReplaceRelPaths: every apply-tree output
+// whose object (resourceKey) is also an input document of the same context and
+// whose content differs from it. An unchanged pass-through needs no replace:
+// `kubectl apply` of identical content removes nothing and changes nothing.
+func markReplacedOutputs(r *MigrationReport) {
+	inputs := map[string][]byte{}
+	for _, fr := range r.Files {
+		for _, d := range fr.inputDocs {
+			inputs[d.key] = d.raw
+		}
+	}
+	for i := range r.Files {
+		fr := &r.Files[i]
+		for j, rel := range fr.OutputRelPaths {
+			if j >= len(fr.outputDocs) || fr.outputDocs[j].key == "" {
+				continue
+			}
+			in, ok := inputs[fr.outputDocs[j].key]
+			if ok && !sameYAML(in, fr.outputDocs[j].raw) {
+				fr.ReplaceRelPaths = append(fr.ReplaceRelPaths, rel)
+			}
+		}
+	}
+}
+
+// stripServerSetIdentity removes metadata.resourceVersion and metadata.uid,
+// which `kubectl get -o yaml` (extract) copies into every Kubernetes document.
+// Both are write preconditions: `kubectl replace` and `kubectl apply` fail with
+// a conflict when the live object has moved on since extract (a control plane
+// status update is enough), and a uid never matches a re-created object.
+// Documents without either field are returned unchanged, byte for byte.
+func stripServerSetIdentity(raw []byte) []byte {
+	var obj map[string]interface{}
+	if err := yaml.Unmarshal(raw, &obj); err != nil || obj == nil {
+		return raw
+	}
+	meta, ok := obj["metadata"].(map[string]interface{})
+	if !ok {
+		return raw
+	}
+	_, hasRV := meta["resourceVersion"]
+	_, hasUID := meta["uid"]
+	if !hasRV && !hasUID {
+		return raw
+	}
+	delete(meta, "resourceVersion")
+	delete(meta, "uid")
+	out, err := yaml.Marshal(obj)
+	if err != nil {
+		return raw
+	}
+	return []byte(strings.TrimRight(string(out), "\n"))
 }
 
 // manualDirFor moves an apply-tree directory under ManualDir, keeping the rest

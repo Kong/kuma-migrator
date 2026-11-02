@@ -86,15 +86,7 @@ fields that 2.14 still requires, so it is never applied before the upgrade. See
    kuma-migrator migrate -i ./raw-policies -o ./migrated-v2
    ```
 
-5. **Move every mesh to `MeshIdentity`.** On 3.0 `Mesh.mtls` issues nothing: a mesh whose
-   only identity source is `mtls` serves plaintext and `MeshTrafficPermission`/`MeshTLS` stop
-   applying
-   ([Kuma `UPGRADE.md`](https://github.com/kumahq/kuma/blob/v3.0.1/UPGRADE.md#meshmtls-no-longer-produces-mtls)).
-   This is a CA cutover the manifests cannot describe; the tool reports it and does not
-   convert it. Rewrite `MeshTrafficPermission` `from[]` to `rules[]` at the same time. See
-   [mTLS and identity](../topics/mtls-identity.md) and
-   [Access control](../topics/access-control.md).
-6. **Set `meshServices.mode: Exclusive` on every mesh** before the Global control plane is
+5. **Set `meshServices.mode: Exclusive` on every mesh** before the Global control plane is
    upgraded. A 2.x zone reads a missing field as `Disabled` and stops serving `MeshService`
    outbounds and DNS
    ([Kuma `UPGRADE.md`](https://github.com/kumahq/kuma/blob/v3.0.1/UPGRADE.md#meshservices-removed-from-the-mesh-schema)).
@@ -102,6 +94,16 @@ fields that 2.14 still requires, so it is never applied before the upgrade. See
    `kumactl get | yq | kumactl apply`), which changes only `meshServices`. Run it once every
    workload and policy uses `MeshService` names. Do not apply the `v3` `Mesh` files here: they
    drop `spec.mtls`. See [MeshService](../topics/meshservice.md).
+6. **Move every mesh to `MeshIdentity`.** This needs the previous step: on 2.14 a
+   `MeshIdentity` in a mesh that is not `Exclusive` stays `DependenciesReady=False` with reason
+   `MeshServicesDisabled` and never issues certificates. On 3.0 `Mesh.mtls` issues nothing: a
+   mesh whose only identity source is `mtls` serves plaintext and
+   `MeshTrafficPermission`/`MeshTLS` stop applying
+   ([Kuma `UPGRADE.md`](https://github.com/kumahq/kuma/blob/v3.0.1/UPGRADE.md#meshmtls-no-longer-produces-mtls)).
+   This is a CA cutover the manifests cannot describe; the tool reports it and does not
+   convert it. Rewrite `MeshTrafficPermission` `from[]` to `rules[]` at the same time. See
+   [mTLS and identity](../topics/mtls-identity.md) and
+   [Access control](../topics/access-control.md).
 7. **Migrate to v3** and review the report.
 
    ```bash
@@ -154,9 +156,9 @@ order are described in [Apply](apply.md). Two points matter for an upgrade plan:
 
 - The checklist always contains the "Upgrade the Global Control Plane" and "Upgrade Zone
   Control Planes" steps. In a `v2` run used to prepare on the current version, skip them.
-- In a `v3` run, the checklist orders the steps as: fix errors, finish the `MeshIdentity`
-  cutover (when a `Mesh` sets `spec.mtls`), set `meshServices.mode: Exclusive` on every mesh,
-  delete the removed kinds, upgrade, apply backends then policies, apply the `Mesh` files. The
+- In a `v3` run, the checklist orders the steps as: fix errors, set `meshServices.mode:
+  Exclusive` on every mesh, finish the `MeshIdentity` cutover (when a `Mesh` sets
+  `spec.mtls`; it needs `Exclusive` first), delete the removed kinds, upgrade, apply backends then policies, apply the `Mesh` files. The
   first four run on 2.14; the `Mesh` files, which drop `spec.mtls`, are applied only on 3.0.
 
 ## Control Plane Topology
