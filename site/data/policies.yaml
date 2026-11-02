@@ -1603,10 +1603,13 @@
   product: kuma
   summary: Standalone zone ingress proxy that receives cross-zone traffic.
   v2:
-    status: passthrough
+    status: warned
     output: [ZoneIngress]
     notes: |
-      Skipped on Kubernetes (CP-managed). On Universal it is copied unchanged.
+      Skipped on Kubernetes (CP-managed). On Universal it is copied unchanged (file labelled
+      `SCANNED`) with an advisory: 3.0 removes `ZoneIngress`; move to mesh-scoped zone proxies, which
+      2.14 already supports (Helm `meshes[].ingress`/`meshes[].egress`, or a Universal
+      `Dataplane` with a `ZoneIngress` listener), before upgrading the zone control plane.
   v3:
     status: removed
     output: []
@@ -1627,10 +1630,13 @@
   product: kuma
   summary: Standalone zone egress proxy for cross-zone and external traffic.
   v2:
-    status: passthrough
+    status: warned
     output: [ZoneEgress]
     notes: |
-      Skipped on Kubernetes (CP-managed). On Universal it is copied unchanged.
+      Skipped on Kubernetes (CP-managed). On Universal it is copied unchanged (file labelled
+      `SCANNED`) with an advisory: 3.0 removes `ZoneEgress`; move to mesh-scoped zone proxies, which
+      2.14 already supports (Helm `meshes[].ingress`/`meshes[].egress`, or a Universal
+      `Dataplane` with a `ZoneEgress` listener), before upgrading the zone control plane.
   v3:
     status: removed
     output: []

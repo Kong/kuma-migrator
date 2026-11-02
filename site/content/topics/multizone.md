@@ -61,7 +61,7 @@ Each context is written to its own directory (`<context>-global-ctx`, `<context>
 
 | Input | `--to-latest v2` | `--to-latest v3` |
 |---|---|---|
-| Universal `ZoneIngress` / `ZoneEgress` | Copied unchanged, no warning | Moved to `_manual/`. **Blocking** warning with the mesh-scoped zone proxy `Dataplane` to write, the `MeshZoneAddress` snippet built from `advertisedAddress`/`advertisedPort`, and the CRD deletion commands |
+| Universal `ZoneIngress` / `ZoneEgress` | Copied unchanged (`SCANNED`), with an advisory: removed in 3.0, move to mesh-scoped zone proxies (available on 2.14) before the zone CP upgrade | Moved to `_manual/`. **Blocking** warning with the mesh-scoped zone proxy `Dataplane` to write, the `MeshZoneAddress` snippet built from `advertisedAddress`/`advertisedPort`, and the CRD deletion commands |
 | `MeshLoadBalancingStrategy` `crossZone` on a `to[]` entry that is not `MeshMultiZoneService` | Copied | Warning: rejected by 3.0 |
 | `Mesh.routing.localityAwareLoadBalancing` | Warning | Removed, with the `MeshMultiZoneService` note |
 | Control-plane-owned labels (`kuma.io/origin`, `kuma.io/zone`, …) on a resource's own metadata | Kept | Removed |
@@ -137,7 +137,14 @@ spec:
                   type: Any
 ```
 
-With `--to-latest v2` both are copied unchanged without warnings.
+With `--to-latest v2` both are copied unchanged. The `ZoneIngress` gets an advisory (shortened):
+
+```text
+⚠  ZoneIngress "zone-ingress-1": the ZoneIngress resource is removed in 3.0 (CRD, API and KDS sync),
+   and a 3.0 control plane no longer serves kuma-dp --proxy-type=ingress|egress. 2.14 already
+   supports the replacement, mesh-scoped zone proxies: … Move to them and delete this ZoneIngress
+   before upgrading the zone control plane to 3.0. …
+```
 
 With `--to-latest v3` the `ZoneIngress` is moved to `_manual/other/ZoneIngress-zone-ingress-1.yaml`
 and both documents are reported (shortened):

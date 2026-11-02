@@ -174,7 +174,7 @@ See <a href="../access-control/">Access control</a>.</p>
 <tbody>
 <tr>
 <td>Universal <code>ZoneIngress</code> / <code>ZoneEgress</code></td>
-<td>Copied unchanged, no warning</td>
+<td>Copied unchanged (<code>SCANNED</code>), with an advisory: removed in 3.0, move to mesh-scoped zone proxies (available on 2.14) before the zone CP upgrade</td>
 <td>Moved to <code>_manual/</code>. <strong>Blocking</strong> warning with the mesh-scoped zone proxy <code>Dataplane</code> to write, the <code>MeshZoneAddress</code> snippet built from <code>advertisedAddress</code>/<code>advertisedPort</code>, and the CRD deletion commands</td>
 </tr>
 <tr>
@@ -276,7 +276,12 @@ after each zone CP upgrade. On Kubernetes, delete the four zone proxy CRDs after
               - <span class="nt">to</span><span class="p">:</span>
                   <span class="nt">type</span><span class="p">:</span> <span class="l">Any</span>
 </code></pre></div>
-<p>With <code>--to-latest v2</code> both are copied unchanged without warnings.</p>
+<p>With <code>--to-latest v2</code> both are copied unchanged. The <code>ZoneIngress</code> gets an advisory (shortened):</p>
+<div class="code"><pre class="chroma" data-lang="text"><code><span class="o-warn">⚠</span>  ZoneIngress "zone-ingress-1": the ZoneIngress resource is removed in 3.0 (CRD, API and KDS sync),
+   and a 3.0 control plane no longer serves kuma-dp --proxy-type=ingress|egress. 2.14 already
+   supports the replacement, mesh-scoped zone proxies: … Move to them and delete this ZoneIngress
+   before upgrading the zone control plane to 3.0. …
+</code></pre></div>
 <p>With <code>--to-latest v3</code> the <code>ZoneIngress</code> is moved to <code>_manual/other/ZoneIngress-zone-ingress-1.yaml</code>
 and both documents are reported (shortened):</p>
 <div class="code"><pre class="chroma" data-lang="text"><code><span class="o-warn">⚠</span>  BLOCKING — ZoneIngress "zone-ingress-1": the ZoneIngress resource is removed in 3.0 (CRD, API

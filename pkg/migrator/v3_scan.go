@@ -291,11 +291,22 @@ func canonicalCIDR(value string) string {
 // MeshZoneAddress that replaces it cannot exist before 3.0, so it is a post-upgrade
 // step. The scan pass emits one document per input, so the MeshZoneAddress is given
 // as a snippet rather than generated.
+//
+// Under v2 the same removal is a forward-looking advisory: the mesh-scoped zone
+// proxies already exist on 2.14 (Helm meshes[].ingress/egress, Dataplane
+// networking.listeners[]), so the move can be made before the 3.0 upgrade.
 func warnZoneProxyRemoved(obj map[string]interface{}, name, kind string, target TargetVersion) []string {
-	if !target.IsV3() {
-		return nil
-	}
 	netw := dataplaneNetworking(obj)
+	if !target.IsV3() {
+		return []string{fmt.Sprintf(
+			"%s %q: the %s resource is removed in 3.0 (CRD, API and KDS sync), and a 3.0 control plane no "+
+				"longer serves kuma-dp --proxy-type=ingress|egress. 2.14 already supports the replacement, "+
+				"mesh-scoped zone proxies: on Kubernetes enable meshes[].ingress / meshes[].egress in the Helm "+
+				"values; on Universal run one regular Dataplane per mesh with networking.listeners[] of type %s. "+
+				"Move to them and delete this %s before upgrading the zone control plane to 3.0. Re-run with "+
+				"--to-latest v3 for the full checklist (including MeshZoneAddress for cross-zone traffic).",
+			kind, name, kind, kind, kind)}
+	}
 	addr, _ := netw["address"].(string)
 	if addr == "" {
 		addr = "<address>"

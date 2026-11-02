@@ -69,9 +69,12 @@
 <h2 id="targets">Behaviour per target</h2>
 <div class="targets">
   <section class="target-card">
-    <header><span class="target-label">--to-latest v2 (2.x)</span> <span class="status status-passthrough">passthrough</span></header>
+    <header><span class="target-label">--to-latest v2 (2.x)</span> <span class="status status-warned">warned</span></header>
     <p class="outputs">Output: <a href="./"><code>ZoneIngress</code></a></p>
-    <div class="notes"><p>Skipped on Kubernetes (CP-managed). On Universal it is copied unchanged.</p>
+    <div class="notes"><p>Skipped on Kubernetes (CP-managed). On Universal it is copied unchanged (file labelled
+<code>SCANNED</code>) with an advisory: 3.0 removes <code>ZoneIngress</code>; move to mesh-scoped zone proxies, which
+2.14 already supports (Helm <code>meshes[].ingress</code>/<code>meshes[].egress</code>, or a Universal
+<code>Dataplane</code> with a <code>ZoneIngress</code> listener), before upgrading the zone control plane.</p>
 </div>
   </section>
   <section class="target-card">

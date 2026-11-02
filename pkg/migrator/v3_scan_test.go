@@ -207,9 +207,29 @@ networking:
 			t.Errorf("expected %q, got %v", want, ws)
 		}
 	}
-	_, v2 := ScanForDeprecations([]byte(in), TargetV2)
+	// v2: forward-looking advisory, not blocking; names the 2.14 replacement.
+	fixedV2, v2 := ScanForDeprecations([]byte(in), TargetV2)
 	if strings.Contains(joined(v2), "BLOCKING") {
-		t.Errorf("v2 must not flag ZoneIngress: %v", v2)
+		t.Errorf("v2 must not block on ZoneIngress: %v", v2)
+	}
+	if len(v2) != 1 {
+		t.Fatalf("want one v2 advisory, got %v", v2)
+	}
+	for _, want := range []string{"ZoneIngress resource is removed in 3.0", "2.14 already supports",
+		"meshes[].ingress / meshes[].egress", "networking.listeners[] of type ZoneIngress", "--to-latest v3"} {
+		if !strings.Contains(v2[0], want) {
+			t.Errorf("v2 advisory: expected %q, got %s", want, v2[0])
+		}
+	}
+	if !sameYAML([]byte(in), fixedV2) {
+		t.Errorf("v2 must not rewrite ZoneIngress:\n%s", fixedV2)
+	}
+	_, ev2 := ScanForDeprecations([]byte(`type: ZoneEgress
+name: ze-1
+networking: {address: 10.0.0.6, port: 10002}
+`), TargetV2)
+	if len(ev2) != 1 || !strings.Contains(ev2[0], "ZoneEgress \"ze-1\": the ZoneEgress resource is removed in 3.0") {
+		t.Errorf("v2 ZoneEgress advisory: %v", ev2)
 	}
 
 	egress := `apiVersion: kuma.io/v1alpha1
