@@ -92,17 +92,27 @@ func ScanForDeprecations(raw []byte, target TargetVersion) (out []byte, warnings
 		warnings = append(warnings, warnInlineOtelEndpoint(obj, name, kind, target)...)
 		warnings = append(warnings, warnMeshAccessLogOtelAttributeKeys(obj, name)...)
 	case "MeshHealthCheck":
-		warnings = warnHealthCheckPanicThreshold(obj, name)
+		if target.IsV3() {
+			fix(fixHealthCheckPanicThresholdForV3(obj, name))
+		} else {
+			warnings = warnHealthCheckPanicThreshold(obj, name)
+		}
 	case "MeshTrust":
 		warnings = warnMeshTrustOrigin(obj, name)
 	case "MeshTrafficPermission":
 		warnings = append(warnings, warnMeshServiceInFrom(obj, name, kind)...)
 		warnings = append(warnings, warnMeshTrafficPermissionActionCasing(obj, name)...)
-		warnings = append(warnings, warnFromDeprecatedForRulesAPI(obj, name, kind)...)
+		warnings = append(warnings, warnFromDeprecatedForRulesAPI(obj, name, kind, target)...)
 		fix(fixSpiffeIDCasing(obj, name))
+		warnings = append(warnings, warnMTPEmptyMatches(obj, name, target)...)
 	case "MeshFaultInjection":
+		if target.IsV3() {
+			fix(fixMeshFaultInjectionFromForV3(obj, name))
+		}
 		warnings = append(warnings, warnMeshServiceInFrom(obj, name, kind)...)
-		warnings = append(warnings, warnFromDeprecatedForRulesAPI(obj, name, kind)...)
+		warnings = append(warnings, warnFromDeprecatedForRulesAPI(obj, name, kind, target)...)
+	case "MeshProxyPatch":
+		warnings = append(warnings, warnMeshProxyPatchCircuitBreakers(obj, name, target)...)
 	case "MeshLoadBalancingStrategy":
 		warnings = append(warnings, warnSourceIPHashPolicy(obj, name)...)
 		fix(fixHashPoliciesPath(obj, name))
@@ -157,6 +167,19 @@ func ScanForDeprecations(raw []byte, target TargetVersion) (out []byte, warnings
 		// Deprecated top-level spec.targetRef kinds (MeshSubset/MeshService/MeshServiceSubset
 		// → Dataplane; MeshHTTPRoute → spec.to[].targetRef).
 		warnings = append(warnings, warnDeprecatedTopLevelTargetRef(obj, name, kind, target)...)
+		if target.IsV3() {
+			// MeshOPA's targetRef is rewritten by fixMeshOPATargetRefForV3 above.
+			if kind != "MeshOPA" {
+				fix(fixRealResourceTargetRefsForV3(obj, name, kind))
+			}
+			fix(fixRouteBackendRefNamesForV3(obj, name, kind))
+			warnings = append(warnings, warnV3ToTargetRefKinds(obj, name, kind)...)
+		}
+	}
+
+	// Last: the targetRef rewrite above reads the policy's own kuma.io/zone label.
+	if target.IsV3() {
+		fix(stripControlPlaneLabels(obj, name, kind))
 	}
 
 	// Pods and workload pod templates: reachable-services/backends annotation rewrites.
@@ -227,14 +250,29 @@ func fixMeshMetricSidecarRegex(obj map[string]interface{}, name string) (bool, [
 
 // ---- MeshHealthCheck healthyPanicThreshold (v2.10) ----------------------------
 
+// warnHealthCheckPanicThreshold flags healthyPanicThreshold on a MeshHealthCheck.
+// The real field lives in to[].default (that is where the legacy HealthCheck
+// conversion writes it too); spec.default/spec.conf are checked for hand-written
+// variants. Under --to-latest v3 fixHealthCheckPanicThresholdForV3 runs instead.
 func warnHealthCheckPanicThreshold(obj map[string]interface{}, name string) []string {
-	if !hasNestedField(obj, "spec", "default", "healthyPanicThreshold") &&
-		!hasNestedField(obj, "spec", "conf", "healthyPanicThreshold") {
+	found := hasNestedField(obj, "spec", "default", "healthyPanicThreshold") ||
+		hasNestedField(obj, "spec", "conf", "healthyPanicThreshold")
+	if spec, ok := obj["spec"].(map[string]interface{}); ok && !found {
+		to, _ := spec["to"].([]interface{})
+		for _, entry := range to {
+			if em, ok := entry.(map[string]interface{}); ok && hasNestedField(em, "default", "healthyPanicThreshold") {
+				found = true
+				break
+			}
+		}
+	}
+	if !found {
 		return nil
 	}
 	return []string{fmt.Sprintf(
-		"MeshHealthCheck %q: healthyPanicThreshold has been moved to MeshCircuitBreaker.spec.default.outlierDetection (Kuma 2.10+) — "+
-			"create a MeshCircuitBreaker policy targeting the same service with this value.",
+		"MeshHealthCheck %q: healthyPanicThreshold is deprecated (Kuma 2.10+) and removed in 3.0 — "+
+			"set it on a MeshCircuitBreaker with the same targetRef and to[].targetRef, as "+
+			"to[].default.outlierDetection.healthyPanicThreshold.",
 		name)}
 }
 
@@ -299,7 +337,7 @@ func warnMeshServiceInFrom(obj map[string]interface{}, name, kind string) []stri
 // SPIFFE trust-domain and identity strings are not present in the source manifest (they depend
 // on MeshIdentity / cluster identity config), so a mechanical rewrite would either fail or —
 // worse, for MeshTrafficPermission — silently widen access. The warning gives the manual steps.
-func warnFromDeprecatedForRulesAPI(obj map[string]interface{}, name, kind string) []string {
+func warnFromDeprecatedForRulesAPI(obj map[string]interface{}, name, kind string, target TargetVersion) []string {
 	spec, ok := obj["spec"].(map[string]interface{})
 	if !ok {
 		return nil
@@ -309,21 +347,32 @@ func warnFromDeprecatedForRulesAPI(obj map[string]interface{}, name, kind string
 	}
 	switch kind {
 	case "MeshTrafficPermission":
+		rejected := ""
+		if target.IsV3() {
+			rejected = " Kuma 3.0 rejects this policy as it stands: spec.from is not in the schema " +
+				"(\"spec.from: unknown field\"), and an MTP without rules[] fails with \"policy must define rules\"."
+		}
 		return []string{fmt.Sprintf(
 			"MeshTrafficPermission %q: the from[] field is deprecated in favour of the rules[] API "+
 				"(Kuma 2.14, removed in 3.0) and is NOT auto-converted. rules[] requires MeshIdentity, "+
 				"matches clients by SPIFFE identity under default.{allow,deny,allowWithShadowDeny}, and is "+
 				"default-deny. Manually translate each from[] source selector to a spiffeID matcher and place "+
 				"it under allow / deny / allowWithShadowDeny per its Allow/Deny/AllowWithShadowDeny value. The "+
-				"SPIFFE trust-domain and identity values cannot be derived from this manifest.",
-			name)}
+				"SPIFFE trust-domain and identity values cannot be derived from this manifest.%s",
+			name, rejected)}
 	case "MeshFaultInjection":
+		rejected := ""
+		if target.IsV3() {
+			rejected = " Kuma 3.0 rejects this policy as it stands: spec.from is not in the schema " +
+				"(\"spec.from: unknown field\"). Only from[] entries that all target kind: Mesh are rewritten " +
+				"automatically."
+		}
 		return []string{fmt.Sprintf(
 			"MeshFaultInjection %q: the from[] field is deprecated in favour of the rules[] API "+
 				"(Kuma 2.13, removed in 3.0) and is NOT auto-converted. In rules[], each entry has matches[] "+
 				"(spiffeID/sni) plus a default fault config; re-express each from[] source as a matches[] clause. "+
-				"Omitting matches[] applies the fault to all inbound traffic, which widens the original scope.",
-			name)}
+				"Omitting matches[] applies the fault to all inbound traffic, which widens the original scope.%s",
+			name, rejected)}
 	}
 	return nil
 }
