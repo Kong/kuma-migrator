@@ -49,7 +49,7 @@ them for the latest 2.x line or for 3.0, and writes a report of every change, ev
 and every step left to you. It never writes to a control plane: you review the output and
 apply it yourself.</p>
 <h2 id="quick-start">Quick start</h2>
-<p><img src="../img/pipeline.svg" alt="Pipeline: extract pulls resources from a running control plane, migrate writes the migrated manifests and the report (add --dry-run to preview with no YAML written), apply is a manual step that runs kubectl or kumactl in the report's order"></p>
+<p><img src="../img/pipeline.svg" alt="Pipeline: extract pulls resources from a running control plane, migrate writes the migrated manifests and the report (add --dry-run to preview with no YAML written), apply is a manual step that runs kubectl or kumactl in the report's order. Extract's --preflight option also audits the control plane for 3.0, and the migrate report summarises it"></p>
 <div class="code"><pre class="chroma" data-lang="bash"><code><span class="k-cmd">brew</span> install <span class="k-flag">--cask</span> <span class="k-val">bcollard/kuma-migrator/kuma-migrator</span>
 <span class="k-bin">kuma-migrator</span> <span class="k-sub">extract</span> <span class="k-flag">--kube-context</span> <span class="k-val">prod-eks</span> <span class="k-flag">--output-dir</span> <span class="k-val">./raw-policies</span>
 <span class="k-bin">kuma-migrator</span> <span class="k-sub">migrate</span> <span class="k-flag">--input-dir</span> <span class="k-val">./raw-policies</span> <span class="k-flag">--output-dir</span> <span class="k-val">./migrated</span> <span class="k-flag">--dry-run</span>

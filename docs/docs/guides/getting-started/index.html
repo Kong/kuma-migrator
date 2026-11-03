@@ -41,12 +41,12 @@
 <div class="layout">
   <details class="nav-mobile">
     <summary>Guides menu</summary>
-    <div class="nav-group"><ul><li><a href="../">Overview</a></li><li><a href="../installation/">Installation</a></li><li><a href="./" class="active" aria-current="page">Getting started</a></li><li><a href="../upgrade-plans/">Upgrade plans</a></li><li><a href="../cli/">CLI reference</a></li><li><a href="../extract/">Extract</a></li><li><a href="../konnect-access/">Konnect read-only access</a></li><li><a href="../migrate/">Migrate</a></li><li><a href="../target-version/">Target versions (--to-latest)</a></li><li><a href="../apply/">Apply</a></li><li><a href="../output-and-reports/">Output and reports</a></li><li><a href="../examples/">Examples</a></li><li><a href="../architecture/">Architecture</a></li><li><a href="../notes/">Notes and caveats</a></li></ul></div>
+    <div class="nav-group"><ul><li><a href="../">Overview</a></li><li><a href="../installation/">Installation</a></li><li><a href="./" class="active" aria-current="page">Getting started</a></li><li><a href="../upgrade-plans/">Upgrade plans</a></li><li><a href="../cli/">CLI reference</a></li><li><a href="../extract/">Extract</a></li><li><a href="../konnect-access/">Konnect read-only access</a></li><li><a href="../preflight/">Live control plane audit</a></li><li><a href="../migrate/">Migrate</a></li><li><a href="../target-version/">Target versions (--to-latest)</a></li><li><a href="../apply/">Apply</a></li><li><a href="../output-and-reports/">Output and reports</a></li><li><a href="../examples/">Examples</a></li><li><a href="../architecture/">Architecture</a></li><li><a href="../notes/">Notes and caveats</a></li></ul></div>
 
   </details>
   <aside class="sidebar" aria-label="Guides pages">
     <p class="sidebar-section"><a href="../">Guides</a></p>
-    <div class="nav-group"><ul><li><a href="../">Overview</a></li><li><a href="../installation/">Installation</a></li><li><a href="./" class="active" aria-current="page">Getting started</a></li><li><a href="../upgrade-plans/">Upgrade plans</a></li><li><a href="../cli/">CLI reference</a></li><li><a href="../extract/">Extract</a></li><li><a href="../konnect-access/">Konnect read-only access</a></li><li><a href="../migrate/">Migrate</a></li><li><a href="../target-version/">Target versions (--to-latest)</a></li><li><a href="../apply/">Apply</a></li><li><a href="../output-and-reports/">Output and reports</a></li><li><a href="../examples/">Examples</a></li><li><a href="../architecture/">Architecture</a></li><li><a href="../notes/">Notes and caveats</a></li></ul></div>
+    <div class="nav-group"><ul><li><a href="../">Overview</a></li><li><a href="../installation/">Installation</a></li><li><a href="./" class="active" aria-current="page">Getting started</a></li><li><a href="../upgrade-plans/">Upgrade plans</a></li><li><a href="../cli/">CLI reference</a></li><li><a href="../extract/">Extract</a></li><li><a href="../konnect-access/">Konnect read-only access</a></li><li><a href="../preflight/">Live control plane audit</a></li><li><a href="../migrate/">Migrate</a></li><li><a href="../target-version/">Target versions (--to-latest)</a></li><li><a href="../apply/">Apply</a></li><li><a href="../output-and-reports/">Output and reports</a></li><li><a href="../examples/">Examples</a></li><li><a href="../architecture/">Architecture</a></li><li><a href="../notes/">Notes and caveats</a></li></ul></div>
 
   </aside>
   <main id="content">
@@ -89,6 +89,9 @@ machine, sorted by control plane, mesh and kind. Nothing changes in the control 
 <p class="story-get"><strong>You get</strong> <code>raw-policies/&lt;context&gt;-&lt;mode&gt;-ctx/mesh-&lt;mesh&gt;/…</code>, one file per resource</p>
 <p>Multizone? Run <code>extract</code> once per control plane, Global and each zone, into the same
 directory. Details: <a href="../extract/">Extract</a>.</p>
+<p>Planning a 3.0 upgrade? Add <code>--preflight</code> to a <code>--kumactl-context</code> extraction to also audit
+the running control plane: versions, settings, zones. See
+<a href="../preflight/">Live control plane audit</a>.</p>
 </div>
 <div class="story-step">
 <h2 id="let-the-tool-rewrite-them">Let the tool rewrite them</h2>

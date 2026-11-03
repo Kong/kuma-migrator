@@ -71,6 +71,7 @@ are written to `--output-dir` by
 | Section | Content |
 |---|---|
 | Header | Input and output directories, the target (`v2` or `v3`). Under `v3`, a banner that the output must not be applied to a 2.x control plane. Under `--dry-run`, a banner that no files were written |
+| Live Control Plane Audit | Present when a context directory holds a `v3-preflight.json` (from `extract --preflight` or `preflight -o <context dir>`). Per context: status, control plane, blocker table with examples, coverage gaps, path to the HTML report. See [Live control plane audit](preflight.md) |
 | Summary | Files processed, migrated, already migrated, scanned, kept under `_manual/` (when any), skipped, errors |
 | Files That Would Be Migrated (`--dry-run`) / Migrated Files | One table per `<context>/<subfolder>/`, for example `kind-global-global-ctx/resiliency/`, with the warnings of each file. `REWRITTEN` files are listed here too. Errored files are grouped separately |
 | Already Migrated | Files passed through unchanged, with their warnings |

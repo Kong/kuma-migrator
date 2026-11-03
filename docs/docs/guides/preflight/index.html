@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Live control plane audit – kuma-migrator docs</title>
+<meta name="description" content="Audit a running 2.x control plane for Kong Mesh 3.0 readiness with kuma-migrator preflight or extract --preflight, and read the result in the migrate report.">
+<link rel="canonical" href="https://kong.github.io/kuma-migrator/docs/guides/preflight/">
+<link rel="icon" href="../../static/favicon.svg" type="image/svg+xml">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="kuma-migrator">
+<meta property="og:title" content="Live control plane audit – kuma-migrator docs">
+<meta property="og:description" content="Audit a running 2.x control plane for Kong Mesh 3.0 readiness with kuma-migrator preflight or extract --preflight, and read the result in the migrate report.">
+<meta property="og:url" content="https://kong.github.io/kuma-migrator/docs/guides/preflight/">
+<meta property="og:image" content="https://kong.github.io/kuma-migrator/assets/migration-overview.svg">
+<meta name="twitter:card" content="summary_large_image">
+
+<link rel="stylesheet" href="../../static/shared.css">
+<link rel="stylesheet" href="../../static/style.css">
+</head>
+<body data-root="../../">
+<a class="skip" href="#content">Skip to content</a>
+<header class="site-header">
+  <div class="bar">
+    <a class="brand" href="../../../"><img src="../../static/favicon.svg" width="28" height="28" alt=""><span>kuma-migrator</span></a>
+    <a class="docs-home" href="../../">Docs</a>
+    <nav class="top-nav" aria-label="Sections">
+      <a href="../" class="active" aria-current="true">Guides</a>
+      <a href="../../topics/">Topics</a>
+      <a href="../../policies/">Policies</a>
+      <a class="external" href="https://github.com/Kong/kuma-migrator">GitHub<svg class="ext-icon" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" focusable="false"><path d="M6 3H3.5A1.5 1.5 0 0 0 2 4.5v8A1.5 1.5 0 0 0 3.5 14h8a1.5 1.5 0 0 0 1.5-1.5V10M9 2h5v5M14 2 7 9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="visually-hidden"> (external site)</span></a>
+    </nav>
+    <!-- release-tag --><a class="release-badge" href="https://github.com/Kong/kuma-migrator/releases/latest" title="Latest release: v0.10.0">v0.10.0</a><!-- /release-tag -->
+    <div class="search">
+      <input id="search-input" type="search" placeholder="Search docs" aria-label="Search docs" autocomplete="off">
+      <ul id="search-results" hidden></ul>
+    </div>
+  </div>
+</header>
+
+<div class="layout">
+  <details class="nav-mobile">
+    <summary>Guides menu</summary>
+    <div class="nav-group"><ul><li><a href="../">Overview</a></li><li><a href="../installation/">Installation</a></li><li><a href="../getting-started/">Getting started</a></li><li><a href="../upgrade-plans/">Upgrade plans</a></li><li><a href="../cli/">CLI reference</a></li><li><a href="../extract/">Extract</a></li><li><a href="../konnect-access/">Konnect read-only access</a></li><li><a href="./" class="active" aria-current="page">Live control plane audit</a></li><li><a href="../migrate/">Migrate</a></li><li><a href="../target-version/">Target versions (--to-latest)</a></li><li><a href="../apply/">Apply</a></li><li><a href="../output-and-reports/">Output and reports</a></li><li><a href="../examples/">Examples</a></li><li><a href="../architecture/">Architecture</a></li><li><a href="../notes/">Notes and caveats</a></li></ul></div>
+
+  </details>
+  <aside class="sidebar" aria-label="Guides pages">
+    <p class="sidebar-section"><a href="../">Guides</a></p>
+    <div class="nav-group"><ul><li><a href="../">Overview</a></li><li><a href="../installation/">Installation</a></li><li><a href="../getting-started/">Getting started</a></li><li><a href="../upgrade-plans/">Upgrade plans</a></li><li><a href="../cli/">CLI reference</a></li><li><a href="../extract/">Extract</a></li><li><a href="../konnect-access/">Konnect read-only access</a></li><li><a href="./" class="active" aria-current="page">Live control plane audit</a></li><li><a href="../migrate/">Migrate</a></li><li><a href="../target-version/">Target versions (--to-latest)</a></li><li><a href="../apply/">Apply</a></li><li><a href="../output-and-reports/">Output and reports</a></li><li><a href="../examples/">Examples</a></li><li><a href="../architecture/">Architecture</a></li><li><a href="../notes/">Notes and caveats</a></li></ul></div>
+
+  </aside>
+  <main id="content">
+    <article class="doc">
+<p class="crumb"><a href="../">Guides</a></p>
+<h1>Live control plane audit</h1>
+<p class="lede">Audit a running 2.x control plane for Kong Mesh 3.0 readiness with kuma-migrator preflight or extract --preflight, and read the result in the migrate report.</p>
+<p><code>migrate</code> reads manifests. Some 3.0 blockers are not in any manifest: the control plane and
+zone versions, control plane settings, zones that are offline, the default policies the control
+plane created, and features in the Envoy configuration of running proxies. The readiness audit
+reads those from the running control plane.</p>
+<p>The audit is the engine of <code>kong-mesh-v3-preflight</code>, written by the Kong Mesh engineering team
+(<a href="https://github.com/Kong/kong-mesh-v3-readiness">Kong/kong-mesh-v3-readiness</a>, Apache 2.0).
+kuma-migrator imports it as a Go library, so it needs no separate install.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th></th>
+<th><code>migrate --to-latest v3</code></th>
+<th>Readiness audit</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Reads</td>
+<td>Extracted YAML files</td>
+<td>The control plane REST API</td>
+</tr>
+<tr>
+<td>Writes</td>
+<td>Rewritten manifests, report, Apply Checklist</td>
+<td><code>v3-preflight.json</code>, <code>v3-preflight.html</code></td>
+</tr>
+<tr>
+<td>Covers</td>
+<td>Fields and kinds to rewrite or remove</td>
+<td>Versions, CP settings, zones, stored resources, Envoy config</td>
+</tr>
+<tr>
+<td>Changes anything</td>
+<td>Output files only</td>
+<td>Nothing, read-only</td>
+</tr>
+</tbody>
+</table></div>
+<p>Run both before an upgrade. Several checks overlap (a <code>Mesh</code> without <code>meshServices.mode: Exclusive</code>, <code>from[]</code> on <code>MeshTimeout</code>); the migrate output fixes those, the audit confirms what
+is still on the control plane.</p>
+<h2 id="audit-while-extracting">Audit while extracting</h2>
+<p>Add <code>--preflight</code> to a <code>--kumactl-context</code> extraction. The audit runs after the files are
+written, against the same control plane and token:</p>
+<div class="code"><pre class="chroma" data-lang="bash"><code><span class="k-bin">kuma-migrator</span> <span class="k-sub">extract</span> <span class="k-flag">--kumactl-context</span> <span class="k-val">prod-global</span> <span class="k-flag">-o</span> <span class="k-val">./raw-policies</span> <span class="k-flag">--preflight</span>
+<span class="k-bin">kuma-migrator</span> <span class="k-sub">migrate</span> <span class="k-flag">--input-dir</span> <span class="k-val">./raw-policies</span> <span class="k-flag">--output-dir</span> <span class="k-val">./migrated</span> <span class="k-flag">--to-latest</span> <span class="k-val">v3</span>
+</code></pre></div>
+<p>The report files land in the context directory, next to <code>.kuma-migrator.json</code>:</p>
+<div class="code"><pre class="chroma" data-lang="text"><code>raw-policies/
+  prod-global-global-ctx/
+    .kuma-migrator.json
+    v3-preflight.json
+    v3-preflight.html
+    mesh-default/...
+</code></pre></div>
+<p>A failed audit is printed as a warning and does not fail the extraction. <code>migrate</code> reads only
+<code>.yaml</code> files, so the report files do not affect the migration.</p>
+<p><code>--preflight</code> needs the control plane API, so it is refused with <code>--kube-context</code>. Port-forward
+the control plane and run <code>preflight --address</code> instead (below).</p>
+<h2 id="audit-on-its-own">Audit on its own</h2>
+<div class="code"><pre class="chroma" data-lang="bash"><code><span class="c1"># the current kumactl context</span>
+<span class="k-bin">kuma-migrator</span> <span class="k-sub">preflight</span> <span class="k-flag">-o</span> <span class="k-val">./audit</span>
+
+<span class="c1"># a named context, Konnect included</span>
+<span class="k-bin">kuma-migrator</span> <span class="k-sub">preflight</span> <span class="k-flag">--kumactl-context</span> <span class="k-val">prod-global</span> <span class="k-flag">-o</span> <span class="k-val">./audit</span>
+
+<span class="c1"># an address, e.g. a port-forwarded Kubernetes control plane</span>
+<span class="k-manual">kubectl</span> <span class="k-manual-b">port-forward</span> <span class="k-flag">-n</span> <span class="k-val">kong-mesh-system</span> <span class="k-manual-b">svc/kong-mesh-control-plane</span> <span class="m">5681</span> <span class="p">&amp;</span>
+<span class="k-bin">kuma-migrator</span> <span class="k-sub">preflight</span> <span class="k-flag">--address</span> <span class="k-val">http://localhost:5681</span> <span class="k-flag">--token</span> <span class="s2">"</span><span class="nv">$TOKEN</span><span class="s2">"</span> <span class="k-flag">-o</span> <span class="k-val">./audit</span>
+</code></pre></div>
+<p>Point <code>-o</code> at an extract context directory to have <code>migrate</code> pick the result up.</p>
+<p>Audit the Global and every zone. On a Global, the audit also reads each zone's settings as the
+zone reported them over KDS.</p>
+<h2 id="what-it-needs">What it needs</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Item</th>
+<th>Detail</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Token</td>
+<td>Read access to the API. On Kong Mesh, <code>/config</code> (the CP settings) is access-controlled: the <code>GENERATE_DATAPLANE_TOKEN</code> access type on 2.x, <code>VIEW_CONTROL_PLANE_METADATA</code> on 3.0. Without it the settings are not audited and the report is inconclusive</td>
+</tr>
+<tr>
+<td>Latest 2.x patch</td>
+<td>Read from the <a href="https://github.com/kumahq/kuma/releases">kumahq/kuma releases</a> (one GitHub API request). Set <code>--latest-version 2.14.7</code> to skip the request, for example without internet access. Without a value the version check does not run and the report is inconclusive</td>
+</tr>
+<tr>
+<td>Envoy inspection</td>
+<td>Off by default. <code>--inspect-dataplanes N</code> (<code>--preflight-inspect-dataplanes</code> on <code>extract</code>) fetches up to N config dumps, one request per proxy</td>
+</tr>
+</tbody>
+</table></div>
+<p>On <strong>Konnect</strong> the Global's own settings and version are managed by Kong, so the audit treats the
+control plane as a Global, skips those two, and audits every zone. The
+<a href="../konnect-access/">read-only token</a> is enough. The Konnect path has not yet been run against a
+real Konnect organization.</p>
+<h2 id="reading-the-result">Reading the result</h2>
+<p>The terminal shows the status and every blocker. The HTML report has the details, examples
+named by KRI, coverage gaps and the manual checks the API cannot answer.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Status</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>clean</code></td>
+<td>No blocker, every check ran</td>
+</tr>
+<tr>
+<td><code>blockers</code></td>
+<td>At least one blocker, every check ran</td>
+</tr>
+<tr>
+<td><code>inconclusive</code></td>
+<td>At least one check could not run (coverage gap). Blockers may be listed too</td>
+</tr>
+<tr>
+<td><code>failed</code></td>
+<td>The audit could not run: unreachable address, not a Kuma API. The command exits non-zero</td>
+</tr>
+</tbody>
+</table></div>
+<p><code>preflight</code> exits 0 whenever a report is produced, blockers included, so read the status rather
+than the exit code.</p>
+<p>The <code>migrate</code> report adds a <strong>Live Control Plane Audit</strong> section per context directory that has
+a <code>v3-preflight.json</code>, on both targets: status, control plane, counts, the blocker table and the
+coverage gaps. See <a href="../output-and-reports/">Output and reports</a>.</p>
+<h2 id="flags">Flags</h2>
+<p>See <a href="../cli/#preflight">CLI reference</a>.</p>
+
+    </article>
+    <nav class="pager" aria-label="Previous and next page">
+      <a class="prev" href="../konnect-access/"><span>Previous</span>Konnect read-only access</a>
+      <a class="next" href="../migrate/"><span>Next</span>Migrate</a>
+    </nav>
+  </main>
+  <nav class="toc" aria-label="On this page">
+    <p class="toc-title">On this page</p>
+    <ul><li class="toc-l2"><a href="#audit-while-extracting">Audit while extracting</a></li><li class="toc-l2"><a href="#audit-on-its-own">Audit on its own</a></li><li class="toc-l2"><a href="#what-it-needs">What it needs</a></li><li class="toc-l2"><a href="#reading-the-result">Reading the result</a></li><li class="toc-l2"><a href="#flags">Flags</a></li></ul>
+  </nav>
+</div>
+<footer class="site-footer">
+  <p>
+    <a href="../../../">kuma-migrator</a> ·
+    <a href="https://github.com/Kong/kuma-migrator">Source</a> ·
+    <a href="https://github.com/Kong/kuma-migrator/releases">Releases</a> ·
+    <a href="https://github.com/Kong/kuma-migrator/issues">Issues</a> ·
+    <a href="https://github.com/Kong/kuma-migrator/blob/main/site/content/guides/preflight.md">View source of this page</a>
+  </p>
+  <p>Apache-2.0 licensed. Part of Kong's <a href="https://konghq.com/products/kong-mesh">Kong Mesh</a> tooling.</p>
+</footer>
+<script src="../../static/search-index.js"></script>
+<script src="../../static/search.js"></script>
+<script src="../../static/copy.js"></script>
+</body>
+</html>

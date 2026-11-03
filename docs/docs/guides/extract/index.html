@@ -41,12 +41,12 @@
 <div class="layout">
   <details class="nav-mobile">
     <summary>Guides menu</summary>
-    <div class="nav-group"><ul><li><a href="../">Overview</a></li><li><a href="../installation/">Installation</a></li><li><a href="../getting-started/">Getting started</a></li><li><a href="../upgrade-plans/">Upgrade plans</a></li><li><a href="../cli/">CLI reference</a></li><li><a href="./" class="active" aria-current="page">Extract</a></li><li><a href="../konnect-access/">Konnect read-only access</a></li><li><a href="../migrate/">Migrate</a></li><li><a href="../target-version/">Target versions (--to-latest)</a></li><li><a href="../apply/">Apply</a></li><li><a href="../output-and-reports/">Output and reports</a></li><li><a href="../examples/">Examples</a></li><li><a href="../architecture/">Architecture</a></li><li><a href="../notes/">Notes and caveats</a></li></ul></div>
+    <div class="nav-group"><ul><li><a href="../">Overview</a></li><li><a href="../installation/">Installation</a></li><li><a href="../getting-started/">Getting started</a></li><li><a href="../upgrade-plans/">Upgrade plans</a></li><li><a href="../cli/">CLI reference</a></li><li><a href="./" class="active" aria-current="page">Extract</a></li><li><a href="../konnect-access/">Konnect read-only access</a></li><li><a href="../preflight/">Live control plane audit</a></li><li><a href="../migrate/">Migrate</a></li><li><a href="../target-version/">Target versions (--to-latest)</a></li><li><a href="../apply/">Apply</a></li><li><a href="../output-and-reports/">Output and reports</a></li><li><a href="../examples/">Examples</a></li><li><a href="../architecture/">Architecture</a></li><li><a href="../notes/">Notes and caveats</a></li></ul></div>
 
   </details>
   <aside class="sidebar" aria-label="Guides pages">
     <p class="sidebar-section"><a href="../">Guides</a></p>
-    <div class="nav-group"><ul><li><a href="../">Overview</a></li><li><a href="../installation/">Installation</a></li><li><a href="../getting-started/">Getting started</a></li><li><a href="../upgrade-plans/">Upgrade plans</a></li><li><a href="../cli/">CLI reference</a></li><li><a href="./" class="active" aria-current="page">Extract</a></li><li><a href="../konnect-access/">Konnect read-only access</a></li><li><a href="../migrate/">Migrate</a></li><li><a href="../target-version/">Target versions (--to-latest)</a></li><li><a href="../apply/">Apply</a></li><li><a href="../output-and-reports/">Output and reports</a></li><li><a href="../examples/">Examples</a></li><li><a href="../architecture/">Architecture</a></li><li><a href="../notes/">Notes and caveats</a></li></ul></div>
+    <div class="nav-group"><ul><li><a href="../">Overview</a></li><li><a href="../installation/">Installation</a></li><li><a href="../getting-started/">Getting started</a></li><li><a href="../upgrade-plans/">Upgrade plans</a></li><li><a href="../cli/">CLI reference</a></li><li><a href="./" class="active" aria-current="page">Extract</a></li><li><a href="../konnect-access/">Konnect read-only access</a></li><li><a href="../preflight/">Live control plane audit</a></li><li><a href="../migrate/">Migrate</a></li><li><a href="../target-version/">Target versions (--to-latest)</a></li><li><a href="../apply/">Apply</a></li><li><a href="../output-and-reports/">Output and reports</a></li><li><a href="../examples/">Examples</a></li><li><a href="../architecture/">Architecture</a></li><li><a href="../notes/">Notes and caveats</a></li></ul></div>
 
   </aside>
   <main id="content">
@@ -447,6 +447,11 @@ the Konnect API, not through the <code>kumactl</code> binary.</li>
 <li><strong>Format.</strong> Konnect list endpoints return Universal format (<code>{total, items: [...]}</code>)
 regardless of the requested format. <code>--output-format kubernetes</code> converts each item.</li>
 </ul>
+<h2 id="readiness-audit">Readiness audit</h2>
+<p>With <code>--kumactl-context</code>, <code>--preflight</code> runs the Kong Mesh 3.0 readiness audit against the same
+control plane after the files are written, and saves <code>v3-preflight.json</code> and
+<code>v3-preflight.html</code> in the context directory. <code>migrate</code> summarises them. See
+<a href="../preflight/">Live control plane audit</a>.</p>
 <h2 id="universal-format">Universal format</h2>
 <p><code>kumactl</code> and Konnect return Universal format: <code>type</code>, <code>name</code> and <code>mesh</code> at the top level, no
 <code>apiVersion</code> or <code>metadata</code>. <code>extract</code> handles both single resources and
@@ -474,7 +479,7 @@ file, for a control plane API with a self-signed certificate.</p>
   </main>
   <nav class="toc" aria-label="On this page">
     <p class="toc-title">On this page</p>
-    <ul><li class="toc-l2"><a href="#connection-modes">Connection modes</a></li><li class="toc-l3"><a href="#generated-resources">Generated resources</a></li><li class="toc-l3"><a href="#server-written-fields">Server-written fields</a></li><li class="toc-l2"><a href="#output-layout">Output layout</a></li><li class="toc-l2"><a href="#control-plane-modes">Control plane modes</a></li><li class="toc-l3"><a href="#global-control-plane">Global control plane</a></li><li class="toc-l3"><a href="#zone-control-planes">Zone control planes</a></li><li class="toc-l3"><a href="#zone-control-plane-without-a-global">Zone control plane without a Global</a></li><li class="toc-l3"><a href="#where-gateway-resources-live">Where gateway resources live</a></li><li class="toc-l2"><a href="#environment-detection">Environment detection</a></li><li class="toc-l2"><a href="#konnect">Konnect</a></li><li class="toc-l2"><a href="#universal-format">Universal format</a></li><li class="toc-l2"><a href="#self-hosted-kumactl-specifics">Self-hosted kumactl specifics</a></li></ul>
+    <ul><li class="toc-l2"><a href="#connection-modes">Connection modes</a></li><li class="toc-l3"><a href="#generated-resources">Generated resources</a></li><li class="toc-l3"><a href="#server-written-fields">Server-written fields</a></li><li class="toc-l2"><a href="#output-layout">Output layout</a></li><li class="toc-l2"><a href="#control-plane-modes">Control plane modes</a></li><li class="toc-l3"><a href="#global-control-plane">Global control plane</a></li><li class="toc-l3"><a href="#zone-control-planes">Zone control planes</a></li><li class="toc-l3"><a href="#zone-control-plane-without-a-global">Zone control plane without a Global</a></li><li class="toc-l3"><a href="#where-gateway-resources-live">Where gateway resources live</a></li><li class="toc-l2"><a href="#environment-detection">Environment detection</a></li><li class="toc-l2"><a href="#konnect">Konnect</a></li><li class="toc-l2"><a href="#readiness-audit">Readiness audit</a></li><li class="toc-l2"><a href="#universal-format">Universal format</a></li><li class="toc-l2"><a href="#self-hosted-kumactl-specifics">Self-hosted kumactl specifics</a></li></ul>
   </nav>
 </div>
 <footer class="site-footer">

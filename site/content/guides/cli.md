@@ -18,6 +18,10 @@ kuma-migrator extract  --kube-context <ctx> | --kumactl-context <ctx>
 kuma-migrator migrate  --input-dir <dir> --output-dir <dir>
                        [--mesh <name>] [--to-latest v2|v3] [--dry-run]
 
+kuma-migrator preflight [--kumactl-context <ctx> | --address <url>] [--token <token>]
+                       [--mesh <name>] [-o <dir>] [--latest-version <2.14.x>]
+                       [--inspect-dataplanes <n>] [--timeout <duration>]
+
 kuma-migrator konnect token-script --region <region>
                        [--scope mesh|org] [--control-plane <name>]...
                        [--account-name <name>] [--expires-in <duration>] [-o <file>]
@@ -42,6 +46,10 @@ Kinds whose name contains `Insight` are always excluded.
 | `--mesh` | | no | all meshes | Extract only this mesh. Global-scoped resources are always extracted |
 | `--output-format` | `-f` | no | `universal` | `universal` (`type`/`name`/`mesh`) or `kubernetes` (`apiVersion`/`kind`/`metadata`). Only affects the `--kumactl-context` path |
 | `--tls-skip-verify` | `-k` | no | `false` | Skip TLS verification of the control plane API certificate |
+| `--preflight` | | no | `false` | After extracting, run the [3.0 readiness audit](preflight.md) against the same control plane. `--kumactl-context` only |
+| `--latest-version` | | no | from GitHub | With `--preflight`: latest 2.14 patch to check versions against |
+| `--preflight-inspect-dataplanes` | | no | `0` | With `--preflight`: fetch up to N Envoy config dumps |
+| `--preflight-timeout` | | no | `5m` | With `--preflight`: overall audit timeout |
 
 > **Warning:** Use `--output-format kubernetes` when the control plane behind a
 > `--kumactl-context` runs on Kubernetes. Universal output cannot be applied back to it:
@@ -72,6 +80,25 @@ Error: invalid --to-latest value "v4": want "v2" or "v3"
 ```
 
 See [Migrate](migrate.md) and [Target versions](target-version.md).
+
+## preflight
+
+Runs the Kong Mesh 3.0 readiness audit against a running control plane and writes
+`v3-preflight.json` and `v3-preflight.html`. Read-only. Exits non-zero only when the audit could
+not run. See [Live control plane audit](preflight.md).
+
+| Flag | Short | Required | Default | Description |
+|---|---|---|---|---|
+| `--kumactl-context` | | no | current kumactl context | Control plane address and token from a kumactl context, Konnect included |
+| `--address` | | no | | Control plane REST API URL instead of a kumactl context |
+| `--token` | | no | from the context | Bearer token. Overrides the context's token |
+| `--mesh` | | no | all meshes | Audit only this mesh |
+| `--output-dir` | `-o` | no | `.` | Directory for the two report files |
+| `--latest-version` | | no | from GitHub | Latest 2.14 patch to check versions against, e.g. `2.14.7` |
+| `--inspect-dataplanes` | | no | `0` | Fetch up to N Envoy config dumps (one request per proxy) |
+| `--max-resource-reads` | | no | `50000` | Cap on resources read (`0` = unlimited) |
+| `--timeout` | | no | `5m` | Overall audit timeout |
+| `--tls-skip-verify` | `-k` | no | `false` | Skip TLS verification of the control plane API certificate |
 
 ## konnect token-script
 

@@ -79,6 +79,11 @@ writes what 3.0 cannot accept to a separate `_manual/` subtree, and lists the ob
 before the upgrade.
 See [Target versions](https://kong.github.io/kuma-migrator/docs/guides/target-version/).
 
+For a 3.0 upgrade, also audit the running control planes. `extract --kumactl-context <ctx>
+--preflight` (or `kuma-migrator preflight`) runs the Kong Mesh engineering team's readiness audit
+(versions, CP settings, zones, Envoy config), and the `migrate` report summarises it. See
+[Live control plane audit](https://kong.github.io/kuma-migrator/docs/guides/preflight/).
+
 ## What it handles
 
 | Scenario | Migration |
@@ -110,6 +115,7 @@ Full documentation: **[kong.github.io/kuma-migrator/docs](https://kong.github.io
 | [CLI reference](https://kong.github.io/kuma-migrator/docs/guides/cli/) | Every command, flag, and the config file |
 | [Extract](https://kong.github.io/kuma-migrator/docs/guides/extract/) | CP-mode rules, output layout, Konnect, Universal vs Kubernetes format |
 | [Konnect read-only access](https://kong.github.io/kuma-migrator/docs/guides/konnect-access/) | A read-only system account token for Konnect, from `kuma-migrator konnect token-script` |
+| [Live control plane audit](https://kong.github.io/kuma-migrator/docs/guides/preflight/) | The Kong Mesh 3.0 readiness audit of a running control plane, from `kuma-migrator preflight` or `extract --preflight` |
 | [Migrate](https://kong.github.io/kuma-migrator/docs/guides/migrate/) | Dry run, output layout, Gateway API placement |
 | [Target versions](https://kong.github.io/kuma-migrator/docs/guides/target-version/) | `--to-latest` and the checks that change with it |
 | [Apply](https://kong.github.io/kuma-migrator/docs/guides/apply/) | Apply order, and cleaning up changed kinds |
@@ -125,6 +131,7 @@ history: [Releases](https://github.com/Kong/kuma-migrator/releases) ·
 
 | Version | Date | Summary |
 |---|---|---|
+| [v0.11.0](https://github.com/Kong/kuma-migrator/releases/tag/v0.11.0) | 2026-11-03 | The Kong Mesh team's 3.0 readiness audit is built in: new `kuma-migrator preflight`, `extract --kumactl-context … --preflight`, and a Live Control Plane Audit section in the `migrate` report |
 | [v0.10.0](https://github.com/Kong/kuma-migrator/releases/tag/v0.10.0) | 2026-11-03 | New `kuma-migrator konnect token-script`: the script a Konnect org admin runs to give `extract` a short-lived read-only token. New 3.0 checks: `proxyTypes`, `kafka` protocol, named `directAccessServices`, legacy fields in `MeshRetry`. `Mesh.metrics` keeps the full metric set and client certificate check; converted MeshService refs are pinned to the proxy's zone; rewritten `MeshOPA`/`MeshExternalService` are applied on 2.14.6+ before the Global upgrade; MeshIdentity advice covers `insecureAllowSelfSigned` and trust across zones |
 | [v0.9.1](https://github.com/Kong/kuma-migrator/releases/tag/v0.9.1) | 2026-11-02 | Validated end to end against Kong Mesh 2.14.7 and 3.0.1 control planes, with fixes found that way (extract origin rules, server-set fields, `kubectl replace` in the checklist, schema normalisation) |
 | [v0.9.0](https://github.com/Kong/kuma-migrator/releases/tag/v0.9.0) | 2026-11-02 | Kuma / Kong Mesh 3.0 GA support for `--to-latest v3`, a `_manual/` subtree for documents 3.0 rejects, and the documentation site |

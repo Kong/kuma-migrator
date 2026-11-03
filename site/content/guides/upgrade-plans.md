@@ -63,10 +63,15 @@ fields that 2.14 still requires, so it is never applied before the upgrade. See
    each zone. See [Extract](extract.md).
 
    ```bash
-   kuma-migrator extract --kumactl-context global-prod        --output-dir ./raw-policies
+   kuma-migrator extract --kumactl-context global-prod        --output-dir ./raw-policies --preflight
    kuma-migrator extract --kube-context    zone-eu-west1-prod --output-dir ./raw-policies
    kuma-migrator extract --kube-context    zone-us-east1-prod --output-dir ./raw-policies
    ```
+
+   `--preflight` also runs the [live control plane audit](preflight.md) (versions, CP
+   settings, zones), and the migrate reports summarise it. On a Global it covers the settings
+   every zone reported. Re-run it (`kuma-migrator preflight`) after each step below until it
+   reports `clean`.
 
 3. **Dry-run both targets** into separate directories. The v3 plan is the list of work the
    3.0 upgrade needs.

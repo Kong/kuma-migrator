@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 330" role="img">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 350" role="img">
 <title>Extract: copy every resource out of the control plane into YAML files</title>
-<desc>kuma-migrator reads the control plane through kubectl or kumactl and copies each resource into a folder tree on your machine. A padlock sign says the control plane is only read.</desc>
+<desc>kuma-migrator reads the control plane through kubectl or kumactl and copies each resource into a folder tree on your machine. A padlock sign says the control plane is only read. With --preflight, an amber sheet in the context folder is the 3.0 readiness audit report.</desc>
 
 <style>
 :root {
@@ -204,4 +204,10 @@ text { font-family:"Chalkboard SE","Segoe Print","Comic Neue","Bradley Hand",sys
 <path class="s" d="M740.4,176.9 Q742.2,175.9 743.9,174.9 Q750.8,182.5 758.1,189.8 Q757.5,195.5 757.1,200.7 Q748.2,199.8 739.8,198.9 Q740.1,187.8 740.4,176.9"/>
 <path class="s thin" d="M744.1,176.1 Q744.2,182.7 744.4,189.8 Q751.3,190.0 758.3,189.9"/>
 <text class="ts" x="642" y="315" text-anchor="middle">one YAML file per resource</text>
+<path class="f-man" d="M728.6,108.0 L740.8,108.2 L754.0,121.9 L754.3,141.7 L727.4,142.6 Z"/>
+<path class="sx" d="M727.2,108.7 Q733.8,108.8 740.4,108.9 Q747.3,115.0 754.5,121.5 Q754.0,131.7 754.3,142.1 Q741.6,142.6 728.4,142.5 Q728.0,125.4 727.2,108.7"/>
+<path class="sx" d="M727.0,108.7 Q733.7,108.8 741.0,108.3 Q747.5,114.9 754.7,121.0 Q754.4,132.0 754.8,142.2 Q741.7,142.3 727.7,142.5 Q727.7,125.5 727.0,108.7"/>
+<path class="sx thin" d="M739.7,108.2 Q739.8,115.1 740.0,122.2 Q747.1,122.5 754.0,122.5"/>
+<path class="sx thin" d="M736.5,124.1 Q737.4,126.2 738.3,128.1 Q739.4,126.1 740.6,124.1 Q741.1,125.7 741.6,127.4"/>
+<text class="ts tx" x="642" y="340" text-anchor="middle">+ v3-preflight.html with --preflight</text>
 </svg>

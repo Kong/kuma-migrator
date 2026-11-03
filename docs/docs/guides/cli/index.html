@@ -41,12 +41,12 @@
 <div class="layout">
   <details class="nav-mobile">
     <summary>Guides menu</summary>
-    <div class="nav-group"><ul><li><a href="../">Overview</a></li><li><a href="../installation/">Installation</a></li><li><a href="../getting-started/">Getting started</a></li><li><a href="../upgrade-plans/">Upgrade plans</a></li><li><a href="./" class="active" aria-current="page">CLI reference</a></li><li><a href="../extract/">Extract</a></li><li><a href="../konnect-access/">Konnect read-only access</a></li><li><a href="../migrate/">Migrate</a></li><li><a href="../target-version/">Target versions (--to-latest)</a></li><li><a href="../apply/">Apply</a></li><li><a href="../output-and-reports/">Output and reports</a></li><li><a href="../examples/">Examples</a></li><li><a href="../architecture/">Architecture</a></li><li><a href="../notes/">Notes and caveats</a></li></ul></div>
+    <div class="nav-group"><ul><li><a href="../">Overview</a></li><li><a href="../installation/">Installation</a></li><li><a href="../getting-started/">Getting started</a></li><li><a href="../upgrade-plans/">Upgrade plans</a></li><li><a href="./" class="active" aria-current="page">CLI reference</a></li><li><a href="../extract/">Extract</a></li><li><a href="../konnect-access/">Konnect read-only access</a></li><li><a href="../preflight/">Live control plane audit</a></li><li><a href="../migrate/">Migrate</a></li><li><a href="../target-version/">Target versions (--to-latest)</a></li><li><a href="../apply/">Apply</a></li><li><a href="../output-and-reports/">Output and reports</a></li><li><a href="../examples/">Examples</a></li><li><a href="../architecture/">Architecture</a></li><li><a href="../notes/">Notes and caveats</a></li></ul></div>
 
   </details>
   <aside class="sidebar" aria-label="Guides pages">
     <p class="sidebar-section"><a href="../">Guides</a></p>
-    <div class="nav-group"><ul><li><a href="../">Overview</a></li><li><a href="../installation/">Installation</a></li><li><a href="../getting-started/">Getting started</a></li><li><a href="../upgrade-plans/">Upgrade plans</a></li><li><a href="./" class="active" aria-current="page">CLI reference</a></li><li><a href="../extract/">Extract</a></li><li><a href="../konnect-access/">Konnect read-only access</a></li><li><a href="../migrate/">Migrate</a></li><li><a href="../target-version/">Target versions (--to-latest)</a></li><li><a href="../apply/">Apply</a></li><li><a href="../output-and-reports/">Output and reports</a></li><li><a href="../examples/">Examples</a></li><li><a href="../architecture/">Architecture</a></li><li><a href="../notes/">Notes and caveats</a></li></ul></div>
+    <div class="nav-group"><ul><li><a href="../">Overview</a></li><li><a href="../installation/">Installation</a></li><li><a href="../getting-started/">Getting started</a></li><li><a href="../upgrade-plans/">Upgrade plans</a></li><li><a href="./" class="active" aria-current="page">CLI reference</a></li><li><a href="../extract/">Extract</a></li><li><a href="../konnect-access/">Konnect read-only access</a></li><li><a href="../preflight/">Live control plane audit</a></li><li><a href="../migrate/">Migrate</a></li><li><a href="../target-version/">Target versions (--to-latest)</a></li><li><a href="../apply/">Apply</a></li><li><a href="../output-and-reports/">Output and reports</a></li><li><a href="../examples/">Examples</a></li><li><a href="../architecture/">Architecture</a></li><li><a href="../notes/">Notes and caveats</a></li></ul></div>
 
   </aside>
   <main id="content">
@@ -64,6 +64,10 @@ and <a href="https://github.com/Kong/kuma-migrator/blob/main/cmd/migrate.go"><co
 
 kuma-migrator migrate  --input-dir &lt;dir&gt; --output-dir &lt;dir&gt;
                        [--mesh &lt;name&gt;] [--to-latest v2|v3] [--dry-run]
+
+kuma-migrator preflight [--kumactl-context &lt;ctx&gt; | --address &lt;url&gt;] [--token &lt;token&gt;]
+                       [--mesh &lt;name&gt;] [-o &lt;dir&gt;] [--latest-version &lt;2.14.x&gt;]
+                       [--inspect-dataplanes &lt;n&gt;] [--timeout &lt;duration&gt;]
 
 kuma-migrator konnect token-script --region &lt;region&gt;
                        [--scope mesh|org] [--control-plane &lt;name&gt;]...
@@ -130,6 +134,34 @@ Kinds whose name contains <code>Insight</code> are always excluded.</p>
 <td><code>false</code></td>
 <td>Skip TLS verification of the control plane API certificate</td>
 </tr>
+<tr>
+<td><code>--preflight</code></td>
+<td></td>
+<td>no</td>
+<td><code>false</code></td>
+<td>After extracting, run the <a href="../preflight/">3.0 readiness audit</a> against the same control plane. <code>--kumactl-context</code> only</td>
+</tr>
+<tr>
+<td><code>--latest-version</code></td>
+<td></td>
+<td>no</td>
+<td>from GitHub</td>
+<td>With <code>--preflight</code>: latest 2.14 patch to check versions against</td>
+</tr>
+<tr>
+<td><code>--preflight-inspect-dataplanes</code></td>
+<td></td>
+<td>no</td>
+<td><code>0</code></td>
+<td>With <code>--preflight</code>: fetch up to N Envoy config dumps</td>
+</tr>
+<tr>
+<td><code>--preflight-timeout</code></td>
+<td></td>
+<td>no</td>
+<td><code>5m</code></td>
+<td>With <code>--preflight</code>: overall audit timeout</td>
+</tr>
 </tbody>
 </table></div>
 <blockquote class="callout callout-warning"><p><strong>Warning:</strong> Use <code>--output-format kubernetes</code> when the control plane behind a
@@ -195,6 +227,93 @@ it writes only <code>migration-plan.md</code>. Without it, it writes the migrate
 <div class="code"><pre class="chroma" data-lang="text"><code><span class="o-err">Error:</span> invalid --to-latest value "v4": want "v2" or "v3"
 </code></pre></div>
 <p>See <a href="../migrate/">Migrate</a> and <a href="../target-version/">Target versions</a>.</p>
+<h2 id="preflight">preflight</h2>
+<p>Runs the Kong Mesh 3.0 readiness audit against a running control plane and writes
+<code>v3-preflight.json</code> and <code>v3-preflight.html</code>. Read-only. Exits non-zero only when the audit could
+not run. See <a href="../preflight/">Live control plane audit</a>.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Short</th>
+<th>Required</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--kumactl-context</code></td>
+<td></td>
+<td>no</td>
+<td>current kumactl context</td>
+<td>Control plane address and token from a kumactl context, Konnect included</td>
+</tr>
+<tr>
+<td><code>--address</code></td>
+<td></td>
+<td>no</td>
+<td></td>
+<td>Control plane REST API URL instead of a kumactl context</td>
+</tr>
+<tr>
+<td><code>--token</code></td>
+<td></td>
+<td>no</td>
+<td>from the context</td>
+<td>Bearer token. Overrides the context's token</td>
+</tr>
+<tr>
+<td><code>--mesh</code></td>
+<td></td>
+<td>no</td>
+<td>all meshes</td>
+<td>Audit only this mesh</td>
+</tr>
+<tr>
+<td><code>--output-dir</code></td>
+<td><code>-o</code></td>
+<td>no</td>
+<td><code>.</code></td>
+<td>Directory for the two report files</td>
+</tr>
+<tr>
+<td><code>--latest-version</code></td>
+<td></td>
+<td>no</td>
+<td>from GitHub</td>
+<td>Latest 2.14 patch to check versions against, e.g. <code>2.14.7</code></td>
+</tr>
+<tr>
+<td><code>--inspect-dataplanes</code></td>
+<td></td>
+<td>no</td>
+<td><code>0</code></td>
+<td>Fetch up to N Envoy config dumps (one request per proxy)</td>
+</tr>
+<tr>
+<td><code>--max-resource-reads</code></td>
+<td></td>
+<td>no</td>
+<td><code>50000</code></td>
+<td>Cap on resources read (<code>0</code> = unlimited)</td>
+</tr>
+<tr>
+<td><code>--timeout</code></td>
+<td></td>
+<td>no</td>
+<td><code>5m</code></td>
+<td>Overall audit timeout</td>
+</tr>
+<tr>
+<td><code>--tls-skip-verify</code></td>
+<td><code>-k</code></td>
+<td>no</td>
+<td><code>false</code></td>
+<td>Skip TLS verification of the control plane API certificate</td>
+</tr>
+</tbody>
+</table></div>
 <h2 id="konnect-token-script">konnect token-script</h2>
 <p>Writes the bash script a Konnect organization admin runs to create a read-only system account
 and print a short-lived token for <code>extract</code>. It does not call Konnect.</p>
@@ -315,7 +434,7 @@ pick up later changes to the defaults. Leave the key out to keep the built-in li
   </main>
   <nav class="toc" aria-label="On this page">
     <p class="toc-title">On this page</p>
-    <ul><li class="toc-l2"><a href="#commands">Commands</a></li><li class="toc-l2"><a href="#extract">extract</a></li><li class="toc-l2"><a href="#migrate">migrate</a></li><li class="toc-l2"><a href="#konnect-token-script">konnect token-script</a></li><li class="toc-l2"><a href="#version-and-completion">version and completion</a></li><li class="toc-l2"><a href="#configuration-file">Configuration file</a></li></ul>
+    <ul><li class="toc-l2"><a href="#commands">Commands</a></li><li class="toc-l2"><a href="#extract">extract</a></li><li class="toc-l2"><a href="#migrate">migrate</a></li><li class="toc-l2"><a href="#preflight">preflight</a></li><li class="toc-l2"><a href="#konnect-token-script">konnect token-script</a></li><li class="toc-l2"><a href="#version-and-completion">version and completion</a></li><li class="toc-l2"><a href="#configuration-file">Configuration file</a></li></ul>
   </nav>
 </div>
 <footer class="site-footer">

@@ -41,12 +41,12 @@
 <div class="layout">
   <details class="nav-mobile">
     <summary>Guides menu</summary>
-    <div class="nav-group"><ul><li><a href="../">Overview</a></li><li><a href="../installation/">Installation</a></li><li><a href="../getting-started/">Getting started</a></li><li><a href="../upgrade-plans/">Upgrade plans</a></li><li><a href="../cli/">CLI reference</a></li><li><a href="../extract/">Extract</a></li><li><a href="../konnect-access/">Konnect read-only access</a></li><li><a href="../migrate/">Migrate</a></li><li><a href="../target-version/">Target versions (--to-latest)</a></li><li><a href="../apply/">Apply</a></li><li><a href="../output-and-reports/">Output and reports</a></li><li><a href="../examples/">Examples</a></li><li><a href="./" class="active" aria-current="page">Architecture</a></li><li><a href="../notes/">Notes and caveats</a></li></ul></div>
+    <div class="nav-group"><ul><li><a href="../">Overview</a></li><li><a href="../installation/">Installation</a></li><li><a href="../getting-started/">Getting started</a></li><li><a href="../upgrade-plans/">Upgrade plans</a></li><li><a href="../cli/">CLI reference</a></li><li><a href="../extract/">Extract</a></li><li><a href="../konnect-access/">Konnect read-only access</a></li><li><a href="../preflight/">Live control plane audit</a></li><li><a href="../migrate/">Migrate</a></li><li><a href="../target-version/">Target versions (--to-latest)</a></li><li><a href="../apply/">Apply</a></li><li><a href="../output-and-reports/">Output and reports</a></li><li><a href="../examples/">Examples</a></li><li><a href="./" class="active" aria-current="page">Architecture</a></li><li><a href="../notes/">Notes and caveats</a></li></ul></div>
 
   </details>
   <aside class="sidebar" aria-label="Guides pages">
     <p class="sidebar-section"><a href="../">Guides</a></p>
-    <div class="nav-group"><ul><li><a href="../">Overview</a></li><li><a href="../installation/">Installation</a></li><li><a href="../getting-started/">Getting started</a></li><li><a href="../upgrade-plans/">Upgrade plans</a></li><li><a href="../cli/">CLI reference</a></li><li><a href="../extract/">Extract</a></li><li><a href="../konnect-access/">Konnect read-only access</a></li><li><a href="../migrate/">Migrate</a></li><li><a href="../target-version/">Target versions (--to-latest)</a></li><li><a href="../apply/">Apply</a></li><li><a href="../output-and-reports/">Output and reports</a></li><li><a href="../examples/">Examples</a></li><li><a href="./" class="active" aria-current="page">Architecture</a></li><li><a href="../notes/">Notes and caveats</a></li></ul></div>
+    <div class="nav-group"><ul><li><a href="../">Overview</a></li><li><a href="../installation/">Installation</a></li><li><a href="../getting-started/">Getting started</a></li><li><a href="../upgrade-plans/">Upgrade plans</a></li><li><a href="../cli/">CLI reference</a></li><li><a href="../extract/">Extract</a></li><li><a href="../konnect-access/">Konnect read-only access</a></li><li><a href="../preflight/">Live control plane audit</a></li><li><a href="../migrate/">Migrate</a></li><li><a href="../target-version/">Target versions (--to-latest)</a></li><li><a href="../apply/">Apply</a></li><li><a href="../output-and-reports/">Output and reports</a></li><li><a href="../examples/">Examples</a></li><li><a href="./" class="active" aria-current="page">Architecture</a></li><li><a href="../notes/">Notes and caveats</a></li></ul></div>
 
   </aside>
   <main id="content">
@@ -57,7 +57,9 @@
 <p><code>kuma-migrator</code> is a Go CLI built on <a href="https://github.com/spf13/cobra">cobra</a>. It has two
 commands that do work, <code>extract</code> and <code>migrate</code>, and they share only the on-disk layout and a
 small metadata file. <code>extract</code> reads a control plane and writes YAML files. <code>migrate</code> reads
-YAML files and writes YAML files plus a report. Neither command writes to a control plane.</p>
+YAML files and writes YAML files plus a report. <code>preflight</code> (also <code>extract --preflight</code>) runs
+the 3.0 readiness audit over the control plane API and writes its report into the extract
+layout, where <code>migrate</code> reads it. No command writes to a control plane.</p>
 <div class="table-wrap"><table>
 <thead>
 <tr>
@@ -77,6 +79,10 @@ YAML files and writes YAML files plus a report. Neither command writes to a cont
 <tr>
 <td><a href="https://github.com/Kong/kuma-migrator/tree/main/pkg/migrator"><code>pkg/migrator</code></a></td>
 <td><code>migrate</code>: scenario detection, transforms, deprecation scan, report</td>
+</tr>
+<tr>
+<td><a href="https://github.com/Kong/kuma-migrator/tree/main/pkg/readiness"><code>pkg/readiness</code></a></td>
+<td><code>preflight</code> and <code>extract --preflight</code>: runs the <a href="https://github.com/Kong/kong-mesh-v3-readiness">kong-mesh-v3-readiness</a> <code>preflight</code> library, writes and reads its report</td>
 </tr>
 <tr>
 <td><a href="https://github.com/Kong/kuma-migrator/tree/main/pkg/konnect"><code>pkg/konnect</code></a></td>
@@ -99,7 +105,7 @@ YAML files and writes YAML files plus a report. Neither command writes to a cont
 <p>YAML is parsed with <a href="https://github.com/kubernetes-sigs/yaml"><code>sigs.k8s.io/yaml</code></a>, which goes
 through JSON and so matches the JSON tags of Kuma's own Go types.</p>
 <h2 id="pipeline">Pipeline</h2>
-<p><img src="../../../img/architecture.svg" alt="kuma-migrator pipeline: extract reads the control plane into an input tree; migrate runs a pre-pass, then for each document the skip list, scenario detection, the transform and the deprecation scan, and writes the apply tree, the _manual subtree and the report"></p>
+<p><img src="../../../img/architecture.svg" alt="kuma-migrator pipeline: extract reads the control plane into an input tree, and the optional --preflight audit adds its report there; migrate runs a pre-pass, then for each document the skip list, scenario detection, the transform and the deprecation scan, and writes the apply tree, the _manual subtree and the report"></p>
 <h2 id="extract">extract</h2>
 <p><a href="https://github.com/Kong/kuma-migrator/tree/main/pkg/extractor"><code>pkg/extractor</code></a> has one
 entry point per connection mode. Both end in the same writer,

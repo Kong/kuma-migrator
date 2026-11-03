@@ -274,6 +274,13 @@ A control plane URL containing `api.konghq.com` is treated as Kong Konnect:
 - **Format.** Konnect list endpoints return Universal format (`{total, items: [...]}`)
   regardless of the requested format. `--output-format kubernetes` converts each item.
 
+## Readiness audit
+
+With `--kumactl-context`, `--preflight` runs the Kong Mesh 3.0 readiness audit against the same
+control plane after the files are written, and saves `v3-preflight.json` and
+`v3-preflight.html` in the context directory. `migrate` summarises them. See
+[Live control plane audit](preflight.md).
+
 ## Universal format
 
 `kumactl` and Konnect return Universal format: `type`, `name` and `mesh` at the top level, no

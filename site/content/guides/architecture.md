@@ -7,13 +7,16 @@ order: 110
 `kuma-migrator` is a Go CLI built on [cobra](https://github.com/spf13/cobra). It has two
 commands that do work, `extract` and `migrate`, and they share only the on-disk layout and a
 small metadata file. `extract` reads a control plane and writes YAML files. `migrate` reads
-YAML files and writes YAML files plus a report. Neither command writes to a control plane.
+YAML files and writes YAML files plus a report. `preflight` (also `extract --preflight`) runs
+the 3.0 readiness audit over the control plane API and writes its report into the extract
+layout, where `migrate` reads it. No command writes to a control plane.
 
 | Package | Role |
 |---|---|
 | [`cmd/`](https://github.com/Kong/kuma-migrator/tree/main/cmd) | Flag parsing; calls into `pkg/` |
 | [`pkg/extractor`](https://github.com/Kong/kuma-migrator/tree/main/pkg/extractor) | `extract`: control plane discovery, mode detection, origin filtering, file layout |
 | [`pkg/migrator`](https://github.com/Kong/kuma-migrator/tree/main/pkg/migrator) | `migrate`: scenario detection, transforms, deprecation scan, report |
+| [`pkg/readiness`](https://github.com/Kong/kuma-migrator/tree/main/pkg/readiness) | `preflight` and `extract --preflight`: runs the [kong-mesh-v3-readiness](https://github.com/Kong/kong-mesh-v3-readiness) `preflight` library, writes and reads its report |
 | [`pkg/konnect`](https://github.com/Kong/kuma-migrator/tree/main/pkg/konnect) | `konnect token-script`: renders the read-only system account script |
 | [`pkg/resource`](https://github.com/Kong/kuma-migrator/tree/main/pkg/resource) | Kind → subfolder map shared by both commands |
 | [`pkg/config`](https://github.com/Kong/kuma-migrator/tree/main/pkg/config) | `~/.config/kuma-migrator.yaml`: skip lists, TLS setting |
@@ -24,7 +27,7 @@ through JSON and so matches the JSON tags of Kuma's own Go types.
 
 ## Pipeline
 
-![kuma-migrator pipeline: extract reads the control plane into an input tree; migrate runs a pre-pass, then for each document the skip list, scenario detection, the transform and the deprecation scan, and writes the apply tree, the _manual subtree and the report](/img/architecture.svg)
+![kuma-migrator pipeline: extract reads the control plane into an input tree, and the optional --preflight audit adds its report there; migrate runs a pre-pass, then for each document the skip list, scenario detection, the transform and the deprecation scan, and writes the apply tree, the _manual subtree and the report](/img/architecture.svg)
 
 ## extract
 

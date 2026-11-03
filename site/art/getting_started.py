@@ -335,9 +335,10 @@ p.save("journey.svg")
 
 # ---------------------------------------------------------------------------
 # Step 1: extract.
-p = Pic(800, 330, "Extract: copy every resource out of the control plane into YAML files",
+p = Pic(800, 350, "Extract: copy every resource out of the control plane into YAML files",
         "kuma-migrator reads the control plane through kubectl or kumactl and copies each resource "
-        "into a folder tree on your machine. A padlock sign says the control plane is only read.", 21)
+        "into a folder tree on your machine. A padlock sign says the control plane is only read. "
+        "With --preflight, an amber sheet in the context folder is the 3.0 readiness audit report.", 21)
 
 p.control_plane(40, 70, 190, 160, "your control plane")
 # read-only sign
@@ -364,6 +365,9 @@ p.folder(540, 228, 230, 46, "global-scoped-resources/", "paper")
 for i in range(4):
     p.sheet(680 + i * 20, 176, 18, 24, "paper", lines=1)
 p.text(642, 315, "one YAML file per resource", "ts", "middle")
+# optional: the 3.0 readiness audit report (extract --preflight)
+p.sheet(728, 108, 26, 34, "man", lines=1)
+p.text(642, 340, "+ v3-preflight.html with --preflight", "ts tx", "middle")
 p.save("extract.svg")
 
 # ---------------------------------------------------------------------------

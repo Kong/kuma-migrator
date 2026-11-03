@@ -56,6 +56,10 @@ kuma-migrator extract --kumactl-context my-cp --output-dir ./raw-policies
 Multizone? Run `extract` once per control plane, Global and each zone, into the same
 directory. Details: [Extract](extract.md).
 
+Planning a 3.0 upgrade? Add `--preflight` to a `--kumactl-context` extraction to also audit
+the running control plane: versions, settings, zones. See
+[Live control plane audit](preflight.md).
+
 </div>
 
 <div class="story-step">

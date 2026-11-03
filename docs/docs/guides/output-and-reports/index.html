@@ -41,12 +41,12 @@
 <div class="layout">
   <details class="nav-mobile">
     <summary>Guides menu</summary>
-    <div class="nav-group"><ul><li><a href="../">Overview</a></li><li><a href="../installation/">Installation</a></li><li><a href="../getting-started/">Getting started</a></li><li><a href="../upgrade-plans/">Upgrade plans</a></li><li><a href="../cli/">CLI reference</a></li><li><a href="../extract/">Extract</a></li><li><a href="../konnect-access/">Konnect read-only access</a></li><li><a href="../migrate/">Migrate</a></li><li><a href="../target-version/">Target versions (--to-latest)</a></li><li><a href="../apply/">Apply</a></li><li><a href="./" class="active" aria-current="page">Output and reports</a></li><li><a href="../examples/">Examples</a></li><li><a href="../architecture/">Architecture</a></li><li><a href="../notes/">Notes and caveats</a></li></ul></div>
+    <div class="nav-group"><ul><li><a href="../">Overview</a></li><li><a href="../installation/">Installation</a></li><li><a href="../getting-started/">Getting started</a></li><li><a href="../upgrade-plans/">Upgrade plans</a></li><li><a href="../cli/">CLI reference</a></li><li><a href="../extract/">Extract</a></li><li><a href="../konnect-access/">Konnect read-only access</a></li><li><a href="../preflight/">Live control plane audit</a></li><li><a href="../migrate/">Migrate</a></li><li><a href="../target-version/">Target versions (--to-latest)</a></li><li><a href="../apply/">Apply</a></li><li><a href="./" class="active" aria-current="page">Output and reports</a></li><li><a href="../examples/">Examples</a></li><li><a href="../architecture/">Architecture</a></li><li><a href="../notes/">Notes and caveats</a></li></ul></div>
 
   </details>
   <aside class="sidebar" aria-label="Guides pages">
     <p class="sidebar-section"><a href="../">Guides</a></p>
-    <div class="nav-group"><ul><li><a href="../">Overview</a></li><li><a href="../installation/">Installation</a></li><li><a href="../getting-started/">Getting started</a></li><li><a href="../upgrade-plans/">Upgrade plans</a></li><li><a href="../cli/">CLI reference</a></li><li><a href="../extract/">Extract</a></li><li><a href="../konnect-access/">Konnect read-only access</a></li><li><a href="../migrate/">Migrate</a></li><li><a href="../target-version/">Target versions (--to-latest)</a></li><li><a href="../apply/">Apply</a></li><li><a href="./" class="active" aria-current="page">Output and reports</a></li><li><a href="../examples/">Examples</a></li><li><a href="../architecture/">Architecture</a></li><li><a href="../notes/">Notes and caveats</a></li></ul></div>
+    <div class="nav-group"><ul><li><a href="../">Overview</a></li><li><a href="../installation/">Installation</a></li><li><a href="../getting-started/">Getting started</a></li><li><a href="../upgrade-plans/">Upgrade plans</a></li><li><a href="../cli/">CLI reference</a></li><li><a href="../extract/">Extract</a></li><li><a href="../konnect-access/">Konnect read-only access</a></li><li><a href="../preflight/">Live control plane audit</a></li><li><a href="../migrate/">Migrate</a></li><li><a href="../target-version/">Target versions (--to-latest)</a></li><li><a href="../apply/">Apply</a></li><li><a href="./" class="active" aria-current="page">Output and reports</a></li><li><a href="../examples/">Examples</a></li><li><a href="../architecture/">Architecture</a></li><li><a href="../notes/">Notes and caveats</a></li></ul></div>
 
   </aside>
   <main id="content">
@@ -151,6 +151,10 @@ are written to <code>--output-dir</code> by
 <tr>
 <td>Header</td>
 <td>Input and output directories, the target (<code>v2</code> or <code>v3</code>). Under <code>v3</code>, a banner that the output must not be applied to a 2.x control plane. Under <code>--dry-run</code>, a banner that no files were written</td>
+</tr>
+<tr>
+<td>Live Control Plane Audit</td>
+<td>Present when a context directory holds a <code>v3-preflight.json</code> (from <code>extract --preflight</code> or <code>preflight -o &lt;context dir&gt;</code>). Per context: status, control plane, blocker table with examples, coverage gaps, path to the HTML report. See <a href="../preflight/">Live control plane audit</a></td>
 </tr>
 <tr>
 <td>Summary</td>

@@ -408,14 +408,15 @@ pre code { background: none; padding: 0; font-size: inherit; border-radius: 0 }
 <section class="alt">
   <div class="wrap">
     <h2>How it works</h2>
-    <p class="lede">Two commands, plus a manual apply step. Extract from a live control plane, migrate (preview first with <code>--dry-run</code>), apply.</p>
+    <p class="lede">Two commands, plus a manual apply step. Extract from a live control plane, migrate (preview first with <code>--dry-run</code>), apply. Planning a 3.0 upgrade? Add <code>--preflight</code> to extract to also audit the running control plane.</p>
 
     <figure>
-      <img src="img/pipeline.svg" alt="Pipeline diagram: extract pulls resources from a running control plane, migrate writes the migrated manifests and report (add --dry-run to preview with no YAML written), apply — a manual step, not a kuma-migrator command — runs kubectl or kumactl in the report's order.">
+      <img src="img/pipeline.svg" alt="Pipeline diagram: extract pulls resources from a running control plane, migrate writes the migrated manifests and report (add --dry-run to preview with no YAML written), apply — a manual step, not a kuma-migrator command — runs kubectl or kumactl in the report's order. Extract's --preflight option also audits the control plane for 3.0, and the migrate report summarises that audit.">
     </figure>
 
 <div class="code"><pre class="chroma" data-lang="bash"><code><span class="c"># 1a. Pull resources via kumactl (self-hosted OR Konnect-hosted, zonal or Global CP)</span>
 <span class="k-bin">kuma-migrator</span> <span class="k-sub">extract</span> <span class="k-flag">--kumactl-context</span> <span class="k-val">konnect-global-prod</span> <span class="k-flag">--output-dir</span> <span class="k-val">./raw-policies</span>
+<span class="c">#     add --preflight to also audit that control plane for 3.0 (versions, settings, zones)</span>
 
 <span class="c"># 1b. ...or via kubectl (self-hosted, Kubernetes-backed CP)</span>
 <span class="k-bin">kuma-migrator</span> <span class="k-sub">extract</span> <span class="k-flag">--kube-context</span> <span class="k-val">zone-eu-west1-prod</span> <span class="k-flag">--output-dir</span> <span class="k-val">./raw-policies</span>
@@ -429,7 +430,7 @@ pre code { background: none; padding: 0; font-size: inherit; border-radius: 0 }
 
 <span class="c"># 3a. Apply them yourself if you used --kumactl-context (self-hosted or
 #     Konnect) — kumactl rejects a directory, so apply one file at a time</span>
-<span class="k-manual">kumactl</span> <span class="k-manual-b">config use-context</span> <span class="k-val">konnect-global-prod</span>
+<span class="k-manual">kumactl</span> <span class="k-manual-b">config control-planes switch</span> <span class="k-flag">--name</span> <span class="k-val">konnect-global-prod</span>
 <span class="k-manual">kumactl</span> <span class="k-manual-b">apply</span> <span class="k-flag">-f</span> <span class="k-val">./migrated/konnect-global-prod-global-ctx/mesh-default/resiliency/MeshTimeout-my-timeout.yaml</span>
 
 <span class="c"># 3b. ...or via kubectl if you extracted via --kube-context — this step
@@ -572,6 +573,7 @@ pre code { background: none; padding: 0; font-size: inherit; border-radius: 0 }
         <tr><td><a href="docs/guides/cli/">CLI reference</a></td><td>Every command, flag, and the config file</td></tr>
         <tr><td><a href="docs/guides/extract/">Extracting from a control plane</a></td><td>CP-mode rules, output layout, Konnect, Universal vs Kubernetes format</td></tr>
         <tr><td><a href="docs/guides/konnect-access/">Konnect read-only access</a></td><td>A short-lived read-only token for Konnect, from <code>kuma-migrator konnect token-script</code></td></tr>
+        <tr><td><a href="docs/guides/preflight/">Live control plane audit</a></td><td>The 3.0 readiness audit of a running control plane: <code>kuma-migrator preflight</code> or <code>extract --preflight</code></td></tr>
         <tr><td><a href="docs/guides/migrate/">Plan and migrate</a></td><td>Dry run, output layout, Gateway API placement</td></tr>
         <tr><td><a href="docs/guides/target-version/">Choosing a target version</a></td><td><code>--to-latest</code> and the checks that change with it</td></tr>
         <tr><td><a href="docs/guides/apply/">Applying the migrated manifests</a></td><td>Apply order, and cleaning up changed kinds</td></tr>
@@ -595,12 +597,16 @@ pre code { background: none; padding: 0; font-size: inherit; border-radius: 0 }
   <div class="wrap">
     <h2>Changelog</h2>
     <p class="changelog-stat">
-      <strong>22 releases</strong> since April 2026.
+      <strong>23 releases</strong> since April 2026.
       Full history: <a href="https://github.com/Kong/kuma-migrator/releases">Releases</a> ·
       <a href="https://github.com/Kong/kuma-migrator/compare">compare view</a>.
     </p>
 
     <ul class="changelog">
+      <li>
+        <div class="meta"><span class="ver">v0.11.0</span> · 2026-11-03</div>
+        <div class="desc"><strong>New:</strong> the Kong Mesh team's 3.0 readiness audit (<a href="https://github.com/Kong/kong-mesh-v3-readiness">kong-mesh-v3-readiness</a>) is built in. <code>kuma-migrator preflight</code> audits a running control plane (versions, CP settings, zones, stored resources, optionally Envoy config) and writes <code>v3-preflight.json</code> and <code>.html</code>; <code>extract --kumactl-context … --preflight</code> runs it after extracting, and the <code>migrate</code> report adds a <strong>Live Control Plane Audit</strong> section. Konnect contexts work with the read-only token. See <a href="docs/guides/preflight/">Live control plane audit</a>.</div>
+      </li>
       <li>
         <div class="meta"><span class="ver">v0.10.0</span> · 2026-11-03</div>
         <div class="desc"><strong>New command:</strong> <code>kuma-migrator konnect token-script</code> writes the script a Konnect org admin runs to give <code>extract</code> a short-lived read-only token, without sharing an admin token (<a href="docs/guides/konnect-access/">Konnect read-only access</a>). New 3.0 checks, cross-checked with the Mesh team's readiness tool: <code>proxyTypes</code> in a targetRef (and the default <code>mesh-gateways-timeout-all</code> policy, which 3.0 widens to every sidecar), <code>kafka</code> protocol, named <code>directAccessServices</code>, legacy <code>Retry</code> fields in <code>MeshRetry</code>. Fixes: <code>Mesh.metrics</code> → <code>MeshMetric</code> keeps the full metric set and the client certificate check; converted MeshService refs are pinned to the proxy's zone; rewritten <code>MeshOPA</code>/<code>MeshExternalService</code> files are applied on 2.14.6+ before the Global upgrade; the MeshIdentity advice covers <code>insecureAllowSelfSigned</code> and <a href="docs/topics/mtls-identity/#trust-across-zones">trust across zones</a>.</div>

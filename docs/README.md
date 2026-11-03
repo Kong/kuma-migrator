@@ -13,6 +13,7 @@ The documentation moved to <https://kong.github.io/kuma-migrator/docs/>. Its sou
 | [CLI reference](https://kong.github.io/kuma-migrator/docs/guides/cli/) | Every command, flag and the configuration file |
 | [Extract](https://kong.github.io/kuma-migrator/docs/guides/extract/) | Control plane modes, origin filtering, output layout, Konnect, Universal |
 | [Konnect read-only access](https://kong.github.io/kuma-migrator/docs/guides/konnect-access/) | A read-only system account token for Konnect, from `kuma-migrator konnect token-script` |
+| [Live control plane audit](https://kong.github.io/kuma-migrator/docs/guides/preflight/) | The Kong Mesh 3.0 readiness audit of a running control plane, from `kuma-migrator preflight` or `extract --preflight` |
 | [Migrate](https://kong.github.io/kuma-migrator/docs/guides/migrate/) | `--dry-run`, the real run, input and output layout |
 | [Target versions](https://kong.github.io/kuma-migrator/docs/guides/target-version/) | `--to-latest v2\|v3` and what changes with it |
 | [Apply](https://kong.github.io/kuma-migrator/docs/guides/apply/) | Apply order, removing originals, the `_manual/` subtree |
