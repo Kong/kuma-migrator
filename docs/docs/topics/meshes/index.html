@@ -148,7 +148,7 @@ Companion policies are named <code>&lt;mesh&gt;-metrics</code>, <code>&lt;mesh&g
 <tbody>
 <tr>
 <td><code>metrics</code></td>
-<td>The <code>enabledBackend</code> becomes a mesh-wide <code>MeshMetric</code>; backends that are not enabled are dropped; no <code>enabledBackend</code> means no <code>MeshMetric</code></td>
+<td>The <code>enabledBackend</code> becomes a mesh-wide <code>MeshMetric</code> that keeps the full metric set, <code>aggregate[]</code> applications and, on v3, the client certificate check (<code>ActiveMTLSBackend</code>); backends that are not enabled are dropped; no <code>enabledBackend</code> means no <code>MeshMetric</code>. See <a href="../observability/">Observability</a></td>
 <td>Same</td>
 </tr>
 <tr>

@@ -43,7 +43,7 @@ Companion policies are named `<mesh>-metrics`, `<mesh>-passthrough`, `<mesh>-tls
 
 | Field | `--to-latest v2` | `--to-latest v3` |
 |---|---|---|
-| `metrics` | The `enabledBackend` becomes a mesh-wide `MeshMetric`; backends that are not enabled are dropped; no `enabledBackend` means no `MeshMetric` | Same |
+| `metrics` | The `enabledBackend` becomes a mesh-wide `MeshMetric` that keeps the full metric set, `aggregate[]` applications and, on v3, the client certificate check (`ActiveMTLSBackend`); backends that are not enabled are dropped; no `enabledBackend` means no `MeshMetric`. See [Observability](observability.md) | Same |
 | `tracing` | Removed, no companion. Backends travel with each converted `TrafficTrace` (see below) | Same |
 | `logging` | Removed, no companion. Backends travel with each converted `TrafficLog` (see below) | Same |
 | `networking.outbound.passthrough: false` | `MeshPassthrough` with `passthroughMode: None` | Same |

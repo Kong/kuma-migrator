@@ -103,14 +103,17 @@ list (the control plane generates them), so only Universal zone proxies reach `m
 1. Extract from the Global CP and from every Zone CP. Check the zone-origin skip list printed by
    the Global extraction.
 2. On 2.14, set `meshServices.mode: Exclusive` on every mesh (see [MeshService](meshservice.md)).
-3. Create `MeshMultiZoneService`s for services that need cross-zone load balancing, and move
+3. When moving to `MeshIdentity`, set up trust between zones: each zone generates its own CA, and
+   a zone's `MeshTrust` is synced to the Global only. See
+   [Trust across zones](mtls-identity.md#trust-across-zones).
+4. Create `MeshMultiZoneService`s for services that need cross-zone load balancing, and move
    `crossZone` settings onto `to[]` entries that target them.
-4. Deploy mesh-scoped zone proxies **before** upgrading each zone CP. Kubernetes:
+5. Deploy mesh-scoped zone proxies **before** upgrading each zone CP. Kubernetes:
    `meshes[].ingress.enabled` / `meshes[].egress.enabled` in the Helm values. Universal: a
    `Dataplane` per mesh with `networking.listeners` of type `ZoneIngress`/`ZoneEgress`, with a
    token issued without `--proxy-type`. Then delete the `ZoneIngress`/`ZoneEgress` resources.
-5. Move a Kubernetes-native Global CP to Universal with PostgreSQL. Rename `standalone` to `zone`.
-6. Upgrade the Global CP, then each zone. On Universal, apply the `MeshZoneAddress` immediately
+6. Move a Kubernetes-native Global CP to Universal with PostgreSQL. Rename `standalone` to `zone`.
+7. Upgrade the Global CP, then each zone. On Universal, apply the `MeshZoneAddress` immediately
    after each zone CP upgrade. On Kubernetes, delete the four zone proxy CRDs after the upgrade.
 
 ## Example
@@ -182,3 +185,4 @@ and both documents are reported (shortened):
 - [Extract](../guides/extract.md)
 - [MeshService](meshservice.md), [Policy targeting](policy-targeting.md)
 - [External services](external-services.md) — egress and `MeshExternalService`
+- [mTLS and identity](mtls-identity.md#trust-across-zones) — `MeshTrust` between zones

@@ -230,7 +230,7 @@ them scanned.</p>
 <tr>
 <td><code>outbound[].tags</code></td>
 <td>—</td>
-<td>Converted to <code>backendRef</code> when the <code>kuma.io/service</code> value decodes to name, namespace and port. Otherwise 3.0 rejects the <code>Dataplane</code> (<code>networking.outbound[0].backendRef: must be defined</code>), so it is written to <code>_manual/</code> with the <code>backendRef</code> to fill in</td>
+<td>Converted to <code>backendRef</code> when the <code>kuma.io/service</code> value decodes to name, namespace and port. The labels include <code>kuma.io/zone</code>: the outbound's own zone tag, else the <code>Dataplane</code>'s zone; warned when neither is in the input. Otherwise 3.0 rejects the <code>Dataplane</code> (<code>networking.outbound[0].backendRef: must be defined</code>), so it is written to <code>_manual/</code> with the <code>backendRef</code> to fill in</td>
 </tr>
 <tr>
 <td><code>reachableServices</code></td>
@@ -241,6 +241,11 @@ them scanned.</p>
 <td><code>reachableBackends</code> refs with <code>name</code>/<code>namespace</code>, on the <code>Dataplane</code> or in the <code>kuma.io/reachable-backends</code> annotation</td>
 <td>Warning</td>
 <td>Rewritten to labels (v3 only: on 2.14 a label selector also matches same-named services from other zones)</td>
+</tr>
+<tr>
+<td>Zone of a rewritten <code>MeshService</code> ref</td>
+<td>—</td>
+<td><code>kuma.io/zone</code> set to the <code>Dataplane</code>'s own zone. 2.x resolved a service name in the proxy's zone; on 3.0 a labels selector without <code>kuma.io/zone</code> also matches same-named <code>MeshService</code>s from other zones, and an outbound binds the oldest one. <code>MeshExternalService</code> and <code>MeshMultiZoneService</code> refs are left without it. When the zone is not in the input (no <code>kuma.io/zone</code> label, or a pod annotation), the warning says to add it</td>
 </tr>
 <tr>
 <td>Transparent proxy without <code>reachableBackends</code></td>

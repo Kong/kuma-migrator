@@ -84,7 +84,8 @@
 <a href="../meshopentelemetrybackend/">MeshOpenTelemetryBackend</a>.</p>
 <p><code>prometheus.tls.mode: ActiveMTLSBackend</code> is reported: on 3.0 a scraper connecting from
 another address must present a client certificate the mesh trusts. Give each remote
-scraper one, or set the mode to <code>Disabled</code>.</p>
+scraper one, or set the mode to <code>Disabled</code>. A <code>MeshMetric</code> generated from <code>Mesh.metrics</code>
+gets this mode under v3 when the legacy endpoint required a mesh client certificate.</p>
 </div>
   </section>
 </div>

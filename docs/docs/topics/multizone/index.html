@@ -249,6 +249,9 @@ zone CP upgrade. The <code>v3</code> warning contains the snippet.</li>
 <li>Extract from the Global CP and from every Zone CP. Check the zone-origin skip list printed by
 the Global extraction.</li>
 <li>On 2.14, set <code>meshServices.mode: Exclusive</code> on every mesh (see <a href="../meshservice/">MeshService</a>).</li>
+<li>When moving to <code>MeshIdentity</code>, set up trust between zones: each zone generates its own CA, and
+a zone's <code>MeshTrust</code> is synced to the Global only. See
+<a href="../mtls-identity/#trust-across-zones">Trust across zones</a>.</li>
 <li>Create <code>MeshMultiZoneService</code>s for services that need cross-zone load balancing, and move
 <code>crossZone</code> settings onto <code>to[]</code> entries that target them.</li>
 <li>Deploy mesh-scoped zone proxies <strong>before</strong> upgrading each zone CP. Kubernetes:
@@ -318,6 +321,7 @@ and both documents are reported (shortened):</p>
 <li><a href="../../guides/extract/">Extract</a></li>
 <li><a href="../meshservice/">MeshService</a>, <a href="../policy-targeting/">Policy targeting</a></li>
 <li><a href="../external-services/">External services</a> — egress and <code>MeshExternalService</code></li>
+<li><a href="../mtls-identity/#trust-across-zones">mTLS and identity</a> — <code>MeshTrust</code> between zones</li>
 </ul>
 
     </article>

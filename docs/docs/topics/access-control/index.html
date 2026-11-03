@@ -256,8 +256,8 @@ applies to every client, so <code>from[]</code> entries that all use <code>kind:
 </tr>
 <tr>
 <td><code>MeshOPA</code> flat <code>DataSource</code> (<code>inlineString</code>/<code>inline</code>/<code>secret</code>)</td>
-<td>Advisory</td>
-<td>Rewritten to <code>SecureDataSource</code>, including base64 <code>inline</code> (rego is not credential material)</td>
+<td>Advisory: Kong Mesh 2.14.6+ accepts both shapes; rewrite there, before the Global upgrade</td>
+<td>Rewritten to <code>SecureDataSource</code>, including base64 <code>inline</code> (rego is not credential material). The Apply Checklist applies the file on 2.14.6+ <strong>before</strong> the Global upgrade</td>
 </tr>
 <tr>
 <td><code>AccessRole</code>/<code>AccessAudit</code> <code>rules[].types</code> with legacy kinds</td>

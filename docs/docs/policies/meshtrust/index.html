@@ -80,6 +80,9 @@ apply can reject it. The value is published read-only at <code>status.origin.kri
     <header><span class="target-label">--to-latest v3 (3.0)</span> <span class="status status-warned">warned</span></header>
     <p class="outputs">Output: <a href="./"><code>MeshTrust</code></a></p>
     <div class="notes"><p>Same check. Control-plane-owned labels are removed.</p>
+<p>In a mesh that spans zones, each zone's <code>MeshTrust</code> is synced to the Global only. Create
+one per zone on the Global, or give every zone the same CA and trust domain. See
+<a href="../../topics/mtls-identity/#trust-across-zones">Trust across zones</a>.</p>
 </div>
   </section>
 </div>

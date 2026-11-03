@@ -43,6 +43,11 @@ to and including 2.14.
 | Input | `--to-latest v2` | `--to-latest v3` |
 |---|---|---|
 | `Mesh.metrics` | The `enabledBackend` becomes a mesh-wide `MeshMetric` `<mesh>-metrics`; no `enabledBackend`, no `MeshMetric` | Same |
+| `Mesh.metrics` Prometheus endpoint TLS (mesh mTLS on, `skipMTLS` false, `tls.mode` unset or `activeMTLSBackend`) | `MeshMetric` without TLS, and a warning: the endpoint required a mesh client certificate and no 2.x `MeshMetric` mode keeps that check (`ActiveMTLSBackend` is plaintext before 3.0, `ProvidedTLS` is server TLS only). Restrict the port another way, or keep `Mesh.metrics` until 3.0 | `tls.mode: ActiveMTLSBackend`, which requires a client certificate the mesh trusts on 3.0, with a warning about scrapers and zones still on 2.x |
+| `Mesh.metrics` `tls.mode: delegated` / `disabled`, `skipMTLS: true`, or no mesh mTLS | `delegated` → `ProvidedTLS`; the others stay plaintext, as before | Same |
+| `Mesh.metrics` `envoy.usedOnly`, metric set | `sidecar.profiles.appendProfiles: [All]` and `includeUnused: true` (`false` when `usedOnly: true`). A `MeshMetric` without them publishes only the Basic profile and only metrics that changed | Same |
+| `Mesh.metrics` `envoy.filterRegex` | Warning, not converted: Envoy matched it against its own stat names, `MeshMetric` selectors match Prometheus names | Same |
+| `Mesh.metrics` `aggregate[]` | `default.applications[]`; entries with `enabled: false` dropped | Same |
 | `Mesh.tracing` | Removed, no mesh-wide `MeshTrace`. Warning lists which backends a `TrafficTrace` references | Same |
 | `Mesh.logging` | Removed, no mesh-wide `MeshAccessLog`. Warning lists which backends a `TrafficLog` references | Same |
 | `TrafficLog` | `MeshAccessLog` (outbound shape). `conf.backend` (or the Mesh `defaultBackend`) is resolved against `Mesh.logging.backends` and inlined | Same, plus the delete-before-upgrade advisory |

@@ -84,6 +84,9 @@ under v3.</p>
     <div class="notes"><p>Copied unchanged apart from control-plane label removal. Its presence suppresses the
 <a href="../meshexternalservice/">MeshExternalService</a> &quot;no MeshIdentity&quot; warning for that
 mesh.</p>
+<p>A <code>Bundled</code> provider with <code>autogenerate</code>, or with a <code>ca</code> that is a self-signed root,
+needs <code>insecureAllowSelfSigned: true</code>, or it never becomes ready. Each zone generates its
+own CA: see <a href="../../topics/mtls-identity/#trust-across-zones">Trust across zones</a>.</p>
 </div>
   </section>
 </div>

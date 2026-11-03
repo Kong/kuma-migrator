@@ -57,9 +57,10 @@ them scanned.
 | `kuma.io/protocol` inbound tag | — | Copied to `inbound[].protocol` |
 | `inbound[].protocol: kafka` (field or `kuma.io/protocol` tag) | Warning | Set to `tcp`; only the Kafka stats are lost |
 | Named `directAccessServices` entries, on the `Dataplane` or in the `kuma.io/direct-access-services` annotation | Warning | With `*` in the list: reduced to `*` (the names were redundant). Without `*`: warning, not rewritten. Use `*` or drop direct access |
-| `outbound[].tags` | — | Converted to `backendRef` when the `kuma.io/service` value decodes to name, namespace and port. Otherwise 3.0 rejects the `Dataplane` (`networking.outbound[0].backendRef: must be defined`), so it is written to `_manual/` with the `backendRef` to fill in |
+| `outbound[].tags` | — | Converted to `backendRef` when the `kuma.io/service` value decodes to name, namespace and port. The labels include `kuma.io/zone`: the outbound's own zone tag, else the `Dataplane`'s zone; warned when neither is in the input. Otherwise 3.0 rejects the `Dataplane` (`networking.outbound[0].backendRef: must be defined`), so it is written to `_manual/` with the `backendRef` to fill in |
 | `reachableServices` | Warning | Converted to `reachableBackends` refs with labels where the value decodes; warned otherwise |
 | `reachableBackends` refs with `name`/`namespace`, on the `Dataplane` or in the `kuma.io/reachable-backends` annotation | Warning | Rewritten to labels (v3 only: on 2.14 a label selector also matches same-named services from other zones) |
+| Zone of a rewritten `MeshService` ref | — | `kuma.io/zone` set to the `Dataplane`'s own zone. 2.x resolved a service name in the proxy's zone; on 3.0 a labels selector without `kuma.io/zone` also matches same-named `MeshService`s from other zones, and an outbound binds the oldest one. `MeshExternalService` and `MeshMultiZoneService` refs are left without it. When the zone is not in the input (no `kuma.io/zone` label, or a pod annotation), the warning says to add it |
 | Transparent proxy without `reachableBackends` | — | Warning: no outbounds on 3.0 |
 | `advertisedAddress`, redirect ports, `ipFamilyMode`, `probes` | — | Warning |
 | `networking.gateway` | — | Block removed; non-`kuma.io/` gateway tags moved to labels |

@@ -205,10 +205,15 @@ mesh whose only identity source is <code>mtls</code> serves plaintext and
 This is a CA cutover the manifests cannot describe; the tool reports it and does not
 convert it. Rewrite <code>MeshTrafficPermission</code> <code>from[]</code> to <code>rules[]</code> at the same time. See
 <a href="../../topics/mtls-identity/">mTLS and identity</a> and
-<a href="../../topics/access-control/">Access control</a>.</p>
+<a href="../../topics/access-control/">Access control</a>.
+In a mesh that spans zones, set up trust between zones before a second zone gets an
+identity: see <a href="../../topics/mtls-identity/#trust-across-zones">Trust across zones</a>.</p>
 </li>
 <li>
-<p><strong>Migrate to v3</strong> and review the report.</p>
+<p><strong>Migrate to v3</strong> and review the report. If it rewrote any <code>MeshOPA</code> or <code>MeshExternalService</code>
+data source, its Apply Checklist has a step before the Global upgrade: upgrade every control
+plane to 2.14.6 or later, then apply those files. 3.0 rejects the old shape and a zone below
+2.14.6 cannot read the new one.</p>
 <div class="code"><pre class="chroma" data-lang="bash"><code><span class="k-bin">kuma-migrator</span> <span class="k-sub">migrate</span> <span class="k-flag">-i</span> <span class="k-val">./raw-policies</span> <span class="k-flag">-o</span> <span class="k-val">./migrated-v3</span> <span class="k-flag">--to-latest</span> <span class="k-val">v3</span>
 </code></pre></div>
 <p>Resolve every entry under <strong>Action Items → Errors</strong>. Each <code>_manual/</code> file needs a

@@ -104,7 +104,12 @@ fields that 2.14 still requires, so it is never applied before the upgrade. See
    convert it. Rewrite `MeshTrafficPermission` `from[]` to `rules[]` at the same time. See
    [mTLS and identity](../topics/mtls-identity.md) and
    [Access control](../topics/access-control.md).
-7. **Migrate to v3** and review the report.
+   In a mesh that spans zones, set up trust between zones before a second zone gets an
+   identity: see [Trust across zones](../topics/mtls-identity.md#trust-across-zones).
+7. **Migrate to v3** and review the report. If it rewrote any `MeshOPA` or `MeshExternalService`
+   data source, its Apply Checklist has a step before the Global upgrade: upgrade every control
+   plane to 2.14.6 or later, then apply those files. 3.0 rejects the old shape and a zone below
+   2.14.6 cannot read the new one.
 
    ```bash
    kuma-migrator migrate -i ./raw-policies -o ./migrated-v3 --to-latest v3

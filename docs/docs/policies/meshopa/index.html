@@ -78,7 +78,8 @@ policy to every proxy matching <code>kind</code>.</li>
 <li><code>spec.targetRef.kind: MeshService</code> is rejected in 3.0; plan <code>kind: Dataplane</code> with
 <code>labels: {app: &lt;svc&gt;}</code>.</li>
 <li><code>agentConfig</code> and <code>appendPolicies[].rego</code> in the flat DataSource shape
-(<code>inline</code>/<code>inlineString</code>/<code>secret</code>) must become <code>SecureDataSource</code>.</li>
+(<code>inline</code>/<code>inlineString</code>/<code>secret</code>) must become <code>SecureDataSource</code>. Kong Mesh 2.14.6+
+accepts both shapes: rewrite there, on every control plane, before upgrading the Global.</li>
 </ul>
 </div>
   </section>
@@ -97,6 +98,10 @@ conflicting label blocks the move and is reported. <code>namespace</code> and <c
 </ol>
 <p>Rego and agent config are not credentials, so decoding <code>inline</code> is done automatically.
 Verify the <code>app</code> label matches the target pods.</p>
+<p>A rewritten <code>MeshOPA</code> is applied <strong>before</strong> the Global upgrade: the Apply Checklist adds a
+step to upgrade every control plane to 2.14.6 or later and apply these files there. 3.0
+rejects the flat shape and nothing converts it over KDS, while a zone below 2.14.6 drops
+the new fields: the <code>MeshOPA</code> fails to load and its proxies stop receiving configuration.</p>
 </div>
   </section>
 </div>
@@ -104,7 +109,7 @@ Verify the <code>app</code> label matches the target pods.</p>
 <h2 id="timeline">Timeline</h2>
 <div class="table-wrap"><table>
   <thead><tr><th>Version</th><th>Change</th></tr></thead>
-  <tbody><tr><td class="version">3.0</td><td><code>targetRef.{name,namespace,mesh}</code> removed; <code>targetRef.kind</code> limited to <code>Mesh</code> and <code>Dataplane</code>; DataSources use <code>SecureDataSource</code>.</td></tr></tbody>
+  <tbody><tr><td class="version">3.0</td><td><code>targetRef.{name,namespace,mesh}</code> removed; <code>targetRef.kind</code> limited to <code>Mesh</code> and <code>Dataplane</code>; DataSources use <code>SecureDataSource</code>.</td></tr><tr><td class="version">2.14.6</td><td><code>SecureDataSource</code> accepted alongside the flat shape (Kong Mesh).</td></tr></tbody>
 </table></div>
 
 <h2 id="related-topics">Related topics</h2>

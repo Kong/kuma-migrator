@@ -793,7 +793,8 @@
 
       `prometheus.tls.mode: ActiveMTLSBackend` is reported: on 3.0 a scraper connecting from
       another address must present a client certificate the mesh trusts. Give each remote
-      scraper one, or set the mode to `Disabled`.
+      scraper one, or set the mode to `Disabled`. A `MeshMetric` generated from `Mesh.metrics`
+      gets this mode under v3 when the legacy endpoint required a mesh client certificate.
   timeline:
     - version: "2.7"
       change: "`sidecar.regex` replaced by `sidecar.profiles.exclude`."
@@ -991,6 +992,10 @@
     output: [MeshTrust]
     notes: |
       Same check. Control-plane-owned labels are removed.
+
+      In a mesh that spans zones, each zone's `MeshTrust` is synced to the Global only. Create
+      one per zone on the Global, or give every zone the same CA and trust domain. See
+      [Trust across zones](../topics/mtls-identity.md#trust-across-zones).
   timeline:
     - version: "2.13"
       change: "`spec.origin` removed; value moved to `status.origin`."
@@ -1020,6 +1025,10 @@
       Copied unchanged apart from control-plane label removal. Its presence suppresses the
       [MeshExternalService](policy:MeshExternalService) "no MeshIdentity" warning for that
       mesh.
+
+      A `Bundled` provider with `autogenerate`, or with a `ca` that is a self-signed root,
+      needs `insecureAllowSelfSigned: true`, or it never becomes ready. Each zone generates its
+      own CA: see [Trust across zones](../topics/mtls-identity.md#trust-across-zones).
   timeline:
     - version: "2.12"
       change: "`MeshIdentity` and `MeshTrust` introduced as the successor to `Mesh.spec.mtls`."
@@ -1085,7 +1094,8 @@
       - `spec.targetRef.kind: MeshService` is rejected in 3.0; plan `kind: Dataplane` with
         `labels: {app: <svc>}`.
       - `agentConfig` and `appendPolicies[].rego` in the flat DataSource shape
-        (`inline`/`inlineString`/`secret`) must become `SecureDataSource`.
+        (`inline`/`inlineString`/`secret`) must become `SecureDataSource`. Kong Mesh 2.14.6+
+        accepts both shapes: rewrite there, on every control plane, before upgrading the Global.
   v3:
     status: rewritten
     output: [MeshOPA]
@@ -1102,9 +1112,16 @@
 
       Rego and agent config are not credentials, so decoding `inline` is done automatically.
       Verify the `app` label matches the target pods.
+
+      A rewritten `MeshOPA` is applied **before** the Global upgrade: the Apply Checklist adds a
+      step to upgrade every control plane to 2.14.6 or later and apply these files there. 3.0
+      rejects the flat shape and nothing converts it over KDS, while a zone below 2.14.6 drops
+      the new fields: the `MeshOPA` fails to load and its proxies stop receiving configuration.
   timeline:
     - version: "3.0"
       change: "`targetRef.{name,namespace,mesh}` removed; `targetRef.kind` limited to `Mesh` and `Dataplane`; DataSources use `SecureDataSource`."
+    - version: "2.14.6"
+      change: "`SecureDataSource` accepted alongside the flat shape (Kong Mesh)."
   topics: [access-control, policy-targeting]
   code: [pkg/migrator/opapolicy.go, pkg/migrator/deprecation.go]
 
@@ -1402,6 +1419,13 @@
       - `spec.metrics` is removed. Its `enabledBackend` turns metrics on for every proxy, so
         that backend becomes a companion `MeshMetric` `<mesh>-metrics` with `targetRef: Mesh`.
         Backends that are not enabled are dropped; no `enabledBackend` means no `MeshMetric`.
+        The `MeshMetric` keeps what the backend published: `sidecar.profiles.appendProfiles:
+        [All]` and `includeUnused` (from `envoy.usedOnly`), because a `MeshMetric` without them
+        publishes only the Basic profile and only metrics that changed; `aggregate[]` →
+        `applications[]`; `tls.mode: delegated` → `ProvidedTLS`. `envoy.filterRegex` is
+        reported, not converted. When the endpoint required a mesh client certificate (mesh
+        mTLS on, `skipMTLS` false), a warning says no 2.x `MeshMetric` mode keeps that check, so
+        the endpoint becomes plaintext. See [Observability](../topics/observability.md).
       - `spec.tracing` and `spec.logging` are removed **without** a companion. On 2.x they only
         declare backends: a [TrafficTrace](policy:TrafficTrace) or [TrafficLog](policy:TrafficLog)
         activates one, and its conversion carries the backend inline. A mesh-wide
@@ -1492,7 +1516,9 @@
       - `inbound[].tags` → top-level `labels`; `kuma.io/` and `k8s.kuma.io/` keys are dropped
         (reserved prefixes).
       - `reachableServices` → `reachableBackends` where the name resolves;
-        `reachableBackends` name refs → labels.
+        `reachableBackends` name refs → labels. A `MeshService` ref also gets `kuma.io/zone`
+        (the Dataplane's zone), because on 3.0 a labels selector without it matches
+        same-named services from other zones and an outbound binds the oldest one.
       - Control-plane-owned labels (e.g. `k8s.kuma.io/service-account`) removed.
 
       - `outbound[].tags` → `backendRef` (`kind: MeshService`, labels, port) when the
@@ -1575,7 +1601,8 @@
     output: [MeshExternalService]
     notes: |
       - `inlineString` → `type: InsecureInline` + `insecureInline.value`; `secret` →
-        `type: Secret` + `secretRef`. Apply while every control plane runs 2.14.6 or later.
+        `type: Secret` + `secretRef`. Apply while every control plane runs 2.14.6 or later, before
+        the Global upgrade: the Apply Checklist has a step for it.
       - `inline` (base64) is not converted: that means decoding credential material into
         plain text, which is your decision. 3.0 rejects the field
         (`spec.tls.verification.caCert.inline: unknown field`), so the MeshExternalService is

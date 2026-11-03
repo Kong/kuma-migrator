@@ -102,7 +102,9 @@ on stdout and listed under <strong>Scanned Non-Policy Resources</strong> in the 
 </li>
 <li>
 <p><code>reachableServices</code> → <code>reachableBackends</code> where the name resolves;
-<code>reachableBackends</code> name refs → labels.</p>
+<code>reachableBackends</code> name refs → labels. A <code>MeshService</code> ref also gets <code>kuma.io/zone</code>
+(the Dataplane's zone), because on 3.0 a labels selector without it matches
+same-named services from other zones and an outbound binds the oldest one.</p>
 </li>
 <li>
 <p>Control-plane-owned labels (e.g. <code>k8s.kuma.io/service-account</code>) removed.</p>

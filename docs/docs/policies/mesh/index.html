@@ -76,7 +76,13 @@ does not set <code>meshServices.mode: Exclusive</code>:</p>
 <ul>
 <li><code>spec.metrics</code> is removed. Its <code>enabledBackend</code> turns metrics on for every proxy, so
 that backend becomes a companion <code>MeshMetric</code> <code>&lt;mesh&gt;-metrics</code> with <code>targetRef: Mesh</code>.
-Backends that are not enabled are dropped; no <code>enabledBackend</code> means no <code>MeshMetric</code>.</li>
+Backends that are not enabled are dropped; no <code>enabledBackend</code> means no <code>MeshMetric</code>.
+The <code>MeshMetric</code> keeps what the backend published: <code>sidecar.profiles.appendProfiles: [All]</code> and <code>includeUnused</code> (from <code>envoy.usedOnly</code>), because a <code>MeshMetric</code> without them
+publishes only the Basic profile and only metrics that changed; <code>aggregate[]</code> →
+<code>applications[]</code>; <code>tls.mode: delegated</code> → <code>ProvidedTLS</code>. <code>envoy.filterRegex</code> is
+reported, not converted. When the endpoint required a mesh client certificate (mesh
+mTLS on, <code>skipMTLS</code> false), a warning says no 2.x <code>MeshMetric</code> mode keeps that check, so
+the endpoint becomes plaintext. See <a href="../../topics/observability/">Observability</a>.</li>
 <li><code>spec.tracing</code> and <code>spec.logging</code> are removed <strong>without</strong> a companion. On 2.x they only
 declare backends: a <a href="../traffictrace/">TrafficTrace</a> or <a href="../trafficlog/">TrafficLog</a>
 activates one, and its conversion carries the backend inline. A mesh-wide

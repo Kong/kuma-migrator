@@ -80,7 +80,7 @@ applies to every client, so `from[]` entries that all use `kind: Mesh` convert m
 | `MeshFaultInjection` with `from[]` | Warning | `rules[]` when every entry is `kind: Mesh`; otherwise **error**, written to `_manual/` |
 | `OPAPolicy` | `MeshOPA`: `conf.policies[]` → `default.appendPolicies[].rego`, `conf.agentConfig` → `default.agentConfig`, each keeping its `inlineString`/`inline`/`secret` key; an entry with none of them is left out with a "NOT migrated" warning, never emitted as an empty `rego`. `targetRef` kept, with 3.0 advisories | Same, plus the 3.0 rewrites below |
 | `MeshOPA` `targetRef.kind: MeshService` / `name` | Advisory | `kind: Dataplane`, `name` → `labels.app` (scope kept); refuses to overwrite a conflicting label |
-| `MeshOPA` flat `DataSource` (`inlineString`/`inline`/`secret`) | Advisory | Rewritten to `SecureDataSource`, including base64 `inline` (rego is not credential material) |
+| `MeshOPA` flat `DataSource` (`inlineString`/`inline`/`secret`) | Advisory: Kong Mesh 2.14.6+ accepts both shapes; rewrite there, before the Global upgrade | Rewritten to `SecureDataSource`, including base64 `inline` (rego is not credential material). The Apply Checklist applies the file on 2.14.6+ **before** the Global upgrade |
 | `AccessRole`/`AccessAudit` `rules[].types` with legacy kinds | Advisory | Renamed to the `Mesh*` successor; types with no successor removed |
 | `AccessRole` `when[]` entry with only `sources`/`destinations`/`selectors` | Advisory | Entry removed. Other qualifiers stay, so the grant does not widen |
 | `AccessRole` `when[].targetRef.kind` other than `Mesh`/`Dataplane` | Advisory | Warning; not converted (the label set is not in the manifest) |

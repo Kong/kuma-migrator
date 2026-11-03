@@ -139,12 +139,17 @@ underneath it: on 3.0 that is <code>MeshIdentity</code>. Moving to <code>MeshIde
 </tr>
 <tr>
 <td><code>builtin</code> backend</td>
-<td>Advisory: the CA is in the <code>&lt;mesh&gt;.ca-builtin-cert/key-&lt;backend&gt;</code> Secrets; a <code>Bundled</code> <code>MeshIdentity</code> with <code>autogenerate</code> mints a new CA, or reuses the current one through <code>spec.provider.bundled.ca.certificate</code>/<code>privateKey</code></td>
+<td>Advisory: the CA is in the <code>&lt;mesh&gt;.ca-builtin-cert/key-&lt;backend&gt;</code> Secrets; a <code>Bundled</code> <code>MeshIdentity</code> with <code>autogenerate</code> mints a new CA, or reuses the current one through <code>spec.provider.bundled.ca.certificate</code>/<code>privateKey</code>. Either way the CA is self-signed, so <code>insecureAllowSelfSigned: true</code> is required</td>
 <td>Same, in the blocking warning, plus: delete the <code>ca-builtin</code> Secrets yourself after the upgrade</td>
 </tr>
 <tr>
 <td><code>provided</code> backend</td>
-<td>Advisory: reference the same <code>conf.cert</code>/<code>conf.key</code> material from <code>spec.provider.bundled.ca</code></td>
+<td>Advisory: reference the same <code>conf.cert</code>/<code>conf.key</code> material from <code>spec.provider.bundled.ca</code>; set <code>insecureAllowSelfSigned: true</code> if that CA is a self-signed root</td>
+<td>Same, in the blocking warning</td>
+</tr>
+<tr>
+<td><code>builtin</code> or <code>provided</code> backend, any mesh</td>
+<td>Advisory: in a mesh that spans zones, create one <code>MeshTrust</code> per zone on the Global, or give every zone the same CA and trust domain (see <a href="#trust-across-zones">Trust across zones</a>)</td>
 <td>Same, in the blocking warning</td>
 </tr>
 <tr>
@@ -187,20 +192,25 @@ external system. For <code>builtin</code> and <code>provided</code>, a generated
 <code>autogenerate</code> would mint a new CA, which is a new trust root, not a translation. The warning
 text is specific to each backend type, so builtin-only advice (new CA, <code>ca-builtin</code> Secrets) is
 not given for the others.</li>
+<li><strong>Zones.</strong> Whether the mesh spans zones, and each zone's generated CA bundle, are runtime data.
+See <a href="#trust-across-zones">Trust across zones</a>.</li>
 <li><strong>Rollout order.</strong> Which workloads move first, and when <code>MeshTrafficPermission</code> <code>rules[]</code> (which
 match SPIFFE IDs) replace <code>from[]</code>, depends on the mesh. See <a href="../access-control/">Access control</a>.</li>
 </ul>
 <h2 id="manual-steps">Manual steps</h2>
 <p>Run these on 2.14, mesh by mesh, before upgrading any control plane to 3.0.</p>
 <ol>
-<li>Decide the trust domain and path templates. The defaults work for most Kubernetes meshes.</li>
+<li>Decide the trust domain and path templates. The defaults work for most Kubernetes meshes. In
+a mesh that spans zones, decide now how zones trust each other (next section): the trust
+domain cannot be changed once the <code>MeshIdentity</code> exists on 3.0.</li>
 <li>Create a <code>MeshIdentity</code> (with <code>meshTrustCreation: Enabled</code>, or a hand-written <code>MeshTrust</code>)
 selecting a first group of proxies with <code>spec.selector.dataplane.matchLabels</code>. While
 <code>Mesh.mtls</code> is still enabled and a <code>MeshTrust</code> exists, 2.x adds the legacy mesh CA to the
 trust bundle, so <code>MeshIdentity</code> proxies keep trusting legacy peers
 (<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#the-legacy-mesh-ca-is-no-longer-added-to-the-meshtrust-bundle">UPGRADE</a>).</li>
 <li>Check <code>DataplaneInsight</code> <code>mTLS.issuedBackend</code> on the selected proxies, then widen the selector
-until it matches every proxy (<code>matchLabels: {}</code>).</li>
+until it matches every proxy (<code>matchLabels: {}</code>). In a mesh that spans zones, create the
+per-zone <code>MeshTrust</code>s on the Global before you select proxies in a second zone.</li>
 <li>If the enabled backend used <code>mode: PERMISSIVE</code>, apply a <code>MeshTLS</code> with
 <code>rules[].default.mode: Permissive</code> (the <code>v3</code> run generates it).</li>
 <li>Rewrite <code>MeshTrafficPermission</code> <code>from[]</code> to SPIFFE <code>rules[]</code> (see
@@ -235,10 +245,84 @@ tooling needs them.</li>
       <span class="nt">autogenerate</span><span class="p">:</span>
         <span class="nt">enabled</span><span class="p">:</span> <span class="kc">true</span>
 </code></pre></div>
+<p><code>insecureAllowSelfSigned: true</code> is required with <code>autogenerate</code>, and with a <code>ca</code> that is a
+self-signed root. Without it the <code>MeshIdentity</code> fails validation (<code>self-signed certificates are not allowed</code>) and never becomes ready, and once <code>Mesh.mtls</code> is removed the mesh serves plaintext.</p>
 <p>This is the example from the <a href="https://developer.konghq.com/mesh/policies/meshidentity/">Kong Mesh MeshIdentity docs</a>.
 To keep your own CA, use <code>bundled.ca.certificate</code> / <code>bundled.ca.privateKey</code> (<code>SecureDataSource</code>)
 instead of <code>autogenerate</code>; for Vault, ACM Private CA or cert-manager see
 <a href="../external-pki/">External PKI</a>.</p>
+<h2 id="trust-across-zones">Trust across zones</h2>
+<p>On 2.x every zone used one mesh CA, generated on the Global and synced to the zones, so proxies
+in different zones trusted each other with no extra step. A <code>Bundled</code> <code>MeshIdentity</code> works
+differently: each zone generates its own CA, and the default trust domain
+<code>{{ .Mesh }}.{{ .Zone }}.mesh.local</code> differs per zone. The <code>MeshTrust</code> a zone creates for its CA
+is synced to the Global only. It never reaches the other zones.</p>
+<p><a href="../../../img/meshtrust-cross-zone.svg"><img src="../../../img/meshtrust-cross-zone.svg" alt="A MeshIdentity created on the Global is synced to every zone. Each zone generates its own CA and creates a MeshTrust for it, which is synced up to the Global only, never to the other zones. One MeshTrust per zone, created on the Global with that zone's CA bundle and trust domain, is synced to every zone and lets proxies in different zones verify each other."></a></p>
+<p>Open the diagram full size by selecting it.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Resource</th>
+<th>Where you create it</th>
+<th>Synced to</th>
+<th>Needed for cross-zone mTLS</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>MeshIdentity</code></td>
+<td>Global, once per mesh</td>
+<td>Every zone</td>
+<td>Yes: it is the identity source on 3.0. Each zone issues certificates from it</td>
+</tr>
+<tr>
+<td><code>MeshTrust</code> created by a zone (<code>meshTrustCreation: Enabled</code>)</td>
+<td>The zone, automatically</td>
+<td>The Global only, read-only</td>
+<td>Covers that zone's own proxies only</td>
+</tr>
+<tr>
+<td><code>MeshTrust</code> per zone, origin <code>global</code></td>
+<td>Global, one per zone, with that zone's CA bundle and trust domain</td>
+<td>Every zone</td>
+<td>Yes, unless every zone shares one CA and trust domain</td>
+</tr>
+</tbody>
+</table></div>
+<p>Two ways to make zones trust each other. Pick one before proxies in a second zone get an
+identity, because the trust domain cannot be changed on 3.0 once the <code>MeshIdentity</code> exists:</p>
+<ol>
+<li><strong>One <code>MeshTrust</code> per zone, created on the Global.</strong> After the <code>MeshIdentity</code> is ready in a
+zone, read the CA bundle and trust domain from that zone's auto-created <code>MeshTrust</code> (the
+read-only copy on the Global shows them) and create a <code>MeshTrust</code> on the Global with the
+same <code>caBundles</code> and <code>trustDomain</code>. Repeat for each zone. Each zone keeps its own CA.</li>
+<li><strong>One CA and one trust domain for every zone.</strong> Set <code>spec.provider.bundled.ca</code> to the same
+CA in every zone and a <code>spec.spiffeID.trustDomain</code> without <code>{{ .Zone }}</code>. The zones'
+auto-created <code>MeshTrust</code>s then hold the same CA, and no extra <code>MeshTrust</code> is needed. This is
+closest to the 2.x model, and it keeps one trust root for the whole mesh.</li>
+</ol>
+<p>A per-zone <code>MeshTrust</code> on the Global:</p>
+<div class="code"><pre class="chroma" data-lang="yaml"><code><span class="nt">apiVersion</span><span class="p">:</span> <span class="l">kuma.io/v1alpha1</span>
+<span class="nt">kind</span><span class="p">:</span> <span class="l">MeshTrust</span>
+<span class="nt">metadata</span><span class="p">:</span>
+  <span class="nt">name</span><span class="p">:</span> <span class="l">trust-east</span>
+  <span class="nt">namespace</span><span class="p">:</span> <span class="l">kong-mesh-system</span>
+  <span class="nt">labels</span><span class="p">:</span>
+    <span class="nt">kuma.io/mesh</span><span class="p">:</span> <span class="l">default</span>
+<span class="nt">spec</span><span class="p">:</span>
+  <span class="nt">trustDomain</span><span class="p">:</span> <span class="l">default.east.mesh.local</span>
+  <span class="nt">caBundles</span><span class="p">:</span>
+    - <span class="nt">type</span><span class="p">:</span> <span class="l">Pem</span>
+      <span class="nt">pem</span><span class="p">:</span>
+        <span class="nt">value</span><span class="p">:</span> <span class="p">|-</span><span class="sd">
+          -----BEGIN CERTIFICATE-----
+          … the CA bundle of zone east's auto-created MeshTrust …
+          -----END CERTIFICATE-----</span>
+</code></pre></div>
+<p>The Kuma docs describe the per-zone trust domains in
+<a href="https://kuma.io/docs/latest/policies/meshtrust/#multizone">MeshTrust, Multizone</a>.
+kuma-migrator cannot write these <code>MeshTrust</code>s: the CA bundles exist only once each zone has
+generated its CA. Its <code>v2</code> advisory and <code>v3</code> blocking warning name both options.</p>
 <h2 id="example">Example</h2>
 <p>Input:</p>
 <div class="code"><pre class="chroma" data-lang="yaml"><code><span class="nt">apiVersion</span><span class="p">:</span> <span class="l">kuma.io/v1alpha1</span>
@@ -331,7 +415,7 @@ earlier on a 2.x control plane turns mTLS off for the mesh.</p>
   </main>
   <nav class="toc" aria-label="On this page">
     <p class="toc-title">On this page</p>
-    <ul><li class="toc-l2"><a href="#what-changed-upstream">What changed upstream</a></li><li class="toc-l3"><a href="#meshtls-is-orthogonal">MeshTLS is orthogonal</a></li><li class="toc-l2"><a href="#what-kuma-migrator-does">What kuma-migrator does</a></li><li class="toc-l2"><a href="#what-it-cannot-do">What it cannot do</a></li><li class="toc-l2"><a href="#manual-steps">Manual steps</a></li><li class="toc-l2"><a href="#example">Example</a></li><li class="toc-l2"><a href="#related">Related</a></li></ul>
+    <ul><li class="toc-l2"><a href="#what-changed-upstream">What changed upstream</a></li><li class="toc-l3"><a href="#meshtls-is-orthogonal">MeshTLS is orthogonal</a></li><li class="toc-l2"><a href="#what-kuma-migrator-does">What kuma-migrator does</a></li><li class="toc-l2"><a href="#what-it-cannot-do">What it cannot do</a></li><li class="toc-l2"><a href="#manual-steps">Manual steps</a></li><li class="toc-l2"><a href="#trust-across-zones">Trust across zones</a></li><li class="toc-l2"><a href="#example">Example</a></li><li class="toc-l2"><a href="#related">Related</a></li></ul>
   </nav>
 </div>
 <footer class="site-footer">

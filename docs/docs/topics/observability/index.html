@@ -139,6 +139,31 @@ to and including 2.14.</p>
 <td>Same</td>
 </tr>
 <tr>
+<td><code>Mesh.metrics</code> Prometheus endpoint TLS (mesh mTLS on, <code>skipMTLS</code> false, <code>tls.mode</code> unset or <code>activeMTLSBackend</code>)</td>
+<td><code>MeshMetric</code> without TLS, and a warning: the endpoint required a mesh client certificate and no 2.x <code>MeshMetric</code> mode keeps that check (<code>ActiveMTLSBackend</code> is plaintext before 3.0, <code>ProvidedTLS</code> is server TLS only). Restrict the port another way, or keep <code>Mesh.metrics</code> until 3.0</td>
+<td><code>tls.mode: ActiveMTLSBackend</code>, which requires a client certificate the mesh trusts on 3.0, with a warning about scrapers and zones still on 2.x</td>
+</tr>
+<tr>
+<td><code>Mesh.metrics</code> <code>tls.mode: delegated</code> / <code>disabled</code>, <code>skipMTLS: true</code>, or no mesh mTLS</td>
+<td><code>delegated</code> → <code>ProvidedTLS</code>; the others stay plaintext, as before</td>
+<td>Same</td>
+</tr>
+<tr>
+<td><code>Mesh.metrics</code> <code>envoy.usedOnly</code>, metric set</td>
+<td><code>sidecar.profiles.appendProfiles: [All]</code> and <code>includeUnused: true</code> (<code>false</code> when <code>usedOnly: true</code>). A <code>MeshMetric</code> without them publishes only the Basic profile and only metrics that changed</td>
+<td>Same</td>
+</tr>
+<tr>
+<td><code>Mesh.metrics</code> <code>envoy.filterRegex</code></td>
+<td>Warning, not converted: Envoy matched it against its own stat names, <code>MeshMetric</code> selectors match Prometheus names</td>
+<td>Same</td>
+</tr>
+<tr>
+<td><code>Mesh.metrics</code> <code>aggregate[]</code></td>
+<td><code>default.applications[]</code>; entries with <code>enabled: false</code> dropped</td>
+<td>Same</td>
+</tr>
+<tr>
 <td><code>Mesh.tracing</code></td>
 <td>Removed, no mesh-wide <code>MeshTrace</code>. Warning lists which backends a <code>TrafficTrace</code> references</td>
 <td>Same</td>

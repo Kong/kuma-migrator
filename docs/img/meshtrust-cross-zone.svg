@@ -1,0 +1,156 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 590" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif">
+  <title>Cross-zone trust with MeshIdentity and MeshTrust</title>
+  <desc>A MeshIdentity created on the Global is synced to every zone. Each zone generates its own CA and trust domain and creates a MeshTrust for it, which is synced up to the Global only, never to the other zones. To let zones verify each other, create on the Global one MeshTrust per zone with that zone's CA bundle and trust domain; the Global syncs them to every zone.</desc>
+  <style>
+    :root {
+      --bg: #ffffff;
+      --card-bg: #f6f8fa;
+      --box-bg: #ffffff;
+      --rule: #d0d7de;
+      --title: #1f2328;
+      --muted: #6e7781;
+      --accent: #6639ba;
+      --accent-bg: #fbefff;
+      --ok: #1a7f37;
+      --bad: #cf222e;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0d1117;
+        --card-bg: #161b22;
+        --box-bg: #0d1117;
+        --rule: #30363d;
+        --title: #e6edf3;
+        --muted: #8b949e;
+        --accent: #b083f0;
+        --accent-bg: #231a33;
+        --ok: #3fb950;
+        --bad: #f85149;
+      }
+    }
+    .box { fill: var(--box-bg); stroke: var(--rule); stroke-width: 1.5; }
+    .card { fill: var(--card-bg); stroke: var(--rule); stroke-width: 1.2; }
+    .card-you { fill: var(--accent-bg); stroke: var(--accent); stroke-width: 1.5; }
+    .card-copy { fill: var(--card-bg); stroke: var(--muted); stroke-width: 1.2; stroke-dasharray: 4 3; }
+    .h { font-size: 15px; font-weight: 700; fill: var(--title); }
+    .kind { font-family: SFMono-Regular,Consolas,'Liberation Mono',Menlo,monospace; font-size: 12.5px; font-weight: 700; fill: var(--accent); }
+    .kind-plain { font-family: SFMono-Regular,Consolas,'Liberation Mono',Menlo,monospace; font-size: 12.5px; font-weight: 700; fill: var(--title); }
+    .t { font-size: 11px; fill: var(--muted); }
+    .mono { font-family: SFMono-Regular,Consolas,'Liberation Mono',Menlo,monospace; font-size: 10.5px; fill: var(--title); }
+    .tag { font-size: 9px; font-weight: 700; letter-spacing: .05em; fill: var(--accent); }
+    .lbl { font-size: 11px; fill: var(--muted); text-anchor: middle; }
+    .lbl-ok { font-size: 11px; font-weight: 600; fill: var(--ok); text-anchor: middle; }
+    .lbl-bad { font-size: 11px; font-weight: 600; fill: var(--bad); text-anchor: middle; }
+    .down { stroke: var(--accent); stroke-width: 1.8; fill: none; }
+    .up { stroke: var(--muted); stroke-width: 1.5; stroke-dasharray: 5 4; fill: none; }
+    .nope { stroke: var(--bad); stroke-width: 1.5; stroke-dasharray: 5 4; fill: none; }
+    .mtls { stroke: var(--ok); stroke-width: 2; fill: none; }
+    .note { font-size: 11.5px; fill: var(--title); }
+  </style>
+
+  <rect x="0" y="0" width="1000" height="590" fill="var(--bg)"/>
+
+  <defs>
+    <marker id="mt-down" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="var(--accent)"/>
+    </marker>
+    <marker id="mt-up" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/>
+    </marker>
+    <marker id="mt-ok" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="var(--ok)"/>
+    </marker>
+  </defs>
+
+  <!-- Global control plane -->
+  <rect class="box" x="230" y="16" width="540" height="206" rx="10"/>
+  <text class="h" x="250" y="42">Global control plane</text>
+
+  <rect class="card-you" x="250" y="58" width="240" height="68" rx="7"/>
+  <text class="tag" x="262" y="74">YOU CREATE IT ONCE</text>
+  <text class="kind" x="262" y="93">MeshIdentity</text>
+  <text class="t" x="262" y="110">Bundled, selects every proxy</text>
+
+  <rect class="card-you" x="510" y="58" width="240" height="68" rx="7"/>
+  <text class="tag" x="522" y="74">YOU CREATE IT · ORIGIN GLOBAL</text>
+  <text class="kind" x="522" y="93">MeshTrust trust-east</text>
+  <text class="t" x="522" y="110">east CA bundle + trust domain</text>
+
+  <rect class="card-you" x="510" y="138" width="240" height="68" rx="7"/>
+  <text class="tag" x="522" y="154">YOU CREATE IT · ORIGIN GLOBAL</text>
+  <text class="kind" x="522" y="173">MeshTrust trust-west</text>
+  <text class="t" x="522" y="190">west CA bundle + trust domain</text>
+
+  <rect class="card-copy" x="250" y="138" width="240" height="68" rx="7"/>
+  <text class="kind-plain" x="262" y="162">zone MeshTrusts</text>
+  <text class="t" x="262" y="180">read-only copies, synced up</text>
+  <text class="t" x="262" y="195">from each zone</text>
+
+  <!-- Sync arrows -->
+  <path class="down" d="M300,222 L205,300" marker-end="url(#mt-down)"/>
+  <path class="down" d="M700,222 L795,300" marker-end="url(#mt-down)"/>
+  <text class="lbl" x="150" y="248">MeshIdentity and</text>
+  <text class="lbl" x="150" y="262">trust-east, trust-west:</text>
+  <text class="lbl" x="150" y="276">synced to every zone</text>
+  <text class="lbl" x="850" y="248">MeshIdentity and</text>
+  <text class="lbl" x="850" y="262">trust-east, trust-west:</text>
+  <text class="lbl" x="850" y="276">synced to every zone</text>
+
+  <path class="up" d="M355,340 L390,226" marker-end="url(#mt-up)"/>
+  <path class="up" d="M645,340 L610,226" marker-end="url(#mt-up)"/>
+  <text class="lbl" x="500" y="262">zone → Global only</text>
+
+  <!-- Zone east -->
+  <rect class="box" x="30" y="300" width="440" height="200" rx="10"/>
+  <text class="h" x="50" y="326">Zone east</text>
+
+  <rect class="card" x="50" y="340" width="190" height="62" rx="7"/>
+  <text class="kind-plain" x="62" y="362">CA east</text>
+  <text class="t" x="62" y="380">generated in this zone</text>
+  <text class="t" x="62" y="394">by the MeshIdentity</text>
+
+  <rect class="card" x="260" y="340" width="190" height="62" rx="7"/>
+  <text class="kind" x="272" y="362">MeshTrust (auto)</text>
+  <text class="mono" x="272" y="380">default.east.mesh.local</text>
+  <text class="t" x="272" y="394">origin: zone</text>
+
+  <rect class="card" x="50" y="418" width="400" height="66" rx="7"/>
+  <text class="kind-plain" x="62" y="440">proxy</text>
+  <text class="mono" x="62" y="457">spiffe://default.east.mesh.local/ns/shop/sa/web</text>
+  <text class="t" x="62" y="474">trusts: CA east, and the west CA through trust-west</text>
+
+  <!-- Zone west -->
+  <rect class="box" x="530" y="300" width="440" height="200" rx="10"/>
+  <text class="h" x="550" y="326">Zone west</text>
+
+  <rect class="card" x="550" y="340" width="190" height="62" rx="7"/>
+  <text class="kind" x="562" y="362">MeshTrust (auto)</text>
+  <text class="mono" x="562" y="380">default.west.mesh.local</text>
+  <text class="t" x="562" y="394">origin: zone</text>
+
+  <rect class="card" x="760" y="340" width="190" height="62" rx="7"/>
+  <text class="kind-plain" x="772" y="362">CA west</text>
+  <text class="t" x="772" y="380">generated in this zone</text>
+  <text class="t" x="772" y="394">by the MeshIdentity</text>
+
+  <rect class="card" x="550" y="418" width="400" height="66" rx="7"/>
+  <text class="kind-plain" x="562" y="440">proxy</text>
+  <text class="mono" x="562" y="457">spiffe://default.west.mesh.local/ns/shop/sa/api</text>
+  <text class="t" x="562" y="474">trusts: CA west, and the east CA through trust-east</text>
+
+  <!-- Never zone to zone -->
+  <path class="nope" d="M452,371 L548,371"/>
+  <circle cx="500" cy="371" r="9" fill="var(--bg)" stroke="var(--bad)" stroke-width="1.5"/>
+  <path d="M495,366 L505,376 M505,366 L495,376" stroke="var(--bad)" stroke-width="1.8"/>
+  <text class="lbl-bad" x="500" y="400">never</text>
+  <text class="lbl-bad" x="500" y="413">zone → zone</text>
+
+  <!-- mTLS -->
+  <path class="mtls" d="M452,451 L548,451" marker-start="url(#mt-ok)" marker-end="url(#mt-ok)"/>
+  <text class="lbl-ok" x="500" y="443">mTLS</text>
+
+  <!-- Notes -->
+  <text class="note" x="30" y="530">Without trust-east and trust-west, each zone trusts only its own CA and cross-zone mTLS fails verification.</text>
+  <text class="note" x="30" y="552">Alternative: give every zone the same CA and trust domain (spec.provider.bundled.ca and spec.spiffeID.trustDomain</text>
+  <text class="note" x="30" y="570">without {{ .Zone }}). The auto MeshTrusts then match and no per-zone MeshTrust is needed.</text>
+</svg>
