@@ -11,6 +11,8 @@ apply it yourself.
 
 ## Quick start
 
+![Pipeline: extract pulls resources from a running control plane, migrate writes the migrated manifests and the report (add --dry-run to preview with no YAML written), apply is a manual step that runs kubectl or kumactl in the report's order](/img/pipeline.svg)
+
 ```bash
 brew install --cask bcollard/kuma-migrator/kuma-migrator
 kuma-migrator extract --kube-context prod-eks --output-dir ./raw-policies
