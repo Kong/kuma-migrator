@@ -72,13 +72,14 @@
     <header><span class="target-label">--to-latest v2 (2.x)</span> <span class="status status-warned">warned</span></header>
     <p class="outputs">Output: <a href="./"><code>MeshMultiZoneService</code></a></p>
     <div class="notes"><p>Copied unchanged. A name that is not a lowercase RFC 1035 label, or longer than 63
-characters, is reported.</p>
+characters, is reported. <code>ports[].appProtocol: kafka</code> is reported: 3.0 rejects it.</p>
 </div>
   </section>
   <section class="target-card">
-    <header><span class="target-label">--to-latest v3 (3.0)</span> <span class="status status-warned">warned</span></header>
+    <header><span class="target-label">--to-latest v3 (3.0)</span> <span class="status status-rewritten">rewritten</span></header>
     <p class="outputs">Output: <a href="./"><code>MeshMultiZoneService</code></a></p>
-    <div class="notes"><p>Same name check (a hard error on 3.0). Control-plane-owned labels removed.</p>
+    <div class="notes"><p>Same name check (a hard error on 3.0). Control-plane-owned labels removed.
+<code>ports[].appProtocol: kafka</code> → <code>tcp</code>, as for <a href="../meshservice/">MeshService</a>.</p>
 </div>
   </section>
 </div>
@@ -86,14 +87,14 @@ characters, is reported.</p>
 <h2 id="timeline">Timeline</h2>
 <div class="table-wrap"><table>
   <thead><tr><th>Version</th><th>Change</th></tr></thead>
-  <tbody><tr><td class="version">2.10</td><td>Names that are not RFC 1035 labels deprecated.</td></tr><tr><td class="version">2.14</td><td>Names longer than 63 characters deprecated.</td></tr><tr><td class="version">3.0</td><td>Non-RFC 1035 names rejected. Cross-zone routing needs a <code>MeshZoneAddress</code>.</td></tr></tbody>
+  <tbody><tr><td class="version">2.10</td><td>Names that are not RFC 1035 labels deprecated.</td></tr><tr><td class="version">2.14</td><td>Names longer than 63 characters deprecated.</td></tr><tr><td class="version">3.0</td><td>Non-RFC 1035 names rejected. <code>appProtocol: kafka</code> rejected. Cross-zone routing needs a <code>MeshZoneAddress</code>.</td></tr></tbody>
 </table></div>
 
 <h2 id="related-topics">Related topics</h2>
 <ul class="link-list"><li><a href="../../topics/multizone/">Multizone</a> — Control plane modes, which control plane to extract from, zone proxies, MeshMultiZoneService and cross-zone load balancing across 2.x and 3.0.</li><li><a href="../../topics/meshservice/">MeshService</a> — Moving policies, routes and workload addresses from kuma.io/service tags to MeshService, and setting meshServices.mode before Kuma 3.0.</li></ul>
 
 <h2 id="source-files">Source files</h2>
-<ul class="link-list"><li><a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/validate.go"><code>pkg/migrator/validate.go</code></a></li><li><a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/deprecation.go"><code>pkg/migrator/deprecation.go</code></a></li></ul>
+<ul class="link-list"><li><a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/validate.go"><code>pkg/migrator/validate.go</code></a></li><li><a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/deprecation.go"><code>pkg/migrator/deprecation.go</code></a></li><li><a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/v3_preflight.go"><code>pkg/migrator/v3_preflight.go</code></a></li></ul>
 
     </article>
     <nav class="pager" aria-label="Previous and next page">

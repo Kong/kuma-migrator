@@ -79,6 +79,10 @@
 <li><code>MeshSubset</code> refs with <code>kuma.io/service</code> tags and old <code>&lt;name&gt;_&lt;ns&gt;_svc_&lt;port&gt;</code>
 <code>MeshService</code> names are rewritten: top level to <code>Dataplane</code>, <code>to[]</code> to <code>MeshService</code>
 (labels when the policy and target namespaces differ).</li>
+<li><code>spec.targetRef.proxyTypes</code> is reported (removed in 3.0, see
+<a href="../../topics/policy-targeting/#what-kuma-migrator-does">Policy targeting</a>). The 2.x default
+<code>mesh-gateways-timeout-all-&lt;mesh&gt;</code> (<code>proxyTypes: [Gateway]</code>, <code>streamIdleTimeout: 5s</code>)
+gets a delete-before-upgrading advisory.</li>
 </ul>
 </div>
   </section>
@@ -87,13 +91,31 @@
     <p class="outputs">Output: <a href="./"><code>MeshTimeout</code></a></p>
     <div class="notes"><p>Same rewrites as v2, plus the rules every Mesh* policy gets under v3:</p>
 <ul>
-<li><code>name</code>/<code>namespace</code>/<code>mesh</code> on <code>MeshService</code>, <code>MeshExternalService</code>,
+<li>
+<p><code>spec.targetRef.proxyTypes</code> is removed when that keeps the scope or only adds former
+gateway proxies (<code>[Sidecar]</code>, both values, or a kind other than <code>Mesh</code>/<code>MeshSubset</code>).
+<code>[Gateway]</code> alone is written to <code>_manual/</code>: without the field the policy selects every
+proxy.</p>
+</li>
+<li>
+<p>The default <code>mesh-gateways-timeout-all-&lt;mesh&gt;</code> is not converted. On 3.0 it sets a 5s
+<code>streamIdleTimeout</code> on every sidecar (<a href="https://github.com/kumahq/kuma/issues/18857">kumahq/kuma#18857</a>). The original goes to
+<code>_manual/</code> and is listed under <strong>Delete Before Upgrading to 3.0</strong>, with the
+<code>skipCreatingInitialPolicies</code> step that keeps 2.14 Kubernetes from recreating it.</p>
+</li>
+<li>
+<p><code>name</code>/<code>namespace</code>/<code>mesh</code> on <code>MeshService</code>, <code>MeshExternalService</code>,
 <code>MeshMultiZoneService</code> and <code>MeshHTTPRoute</code> refs become labels
-(<code>kuma.io/display-name</code>, <code>k8s.kuma.io/namespace</code>, plus the policy's <code>kuma.io/zone</code>).</li>
-<li><code>to[].targetRef.kind</code> must be <code>Mesh</code>, <code>MeshService</code>, <code>MeshExternalService</code>,
-<code>MeshMultiZoneService</code> or <code>MeshHTTPRoute</code>; anything else is reported.</li>
-<li>Control-plane-owned labels (<code>kuma.io/origin</code>, <code>kuma.io/zone</code>, <code>kuma.io/policy-role</code>, …)
-are removed.</li>
+(<code>kuma.io/display-name</code>, <code>k8s.kuma.io/namespace</code>, plus the policy's <code>kuma.io/zone</code>).</p>
+</li>
+<li>
+<p><code>to[].targetRef.kind</code> must be <code>Mesh</code>, <code>MeshService</code>, <code>MeshExternalService</code>,
+<code>MeshMultiZoneService</code> or <code>MeshHTTPRoute</code>; anything else is reported.</p>
+</li>
+<li>
+<p>Control-plane-owned labels (<code>kuma.io/origin</code>, <code>kuma.io/zone</code>, <code>kuma.io/policy-role</code>, …)
+are removed.</p>
+</li>
 </ul>
 </div>
   </section>
@@ -102,14 +124,14 @@ are removed.</li>
 <h2 id="timeline">Timeline</h2>
 <div class="table-wrap"><table>
   <thead><tr><th>Version</th><th>Change</th></tr></thead>
-  <tbody><tr><td class="version">2.10</td><td><code>rules[]</code> API added; <code>from[]</code> deprecated. <code>Dataplane</code> added as a top-level kind; <code>MeshSubset</code> deprecated.</td></tr><tr><td class="version">3.0</td><td><code>from</code> removed. Real resources selected by labels only. Top-level <code>targetRef</code> limited to <code>Mesh</code> and <code>Dataplane</code>.</td></tr></tbody>
+  <tbody><tr><td class="version">2.10</td><td><code>rules[]</code> API added; <code>from[]</code> deprecated. <code>Dataplane</code> added as a top-level kind; <code>MeshSubset</code> deprecated.</td></tr><tr><td class="version">3.0</td><td><code>from</code> removed. Real resources selected by labels only. Top-level <code>targetRef</code> limited to <code>Mesh</code> and <code>Dataplane</code>. <code>targetRef.proxyTypes</code> removed; the default <code>mesh-gateways-timeout-all-&lt;mesh&gt;</code> then applies to every proxy.</td></tr></tbody>
 </table></div>
 
 <h2 id="related-topics">Related topics</h2>
 <ul class="link-list"><li><a href="../../topics/policy-targeting/">Policy targeting</a> — Which targetRef kinds each policy accepts at each position on 2.14 and 3.0, labels-only selection, policy roles, and control-plane-owned labels.</li></ul>
 
 <h2 id="source-files">Source files</h2>
-<ul class="link-list"><li><a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/rulesapi.go"><code>pkg/migrator/rulesapi.go</code></a></li><li><a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/convert.go"><code>pkg/migrator/convert.go</code></a></li><li><a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/v3_policy.go"><code>pkg/migrator/v3_policy.go</code></a></li></ul>
+<ul class="link-list"><li><a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/rulesapi.go"><code>pkg/migrator/rulesapi.go</code></a></li><li><a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/convert.go"><code>pkg/migrator/convert.go</code></a></li><li><a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/v3_policy.go"><code>pkg/migrator/v3_policy.go</code></a></li><li><a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/v3_preflight.go"><code>pkg/migrator/v3_preflight.go</code></a></li></ul>
 
     </article>
     <nav class="pager" aria-label="Previous and next page">

@@ -69,17 +69,32 @@
 <h2 id="targets">Behaviour per target</h2>
 <div class="targets">
   <section class="target-card">
-    <header><span class="target-label">--to-latest v2 (2.x)</span> <span class="status status-passthrough">passthrough</span></header>
+    <header><span class="target-label">--to-latest v2 (2.x)</span> <span class="status status-rewritten">rewritten</span></header>
     <p class="outputs">Output: <a href="./"><code>MeshRetry</code></a></p>
     <div class="notes"><p>Copied unchanged unless it has Subset-scenario refs (<code>MeshSubset</code> with service tags, old
 <code>_svc_</code> names), which are rewritten. A deprecated top-level kind is reported.</p>
+<p>Legacy <code>Retry</code> field names in <code>to[].default</code> are rewritten. <code>MeshRetry</code> never had them:
+2.x drops them silently, so the settings never applied, and 3.0 rejects the write as an
+unknown field on the API server and <code>kumactl apply</code>; <code>kubectl apply</code> prunes it with a warning
+(<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#resources-with-fields-that-are-not-in-the-schema-are-rejected">UPGRADE</a>).</p>
+<ul>
+<li><code>http.retriableStatusCodes</code> → <code>http.retryOn</code> entries, one per code (<code>&quot;503&quot;</code>).</li>
+<li><code>http.retriableMethods</code> → <code>http.retryOn</code> entries (<code>GET</code> → <code>HttpMethodGet</code>).</li>
+<li><code>tcp.maxConnectAttempts</code> → <code>tcp.maxConnectAttempt</code>. When both are set, the existing
+<code>maxConnectAttempt</code> is kept.</li>
+</ul>
+<p>The warning says these retries now take effect. A value that is not an HTTP status code
+or method is dropped with a warning. <code>spec.targetRef.proxyTypes</code> is reported as for
+<a href="../meshtimeout/">MeshTimeout</a>.</p>
 </div>
   </section>
   <section class="target-card">
     <header><span class="target-label">--to-latest v3 (3.0)</span> <span class="status status-rewritten">rewritten</span></header>
     <p class="outputs">Output: <a href="./"><code>MeshRetry</code></a></p>
-    <div class="notes"><p>Labels-only refs and control-plane label removal. Allowed <code>to[].targetRef.kind</code>: <code>Mesh</code>,
-<code>MeshService</code>, <code>MeshExternalService</code>, <code>MeshMultiZoneService</code>, <code>MeshHTTPRoute</code>.</p>
+    <div class="notes"><p>The same legacy field rewrite as v2, labels-only refs and control-plane label removal.
+Allowed <code>to[].targetRef.kind</code>: <code>Mesh</code>, <code>MeshService</code>, <code>MeshExternalService</code>,
+<code>MeshMultiZoneService</code>, <code>MeshHTTPRoute</code>. <code>spec.targetRef.proxyTypes</code> is handled as for
+<a href="../meshtimeout/">MeshTimeout</a>.</p>
 </div>
   </section>
 </div>
@@ -87,14 +102,14 @@
 <h2 id="timeline">Timeline</h2>
 <div class="table-wrap"><table>
   <thead><tr><th>Version</th><th>Change</th></tr></thead>
-  <tbody><tr><td class="version">3.0</td><td>Real resources selected by labels only. New meshes no longer get a default <code>MeshRetry</code>.</td></tr></tbody>
+  <tbody><tr><td class="version">3.0</td><td>Real resources selected by labels only. New meshes no longer get a default <code>MeshRetry</code>. Unknown fields such as <code>retriableStatusCodes</code> are rejected on write.</td></tr></tbody>
 </table></div>
 
 <h2 id="related-topics">Related topics</h2>
 <ul class="link-list"><li><a href="../../topics/policy-targeting/">Policy targeting</a> — Which targetRef kinds each policy accepts at each position on 2.14 and 3.0, labels-only selection, policy roles, and control-plane-owned labels.</li></ul>
 
 <h2 id="source-files">Source files</h2>
-<ul class="link-list"><li><a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/v3_policy.go"><code>pkg/migrator/v3_policy.go</code></a></li></ul>
+<ul class="link-list"><li><a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/v3_policy.go"><code>pkg/migrator/v3_policy.go</code></a></li><li><a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/v3_preflight.go"><code>pkg/migrator/v3_preflight.go</code></a></li></ul>
 
     </article>
     <nav class="pager" aria-label="Previous and next page">

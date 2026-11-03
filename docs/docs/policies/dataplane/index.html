@@ -78,6 +78,9 @@ a Dataplane with a finding is labelled <code>SCANNED</code>, one without <code>S
 <li><code>transparentProxying.reachableServices</code> is reported: in <code>Exclusive</code> mode the names must
 be MeshService display names, and 3.0 removes the field.</li>
 <li><code>reachableBackends.refs[]</code> using <code>name</code>/<code>namespace</code> are reported (3.0 selects by labels).</li>
+<li>Named entries in <code>transparentProxying.directAccessServices</code> are reported: 3.0 honours
+only <code>*</code> and ignores names silently.</li>
+<li>Inbound protocol <code>kafka</code> (field or <code>kuma.io/protocol</code> tag) is reported: 3.0 rejects it.</li>
 </ul>
 </div>
   </section>
@@ -109,6 +112,16 @@ on stdout and listed under <strong>Scanned Non-Policy Resources</strong> in the 
 <code>kuma.io/service</code> value is <code>&lt;name&gt;_&lt;ns&gt;_svc_&lt;port&gt;</code>. Otherwise the MeshService port is
 not in the manifest: 3.0 rejects the Dataplane (<code>networking.outbound[0].backendRef: must be defined</code>), so it is written to <code>_manual/</code> with the <code>backendRef</code> to fill in.</p>
 </li>
+<li>
+<p>Inbound <code>protocol: kafka</code> → <code>tcp</code>. 3.0 accepts only <code>tcp</code>, <code>http</code>, <code>http2</code> and <code>grpc</code>
+(<a href="https://github.com/kumahq/kuma/pull/17831">kumahq/kuma#17831</a>). On 2.x Kafka is a TCP proxy plus a stats-only filter, so only the
+Kafka stats are lost.</p>
+</li>
+<li>
+<p><code>directAccessServices</code> with <code>*</code> and names → <code>[&quot;*&quot;]</code> (the names were redundant). Names
+without <code>*</code> are reported, not rewritten: 3.0 ignores them and the proxy loses direct
+access to those services. Use <code>*</code> or drop direct access.</p>
+</li>
 </ul>
 <p>Reported, not rewritten: <code>advertisedAddress</code>, <code>redirectPortInbound</code>/<code>redirectPortOutbound</code>
 (removed in 3.1), <code>ipFamilyMode</code>, and transparent proxying without <code>reachableBackends</code>
@@ -120,14 +133,14 @@ not in the manifest: 3.0 rejects the Dataplane (<code>networking.outbound[0].bac
 <h2 id="timeline">Timeline</h2>
 <div class="table-wrap"><table>
   <thead><tr><th>Version</th><th>Change</th></tr></thead>
-  <tbody><tr><td class="version">2.9</td><td><code>transparentProxying.redirectPortInboundV6</code> removed.</td></tr><tr><td class="version">3.0</td><td><code>inbound[].tags</code>, <code>outbound[].tags</code>, <code>advertisedAddress</code>, <code>networking.gateway</code>, <code>reachableServices</code> and <code>ipFamilyMode</code> removed; the protocol is no longer read from <code>kuma.io/protocol</code>; proxies without <code>reachableBackends</code> get no outbounds.</td></tr></tbody>
+  <tbody><tr><td class="version">2.9</td><td><code>transparentProxying.redirectPortInboundV6</code> removed.</td></tr><tr><td class="version">3.0</td><td><code>inbound[].tags</code>, <code>outbound[].tags</code>, <code>advertisedAddress</code>, <code>networking.gateway</code>, <code>reachableServices</code> and <code>ipFamilyMode</code> removed; the protocol is no longer read from <code>kuma.io/protocol</code>; proxies without <code>reachableBackends</code> get no outbounds. Protocol <code>kafka</code> rejected. Only <code>*</code> honoured in <code>directAccessServices</code>.</td></tr></tbody>
 </table></div>
 
 <h2 id="related-topics">Related topics</h2>
 <ul class="link-list"><li><a href="../../topics/dataplanes/">Dataplanes</a> — Universal Dataplane fields and Kubernetes Pod annotations that change or disappear between 2.x and 3.0, and what kuma-migrator rewrites.</li><li><a href="../../topics/meshservice/">MeshService</a> — Moving policies, routes and workload addresses from kuma.io/service tags to MeshService, and setting meshServices.mode before Kuma 3.0.</li></ul>
 
 <h2 id="source-files">Source files</h2>
-<ul class="link-list"><li><a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/v3_dataplane.go"><code>pkg/migrator/v3_dataplane.go</code></a></li><li><a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/deprecation.go"><code>pkg/migrator/deprecation.go</code></a></li><li><a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/config/config.go"><code>pkg/config/config.go</code></a></li></ul>
+<ul class="link-list"><li><a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/v3_dataplane.go"><code>pkg/migrator/v3_dataplane.go</code></a></li><li><a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/deprecation.go"><code>pkg/migrator/deprecation.go</code></a></li><li><a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/config/config.go"><code>pkg/config/config.go</code></a></li><li><a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/v3_preflight.go"><code>pkg/migrator/v3_preflight.go</code></a></li></ul>
 
     </article>
     <nav class="pager" aria-label="Previous and next page">

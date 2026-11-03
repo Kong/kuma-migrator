@@ -76,11 +76,13 @@
 <li><code>tcp.maxConnectAttempts</code> → <code>tcp.maxConnectAttempt</code> (singular).</li>
 <li><code>http.retryOn</code> enum values are recased (<code>gateway_error</code> → <code>GatewayError</code>, <code>5xx</code> stays).</li>
 <li><code>http.retriableMethods</code> → extra <code>http.retryOn</code> entries (<code>GET</code> → <code>HttpMethodGet</code>).</li>
+<li><code>http.retriableStatusCodes</code> → extra <code>http.retryOn</code> entries, one per code (<code>503</code> →
+<code>&quot;503&quot;</code>). <code>MeshRetry</code> accepts any HTTP status code in <code>retryOn</code> on 2.14 and 3.0. The
+<code>retriable_status_codes</code> condition is implied by the codes and dropped.</li>
 <li>gRPC <code>retryOn</code> <code>cancelled</code> → <code>Canceled</code>.</li>
 <li><code>numRetries</code>, <code>perTryTimeout</code>, <code>backOff.*</code> keep their paths.</li>
 </ul>
-<p><code>http.retriableStatusCodes</code> has no <code>MeshRetry</code> equivalent. It is dropped with a warning;
-use <code>retryOn</code> values such as <code>5xx</code> or <code>GatewayError</code> instead.</p>
+<p><code>retryOn: retriable_headers</code> has no <code>MeshRetry</code> equivalent and is dropped with a warning.</p>
 </div>
   </section>
   <section class="target-card">

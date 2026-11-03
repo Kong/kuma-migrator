@@ -115,6 +115,16 @@ and traffic changes.</p>
 <td>Yes</td>
 </tr>
 <tr>
+<td><code>transparentProxying.directAccessServices</code>, <code>kuma.io/direct-access-services</code></td>
+<td>Only <code>*</code> is honoured; named services are ignored (<a href="https://github.com/kumahq/kuma/blob/master/pkg/xds/generator/direct_access_proxy_generator.go"><code>direct_access_proxy_generator.go</code></a>)</td>
+<td>Yes: the proxy loses direct access to those services</td>
+</tr>
+<tr>
+<td><code>inbound[].protocol: kafka</code></td>
+<td>Rejected: Kafka is no longer a protocol (<a href="https://github.com/kumahq/kuma/pull/17831">kumahq/kuma#17831</a>)</td>
+<td>—</td>
+</tr>
+<tr>
 <td><code>probes</code>, <code>kuma.io/virtual-probes</code>, <code>kuma.io/virtual-probes-port</code></td>
 <td>Virtual probes removed; Application Probe Proxy only (<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#virtual-probes-removed">UPGRADE</a>)</td>
 <td>Yes on Universal</td>
@@ -206,6 +216,16 @@ them scanned.</p>
 <td><code>kuma.io/protocol</code> inbound tag</td>
 <td>—</td>
 <td>Copied to <code>inbound[].protocol</code></td>
+</tr>
+<tr>
+<td><code>inbound[].protocol: kafka</code> (field or <code>kuma.io/protocol</code> tag)</td>
+<td>Warning</td>
+<td>Set to <code>tcp</code>; only the Kafka stats are lost</td>
+</tr>
+<tr>
+<td>Named <code>directAccessServices</code> entries, on the <code>Dataplane</code> or in the <code>kuma.io/direct-access-services</code> annotation</td>
+<td>Warning</td>
+<td>With <code>*</code> in the list: reduced to <code>*</code> (the names were redundant). Without <code>*</code>: warning, not rewritten. Use <code>*</code> or drop direct access</td>
 </tr>
 <tr>
 <td><code>outbound[].tags</code></td>

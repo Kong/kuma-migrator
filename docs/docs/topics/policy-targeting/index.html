@@ -101,6 +101,10 @@ is selected (labels only) and which labels you may set on the policy itself.</p>
 </tr>
 <tr>
 <td>3.0</td>
+<td><code>spec.targetRef.proxyTypes</code> removed (no field in <a href="https://github.com/kumahq/kuma/blob/master/api/common/v1alpha1/targetref.go"><code>targetref.go</code></a>). Kubernetes prunes it and the API server rejects it as an unknown field. A stored policy selects every proxy. The 2.x default <code>mesh-gateways-timeout-all-&lt;mesh&gt;</code> (<code>proxyTypes: [Gateway]</code>, <code>streamIdleTimeout: 5s</code>) then fails every sidecar response that is idle for 5s with <code>504</code> (<a href="https://github.com/kumahq/kuma/issues/18857">kumahq/kuma#18857</a>)</td>
+</tr>
+<tr>
+<td>3.0</td>
 <td>Control-plane-owned labels rejected when they differ from the computed value (<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#control-plane-owned-labels-are-rejected-when-they-differ-from-the-computed-value">UPGRADE</a>)</td>
 </tr>
 <tr>
@@ -426,6 +430,26 @@ renames, splits or moves a policy (a split policy changes role, for example).</p
 <td>Kept</td>
 <td>Removed (<code>kuma.io/mesh</code> stays). Selectors are not touched</td>
 </tr>
+<tr>
+<td><code>spec.targetRef.proxyTypes</code> <code>[Sidecar]</code></td>
+<td>Warning</td>
+<td>Removed, with a warning: the policy now also selects the proxies that are gateways on 2.x, which 3.0 runs as ordinary <code>Dataplane</code>s</td>
+</tr>
+<tr>
+<td><code>spec.targetRef.proxyTypes</code> with both values, an empty list, or on a kind other than <code>Mesh</code>/<code>MeshSubset</code> (2.x ignores it there)</td>
+<td>Warning</td>
+<td>Removed; the scope does not change</td>
+</tr>
+<tr>
+<td><code>spec.targetRef.proxyTypes</code> <code>[Gateway]</code></td>
+<td>Warning</td>
+<td>Error: written to <code>_manual/</code>. Without the field the policy selects every proxy; select the gateway <code>Dataplane</code>s by labels or delete the policy</td>
+</tr>
+<tr>
+<td>Default <code>MeshTimeout</code> <code>mesh-gateways-timeout-all-&lt;mesh&gt;</code></td>
+<td>Advisory: delete it right before the 3.0 upgrade</td>
+<td>Not converted. The original goes to <code>_manual/</code> and is listed under <strong>Delete Before Upgrading to 3.0</strong>. Deleting it, not dropping <code>proxyTypes</code>, is the fix</td>
+</tr>
 </tbody>
 </table></div>
 <p>A document that 3.0 would reject as written is never put in the apply tree: the run reports it as
@@ -447,6 +471,8 @@ service; the equivalent <code>Dataplane</code> selector is the set of pod labels
 the policy. Only Kuma-internal <code>_svc_</code> names are expanded (to <code>app: &lt;name&gt;</code>, warned).</li>
 <li><strong>Re-target <code>MeshGateway</code> policies.</strong> The delegated gateway's labels depend on how you deploy
 it. See <a href="../gateways/">Gateways</a>.</li>
+<li><strong>Replace <code>proxyTypes: [Gateway]</code>.</strong> 3.0 has no gateway proxy type. The gateway <code>Dataplane</code>s
+are selected by their own labels, which are not in the policy.</li>
 <li><strong>Prove that a label selector selects one resource.</strong> Labels match every resource that
 carries them. Each rewrite is warned.</li>
 </ul>
@@ -459,6 +485,10 @@ every zone before upgrading zone control planes.</li>
 <li>Fix <code>to[]</code> entries the matrix rejects.</li>
 <li>For producer policies without a <code>kuma.io/zone</code> label, add <code>kuma.io/zone: &lt;zone-name&gt;</code> to the
 <code>to[]</code> label selectors the warning names.</li>
+<li>Delete <code>mesh-gateways-timeout-all-&lt;mesh&gt;</code> in every mesh before the upgrade. On Kubernetes, first
+add <code>MeshTimeout</code> (or <code>*</code>) to the Mesh's <code>spec.skipCreatingInitialPolicies</code>: the 2.14 Mesh
+controller recreates the default on the next Mesh reconcile. 3.0 ignores that field. Rewrite
+any other <code>proxyTypes: [Gateway]</code> policy to <code>kind: Dataplane</code> + the gateway's labels.</li>
 <li>Apply the <code>v3</code> output, which strips control-plane-owned labels.</li>
 </ol>
 <h2 id="example">Example</h2>

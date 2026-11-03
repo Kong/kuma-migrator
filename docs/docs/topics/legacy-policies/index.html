@@ -216,7 +216,7 @@ and any input field no converter consumes is reported.</p>
 </tr>
 <tr>
 <td><code>Retry</code></td>
-<td><code>tcp.maxConnectAttempts</code> → <code>maxConnectAttempt</code>; <code>retryOn</code> values recased (<code>gateway_error</code> → <code>GatewayError</code>); <code>retriableMethods</code> → <code>retryOn: [HttpMethodGet, …]</code>; gRPC <code>cancelled</code> → <code>Canceled</code>; <code>retriableStatusCodes</code> has no equivalent (dropped, warned)</td>
+<td><code>tcp.maxConnectAttempts</code> → <code>maxConnectAttempt</code>; <code>retryOn</code> values recased (<code>gateway_error</code> → <code>GatewayError</code>); <code>retriableMethods</code> → <code>retryOn: [HttpMethodGet, …]</code>; <code>retriableStatusCodes</code> → numeric <code>retryOn</code> entries (<code>&quot;503&quot;</code>, accepted by the <a href="https://github.com/kumahq/kuma/blob/master/pkg/plugins/policies/meshretry/api/v1alpha1/validator.go">MeshRetry validator</a>); gRPC <code>cancelled</code> → <code>Canceled</code></td>
 </tr>
 <tr>
 <td><code>HealthCheck</code></td>
@@ -519,6 +519,7 @@ thresholds move to <code>MeshCircuitBreaker</code>.</li>
         <span class="nt">retryOn</span><span class="p">:</span>
         - <span class="l">GatewayError</span>
         - <span class="l">ConnectFailure</span>
+        - <span class="s2">"503"</span>
       <span class="nt">tcp</span><span class="p">:</span>
         <span class="nt">maxConnectAttempt</span><span class="p">:</span> <span class="m">4</span>
     <span class="nt">targetRef</span><span class="p">:</span>
@@ -528,9 +529,7 @@ thresholds move to <code>MeshCircuitBreaker</code>.</li>
 <span class="nt">type</span><span class="p">:</span> <span class="l">MeshRetry</span>
 </code></pre></div>
 <p>The <code>TrafficRoute</code> is copied unchanged to <code>_manual/routing/TrafficRoute-route-all.yaml</code>, which no apply step uses, with an error:</p>
-<div class="code"><pre class="chroma" data-lang="text"><code><span class="o-warn">⚠</span>  Retry "web-retry": conf.http.retriableStatusCodes ([503]) has no MeshRetry equivalent and was
-   dropped — MeshRetry cannot retry on specific status codes. …
-<span class="o-warn">⚠</span>  spec.targetRef Dataplane labels use 'app: web' as a best-guess pod label — verify this matches
+<div class="code"><pre class="chroma" data-lang="text"><code><span class="o-warn">⚠</span>  spec.targetRef Dataplane labels use 'app: web' as a best-guess pod label — verify this matches
    your actual pod labels before applying
 <span class="o-err">✗</span>  TrafficRoute requires manual migration to MeshHTTPRoute or MeshTCPRoute
 </code></pre></div>
@@ -552,6 +551,7 @@ converted source gets a delete-before-upgrade advisory:</p>
         <span class="nt">retryOn</span><span class="p">:</span>
         - <span class="l">GatewayError</span>
         - <span class="l">ConnectFailure</span>
+        - <span class="s2">"503"</span>
       <span class="nt">tcp</span><span class="p">:</span>
         <span class="nt">maxConnectAttempt</span><span class="p">:</span> <span class="m">4</span>
     <span class="nt">targetRef</span><span class="p">:</span>

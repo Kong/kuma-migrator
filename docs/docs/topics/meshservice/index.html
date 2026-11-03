@@ -102,6 +102,10 @@ naming is unconditional and the <code>meshServices</code> switch has no effect.<
 </tr>
 <tr>
 <td>3.0</td>
+<td><code>appProtocol</code> on <code>MeshService</code> and <code>MeshMultiZoneService</code> ports accepts only <code>tcp</code>, <code>http</code>, <code>http2</code> and <code>grpc</code>: Kafka is no longer a protocol (<a href="https://github.com/kumahq/kuma/pull/17831">kumahq/kuma#17831</a>). On 2.x <code>kafka</code> was a TCP proxy plus Envoy's <code>kafka_broker</code> filter, which only emits stats</td>
+</tr>
+<tr>
+<td>3.0</td>
 <td>Non-RFC 1035 names rejected (<a href="https://github.com/kumahq/kuma/blob/master/UPGRADE.md#names-of-mesh-zone-meshservice-meshexternalservice-and-meshmultizoneservice-must-be-rfc-1035-labels">UPGRADE</a>)</td>
 </tr>
 <tr>
@@ -216,6 +220,11 @@ namespace and port; a Universal value is used as the name.</p>
 <td><code>MeshService</code> <code>identities[]</code> <code>type: ServiceTag</code></td>
 <td>Advisory</td>
 <td>Entry dropped</td>
+</tr>
+<tr>
+<td><code>MeshService</code> / <code>MeshMultiZoneService</code> <code>ports[].appProtocol: kafka</code></td>
+<td>Advisory</td>
+<td>Rewritten to <code>tcp</code>; only the Kafka stats are lost</td>
 </tr>
 <tr>
 <td><code>Dataplane</code> <code>reachableServices</code></td>

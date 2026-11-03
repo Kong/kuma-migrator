@@ -77,6 +77,7 @@
 MeshService on write (<code>spec.selector.dataplaneTags: unknown field</code>), and one already
 stored loses its selector and matches no proxies. Not rewritten on v2: on 2.14 a labels selector also matches
 same-named services synced from other zones.</li>
+<li><code>ports[].appProtocol: kafka</code> is reported: 3.0 rejects it.</li>
 <li>Names that are not RFC 1035 labels are reported.</li>
 </ul>
 </div>
@@ -93,6 +94,9 @@ conflicts with existing <code>matchLabels</code> is not converted; 3.0 rejects i
 field, so the MeshService is written to <code>_manual/</code>.</li>
 <li><code>identities[]</code> entries of <code>type: ServiceTag</code> removed; add <code>type: SpiffeID</code> entries if
 clients need them.</li>
+<li><code>ports[].appProtocol: kafka</code> → <code>tcp</code>. 3.0 accepts only <code>tcp</code>, <code>http</code>, <code>http2</code> and <code>grpc</code>
+(<a href="https://github.com/kumahq/kuma/pull/17831">kumahq/kuma#17831</a>). On 2.x Kafka is a TCP proxy plus Envoy's <code>kafka_broker</code> filter,
+which only emits stats, so the traffic handling does not change.</li>
 <li>Control-plane-owned labels removed.</li>
 </ul>
 </div>
@@ -102,14 +106,14 @@ clients need them.</li>
 <h2 id="timeline">Timeline</h2>
 <div class="table-wrap"><table>
   <thead><tr><th>Version</th><th>Change</th></tr></thead>
-  <tbody><tr><td class="version">2.8</td><td><code>ports[].protocol</code> renamed to <code>appProtocol</code>.</td></tr><tr><td class="version">2.10</td><td>Names that are not RFC 1035 labels deprecated.</td></tr><tr><td class="version">3.0</td><td><code>dataplaneTags</code> removed; <code>identities</code> accepts SPIFFE IDs only; non-RFC 1035 names rejected.</td></tr></tbody>
+  <tbody><tr><td class="version">2.8</td><td><code>ports[].protocol</code> renamed to <code>appProtocol</code>.</td></tr><tr><td class="version">2.10</td><td>Names that are not RFC 1035 labels deprecated.</td></tr><tr><td class="version">3.0</td><td><code>dataplaneTags</code> removed; <code>identities</code> accepts SPIFFE IDs only; <code>appProtocol: kafka</code> rejected; non-RFC 1035 names rejected.</td></tr></tbody>
 </table></div>
 
 <h2 id="related-topics">Related topics</h2>
 <ul class="link-list"><li><a href="../../topics/meshservice/">MeshService</a> — Moving policies, routes and workload addresses from kuma.io/service tags to MeshService, and setting meshServices.mode before Kuma 3.0.</li></ul>
 
 <h2 id="source-files">Source files</h2>
-<ul class="link-list"><li><a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/v3_scan.go"><code>pkg/migrator/v3_scan.go</code></a></li><li><a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/deprecation.go"><code>pkg/migrator/deprecation.go</code></a></li></ul>
+<ul class="link-list"><li><a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/v3_scan.go"><code>pkg/migrator/v3_scan.go</code></a></li><li><a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/deprecation.go"><code>pkg/migrator/deprecation.go</code></a></li><li><a href="https://github.com/Kong/kuma-migrator/blob/main/pkg/migrator/v3_preflight.go"><code>pkg/migrator/v3_preflight.go</code></a></li></ul>
 
     </article>
     <nav class="pager" aria-label="Previous and next page">
