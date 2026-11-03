@@ -3,9 +3,12 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/Kong/kuma-migrator/pkg/config"
 	"github.com/Kong/kuma-migrator/pkg/extractor"
+	"github.com/Kong/kuma-migrator/pkg/readiness"
+	"github.com/Kong/kuma-migrator/pkg/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -61,12 +64,21 @@ metadata.resourceVersion/uid/generation/creationTimestamp/managedFields/
 ownerReferences, the kubectl last-applied annotation, and Universal
 creationTime/modificationTime/kri.
 
-Each Mesh is written under its own mesh-<name>/ directory.`,
+Each Mesh is written under its own mesh-<name>/ directory.
+
+--preflight (kumactl mode only) then runs the Kong Mesh 3.0 readiness audit
+against the same control plane (see 'kuma-migrator preflight --help') and writes
+v3-preflight.json and v3-preflight.html into the context directory. 'migrate'
+summarises them in its report. A failed audit is reported and does not fail the
+extraction.`,
 	Example: `  # Extract via kumactl (uses ~/.kumactl/config; self-hosted OR Konnect)
   kuma-migrator extract --kumactl-context konnect-global-prod --output-dir ./raw-policies
 
   # ...or via kubectl
   kuma-migrator extract --kube-context zone-eu-west1-prod --output-dir ./raw-policies
+
+  # ...and audit the same control plane for 3.0 readiness
+  kuma-migrator extract --kumactl-context prod-global --output-dir ./raw-policies --preflight
 
   # Then preview the migration
   kuma-migrator migrate --input-dir ./raw-policies --output-dir ./migrated --dry-run`,
@@ -76,6 +88,9 @@ Each Mesh is written under its own mesh-<name>/ directory.`,
 		}
 		if extractKubeContext != "" && extractKumactlContext != "" {
 			return fmt.Errorf("--kube-context and --kumactl-context are mutually exclusive")
+		}
+		if extractPreflight && extractKubeContext != "" {
+			return fmt.Errorf("--preflight needs the control plane REST API: use --kumactl-context, or port-forward the CP API (e.g. kubectl port-forward -n kong-mesh-system svc/kong-mesh-control-plane 5681) and run 'kuma-migrator preflight --address http://localhost:5681'")
 		}
 		if _, err := os.Stat(extractOutputDir); os.IsNotExist(err) {
 			// Output dir will be created by the extractor — no pre-check needed.
@@ -90,7 +105,25 @@ Each Mesh is written under its own mesh-<name>/ directory.`,
 		if extractKubeContext != "" {
 			return extractor.ExtractViaKubectl(extractKubeContext, extractOutputDir, extractMesh, extractOutputFormat)
 		}
-		return extractor.ExtractViaKumactl(extractKumactlContext, extractOutputDir, extractMesh, extractOutputFormat)
+		res, err := extractor.ExtractViaKumactlResult(extractKumactlContext, extractOutputDir, extractMesh, extractOutputFormat)
+		if err != nil || !extractPreflight {
+			return err
+		}
+		if _, err := readiness.Run(readiness.RunOptions{
+			Address:           res.Target.Address,
+			Token:             res.Target.Token,
+			Konnect:           res.Target.Konnect,
+			Mesh:              extractMesh,
+			LatestVersion:     extractLatestVersion,
+			InspectDataplanes: extractInspectDataplanes,
+			ResourceReadLimit: readiness.DefaultResourceReadLimit,
+			Timeout:           extractPreflightTimeout,
+			HTTPClient:        extractor.NewHTTPClient(extractPreflightTimeout),
+			OutputDir:         res.ContextDir,
+		}); err != nil {
+			ui.Warn(fmt.Sprintf("Readiness audit: %v. The extracted files are complete; re-run the audit with 'kuma-migrator preflight'.", err))
+		}
+		return nil
 	},
 }
 
@@ -100,6 +133,10 @@ var extractOutputDir string
 var extractTLSSkipVerify bool
 var extractMesh string
 var extractOutputFormat string
+var extractPreflight bool
+var extractLatestVersion string
+var extractInspectDataplanes int
+var extractPreflightTimeout time.Duration
 
 func init() {
 	extractCmd.Flags().StringVar(&extractKubeContext, "kube-context", "", "Kubernetes context to use for resource extraction (kubectl)")
@@ -108,6 +145,8 @@ func init() {
 	extractCmd.Flags().BoolVarP(&extractTLSSkipVerify, "tls-skip-verify", "k", false, "disable TLS certificate verification for the control plane admin server (use for self-signed certs)")
 	extractCmd.Flags().StringVar(&extractMesh, "mesh", "", "restrict extraction to the named Kuma mesh (default: all meshes)")
 	extractCmd.Flags().StringVarP(&extractOutputFormat, "output-format", "f", "universal", `output format for extracted resources: "kubernetes" (apiVersion/kind/metadata) or "universal" (type/name/mesh)`)
+	extractCmd.Flags().BoolVar(&extractPreflight, "preflight", false, "after extracting, run the Kong Mesh 3.0 readiness audit against the same control plane (--kumactl-context only)")
+	addPreflightAuditFlags(extractCmd.Flags(), &extractLatestVersion, &extractInspectDataplanes, &extractPreflightTimeout, "preflight-")
 	_ = extractCmd.MarkFlagRequired("output-dir")
 	rootCmd.AddCommand(extractCmd)
 }

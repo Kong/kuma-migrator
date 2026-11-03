@@ -42,6 +42,8 @@ kuma-migrator extract --kube-context <ctx>    --output-dir <dir> [--mesh <mesh>]
 kuma-migrator extract --kumactl-context <ctx> --output-dir <dir> [--mesh <mesh>] [--output-format kubernetes|universal]
 kuma-migrator migrate --input-dir <dir> --output-dir <dir>        [--mesh <mesh>] [--to-latest v2|v3] [--dry-run]
 kuma-migrator konnect token-script --region <r> [--scope mesh|org] [--control-plane <name>]... [--expires-in 336h] [-o file]
+kuma-migrator preflight [--kumactl-context <ctx> | --address <url>] [-o dir] [--latest-version 2.14.x] [--inspect-dataplanes N]
+kuma-migrator extract --kumactl-context <ctx> --output-dir <dir> --preflight   # extract, then the same audit
 ```
 
 `konnect token-script` (`cmd/konnect.go`, `pkg/konnect/tokenscript.go` + embedded
@@ -55,6 +57,23 @@ written into the script. `tokenscript_test.go` runs the rendered script with bas
 against an `httptest` fake of the Konnect API. Not yet exercised against real Konnect: the
 `mesh` scope (Viewer role reading `/v1/mesh/control-planes/<id>/api/...`) is the documented
 role, but only the `org` scope was used with customers. Docs: `site/content/guides/konnect-access.md`.
+
+**Readiness audit** (`cmd/preflight.go`, `pkg/readiness`): imports
+`github.com/Kong/kong-mesh-v3-readiness/preflight` (Apache-2.0 from f69171b; pinned to that
+pseudo-version because tag v0.6.8 predates the LICENSE) and calls `preflight.Audit`. Also
+`extract --kumactl-context … --preflight` (refused with `--kube-context`: no REST address), which
+runs after extraction into the context dir (`KumactlExtractResult.ContextDir` from
+`ExtractViaKumactlResult`); an audit failure is a warning, not an extract failure. Output:
+`v3-preflight.json` + `.html` (`readiness.Write`). `migrate` never walks them (YAML only);
+`writePreflightAudits` (`report_preflight.go`) reads `<input>/` and each immediate subdir with
+`readiness.Load` and renders **Live Control Plane Audit** on both targets. The library makes no
+request beyond the CP, so `readiness.LatestPatch` (kumahq/kuma GitHub releases, paginated, port of
+the upstream CLI's `release.go`) supplies `LatestPatch`; `--latest-version` skips it. Konnect →
+`KnownGlobalControlPlane` + `SkipAuditedControlPlaneConfig` + `SkipAuditedControlPlaneVersionCheck`
+(no `/config`, Kong-managed Global); not yet run against real Konnect. Address = the kumactl URL
+with Konnect's `/api` stripped (`extractor.KumactlTarget`); HTTP client = `extractor.NewHTTPClient`
+(TLS skip, no redirects). Blocker counts shown are findings; `Summary.Blockers` sums occurrences.
+Verified on a Kong Mesh 2.14.7 Universal CP (6 blockers, 12 manual checks).
 
 There is no separate `plan` command — `--dry-run` on `migrate` is what used to be `plan` (removed;
 see git history around the `--dry-run` flag's introduction). `migrator.Plan`/`migrator.Migrate` in

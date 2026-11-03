@@ -3,6 +3,7 @@ module github.com/Kong/kuma-migrator
 go 1.25.0
 
 require (
+	github.com/Kong/kong-mesh-v3-readiness v0.6.9-0.20261103093350-f69171b2ced9
 	github.com/fatih/color v1.18.0
 	github.com/spf13/cobra v1.8.0
 	sigs.k8s.io/yaml v1.6.0

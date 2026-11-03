@@ -1,7 +1,6 @@
 package extractor
 
 import (
-	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -38,14 +37,33 @@ var TLSSkipVerify bool
 // meshFilter, when non-empty, restricts extraction to the named mesh only.
 // Global-scoped resources are always extracted regardless of meshFilter.
 func ExtractViaKumactl(contextName, outputDir, meshFilter, outputFormat string) error {
+	_, err := ExtractViaKumactlResult(contextName, outputDir, meshFilter, outputFormat)
+	return err
+}
+
+// KumactlExtractResult describes the control plane an extraction read from and
+// where its files went.
+type KumactlExtractResult struct {
+	Target KumactlTarget
+	CPInfo CPInfo
+	// ContextDir is <outputDir>/<context>-<mode>-ctx, which holds .kuma-migrator.json.
+	ContextDir string
+}
+
+// ExtractViaKumactlResult is ExtractViaKumactl, also returning the resolved
+// control plane and context directory (used to run the readiness audit next to
+// the extracted files).
+func ExtractViaKumactlResult(contextName, outputDir, meshFilter, outputFormat string) (KumactlExtractResult, error) {
+	var res KumactlExtractResult
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
-		return fmt.Errorf("create output directory: %w", err)
+		return res, fmt.Errorf("create output directory: %w", err)
 	}
 
 	cpURL, resolvedCtx, bearerToken, err := resolveKumactlContext(contextName)
 	if err != nil {
-		return err
+		return res, err
 	}
+	res.Target = kumactlTargetFor(resolvedCtx, cpURL, bearerToken)
 	ui.Header("extract")
 	ui.KV("Context:", resolvedCtx)
 	ui.KV("Control plane:", cpURL)
@@ -76,6 +94,8 @@ func ExtractViaKumactl(contextName, outputDir, meshFilter, outputFormat string) 
 
 	skipSet := loadSkipSet(cpEnv)
 	dirLabel := cpModeDirectoryLabel(resolvedCtx, cpMode)
+	res.CPInfo = cpInfo
+	res.ContextDir = filepath.Join(outputDir, dirLabel)
 	meta := contextMetaFor("kumactl", resolvedCtx, cpEnv, cpInfo, isKonnectURL(cpURL))
 	if err := WriteContextMetaFile(outputDir, dirLabel, meta); err != nil {
 		ui.Warn(fmt.Sprintf("could not write context metadata: %v", err))
@@ -90,7 +110,7 @@ func ExtractViaKumactl(contextName, outputDir, meshFilter, outputFormat string) 
 	// Discover all writable resource types from the CP API, excluding skip-list kinds.
 	types, err := listKumaResourceTypes(cpURL, skipSet, bearerToken)
 	if err != nil {
-		return err
+		return res, err
 	}
 	ui.Found(len(types), "writable resource type(s)")
 	fmt.Println()
@@ -98,7 +118,7 @@ func ExtractViaKumactl(contextName, outputDir, meshFilter, outputFormat string) 
 	// Collect all Mesh names — needed to iterate Mesh-scoped resources.
 	meshNames, err := listMeshNames(resolvedCtx, cpURL, bearerToken)
 	if err != nil {
-		return fmt.Errorf("list meshes: %w", err)
+		return res, fmt.Errorf("list meshes: %w", err)
 	}
 
 	// When a mesh filter is set, limit extraction to that single mesh.
@@ -150,7 +170,7 @@ func ExtractViaKumactl(contextName, outputDir, meshFilter, outputFormat string) 
 
 	ui.ExtractDone(total, outputDir)
 	printExtractNotes(notes)
-	return nil
+	return res, nil
 }
 
 // runMeshScopedTypes fetches every Mesh-scoped resource type for each mesh and
@@ -806,19 +826,7 @@ func authenticatedGet(rawURL, bearerToken string, timeout time.Duration) (body [
 		return nil, 0, fmt.Errorf("unsupported URL scheme %q (want http or https)", parsed.Scheme)
 	}
 
-	transport := http.DefaultTransport
-	if TLSSkipVerify {
-		transport = &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec
-		}
-	}
-	client := &http.Client{
-		Timeout:   timeout,
-		Transport: transport,
-		CheckRedirect: func(*http.Request, []*http.Request) error {
-			return http.ErrUseLastResponse
-		},
-	}
+	client := NewHTTPClient(timeout)
 	req, err := http.NewRequest("GET", rawURL, nil)
 	if err != nil {
 		return nil, 0, err

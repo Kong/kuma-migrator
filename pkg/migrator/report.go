@@ -45,6 +45,7 @@ func writeMarkdown(b *strings.Builder, r *MigrationReport) {
 		line(b, "")
 		writeV3TopologyNote(b, r)
 	}
+	writePreflightAudits(b, r)
 	if isPlan {
 		line(b, "> **Dry run** — no files have been written.")
 		line(b, "> Run `kuma-migrator migrate` with the same flags to apply these changes.")
