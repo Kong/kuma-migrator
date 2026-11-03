@@ -20,8 +20,8 @@ import (
 // explicit list of moves so that anything NOT moved is reported: confMapper tracks
 // which leaves of the input were consumed and unmapped() returns the rest, which
 // the caller turns into warnings. A field that upstream dropped outright (e.g.
-// Retry's retriableStatusCodes) therefore surfaces as a warning instead of
-// disappearing.
+// Retry's retryOn value retriable_headers) therefore surfaces as a warning
+// instead of disappearing.
 //
 // Field names are the JSON/YAML forms (protojson lowerCamelCases the snake_case
 // proto field names). Sources:
@@ -307,8 +307,10 @@ func convertCircuitBreakerConf(conf map[string]interface{}, name string) (map[st
 
 // legacyRetryOn maps the legacy HttpRetryOn proto enum values to the MeshRetry
 // HTTPRetryOn strings (kuma pkg/plugins/policies/meshretry/api/v1alpha1).
-// retriable_status_codes and retriable_headers have no MeshRetry equivalent:
-// MeshRetry validates retryOn against a closed set that contains neither.
+// retriable_headers has no MeshRetry equivalent. retriable_status_codes has no
+// condition of its own: MeshRetry takes the status codes themselves as retryOn
+// items ("503") and adds Envoy's retriable-status-codes condition when it sees
+// one (meshretry plugin/xds/configurer.go ensureRetriableStatusCodes).
 var legacyRetryOn = map[string]string{
 	"all_5xx":                    "5xx",
 	"gateway_error":              "GatewayError",
@@ -371,10 +373,17 @@ func convertRetryConf(conf map[string]interface{}, name string) (map[string]inte
 				retryOn = append(retryOn, s)
 				continue
 			}
+			// Carried by the status codes themselves (retriableStatusCodes below).
+			if strings.EqualFold(s, "retriable_status_codes") {
+				if v, ok := m.get("http.retriableStatusCodes"); ok && hasStatusCode(toSlice(v)) {
+					continue
+				}
+			}
 			warnings = append(warnings, fmt.Sprintf(
 				"Retry %q: conf.http.retryOn value %q has no MeshRetry equivalent and was dropped "+
-					"(MeshRetry validates retryOn against a closed set which does not include "+
-					"status-code or header based retries).", name, s))
+					"(MeshRetry retryOn accepts named conditions, HttpMethod<Method> and HTTP status "+
+					"codes; it has no header-based condition, and retriable_status_codes needs the codes "+
+					"in retriableStatusCodes).", name, s))
 		}
 	}
 	if v, ok := m.get("http.retriableMethods"); ok {
@@ -390,18 +399,23 @@ func convertRetryConf(conf map[string]interface{}, name string) (map[string]inte
 				name, s))
 		}
 	}
-	if len(retryOn) > 0 {
-		m.set("http.retryOn", retryOn)
-	}
-
-	// retriableStatusCodes was removed outright.
+	// retriableStatusCodes: MeshRetry takes each code as a retryOn item ("503").
+	// Its validator accepts any code net/http knows (validateHTTPRetryOn, the same
+	// on 2.14 and 3.0); the CRD types the items as strings.
 	if v, ok := m.get("http.retriableStatusCodes"); ok && v != nil {
 		m.markUsed("http.retriableStatusCodes")
-		warnings = append(warnings, fmt.Sprintf(
-			"Retry %q: conf.http.retriableStatusCodes (%v) has no MeshRetry equivalent and was dropped — "+
-				"MeshRetry cannot retry on specific status codes. Use http.retryOn values such as "+
-				"5xx or GatewayError, or keep the retry logic in the application.",
-			name, v))
+		for _, item := range toSlice(v) {
+			if code, ok := statusCodeRetryOn(item); ok {
+				retryOn = append(retryOn, code)
+				continue
+			}
+			warnings = append(warnings, fmt.Sprintf(
+				"Retry %q: conf.http.retriableStatusCodes value %v is not an HTTP status code and was dropped.",
+				name, item))
+		}
+	}
+	if len(retryOn) > 0 {
+		m.set("http.retryOn", appendRetryOnUnique(nil, stringsOf(retryOn)...))
 	}
 
 	// gRPC.
@@ -429,10 +443,31 @@ func convertRetryConf(conf map[string]interface{}, name string) (map[string]inte
 	return m.result(), warnings
 }
 
+// hasStatusCode reports whether in holds at least one valid HTTP status code.
+func hasStatusCode(in []interface{}) bool {
+	for _, v := range in {
+		if _, ok := statusCodeRetryOn(v); ok {
+			return true
+		}
+	}
+	return false
+}
+
+func stringsOf(in []interface{}) []string {
+	out := make([]string, 0, len(in))
+	for _, v := range in {
+		out = append(out, fmt.Sprint(v))
+	}
+	return out
+}
+
 func isNewHTTPRetryOn(s string) bool {
 	switch s {
 	case "5xx", "GatewayError", "Reset", "Retriable4xx", "ConnectFailure",
 		"EnvoyRatelimited", "RefusedStream", "Http3PostConnectFailure":
+		return true
+	}
+	if _, ok := statusCodeRetryOn(s); ok {
 		return true
 	}
 	return strings.HasPrefix(s, "HttpMethod")

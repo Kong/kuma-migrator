@@ -344,6 +344,8 @@ func collectManualEntries(r *MigrationReport) []manualEntry {
 // manualReason says why a document went to ManualDir.
 func manualReason(dc DocChange, target TargetVersion) string {
 	switch {
+	case dc.DeleteBeforeV3:
+		return "default policy to delete before upgrading: 3.0 applies it to every proxy (kumahq/kuma#18857)"
 	case dc.Rejected:
 		// RejectedByTargetError.Error() already reads "rejected by the <target>
 		// control plane as converted (...): <kind> "<name>": <reasons>".
@@ -540,7 +542,7 @@ func writeDeletableOriginals(b *strings.Builder, r *MigrationReport, isPlan bool
 			}
 			// Under v3, removed kinds are listed by writeV3DeleteBeforeUpgrade,
 			// which must happen before the upgrade rather than after applying.
-			if r.Target.IsV3() && isRemovedInV3Kind(dc.InputKind) {
+			if r.Target.IsV3() && (isRemovedInV3Kind(dc.InputKind) || dc.DeleteBeforeV3) {
 				continue
 			}
 			entries = append(entries, deletableEntry{
@@ -597,15 +599,16 @@ type v3Deletion struct {
 	CPModeDir                   string
 	Converted                   bool   // a replacement is in the apply tree
 	ManualRelPath               string // copy under ManualDir, when not converted
+	DefaultPolicy               bool   // a 2.x default policy 3.0 keeps but must be deleted (DocChange.DeleteBeforeV3)
 }
 
 // collectV3Deletions lists every input document whose kind 3.0 removes, whether
-// or not it was converted.
+// or not it was converted, and the default policies flagged DeleteBeforeV3.
 func collectV3Deletions(r *MigrationReport) []v3Deletion {
 	var out []v3Deletion
 	for _, fr := range r.Files {
 		for _, dc := range fr.Changes {
-			if !isRemovedInV3Kind(dc.InputKind) {
+			if !isRemovedInV3Kind(dc.InputKind) && !dc.DeleteBeforeV3 {
 				continue
 			}
 			// A skip-listed document (e.g. a CP-managed ZoneIngress on
@@ -632,6 +635,7 @@ func collectV3Deletions(r *MigrationReport) []v3Deletion {
 				CPModeDir:     fr.CPModeDir,
 				Converted:     dc.ErrMsg == "" && dc.ManualRelPath == "",
 				ManualRelPath: dc.ManualRelPath,
+				DefaultPolicy: dc.DeleteBeforeV3,
 			})
 		}
 	}
@@ -652,6 +656,9 @@ func writeV3DeleteBeforeUpgrade(b *strings.Builder, r *MigrationReport, isPlan b
 	line(b, "3.0 removes these kinds. The 3.0 control plane rejects them and does not migrate stored")
 	line(b, "objects, so delete them on the 2.x control plane before upgrading. Objects without a")
 	linef(b, "conversion are copied under `%s/` for reference; no apply step uses that directory.", ManualDir)
+	if hasDefaultPolicy(entries) {
+		line(b, "The table also lists 2.x default policies that 3.0 keeps but applies to every proxy.")
+	}
 	if isPlan {
 		line(b, "")
 		line(b, "> Dry run: the paths below are where `migrate` would write.")
@@ -668,7 +675,12 @@ func writeV3DeleteBeforeUpgrade(b *strings.Builder, r *MigrationReport, isPlan b
 			scope = "mesh `" + e.Mesh + "`"
 		}
 		repl := "converted (see the apply steps)"
-		if !e.Converted {
+		if e.DefaultPolicy {
+			repl = "none — delete it; 3.0 applies it to every proxy"
+			if e.ManualRelPath != "" {
+				repl += ", copy at `" + e.ManualRelPath + "`"
+			}
+		} else if !e.Converted {
 			repl = "none — manual migration"
 			if e.ManualRelPath != "" {
 				repl += ", copy at `" + e.ManualRelPath + "`"
@@ -697,12 +709,29 @@ func writeV3DeleteBeforeUpgrade(b *strings.Builder, r *MigrationReport, isPlan b
 	line(b, "```")
 	line(b, "</details>")
 	line(b, "")
+	if hasDefaultPolicy(entries) {
+		line(b, "`mesh-gateways-timeout-all-<mesh>` is a default policy. On Kubernetes the 2.14 Mesh controller")
+		line(b, "recreates it on the next Mesh reconcile: first add `MeshTimeout` (or `*`) to the Mesh's")
+		line(b, "`spec.skipCreatingInitialPolicies`, then delete it. 3.0 ignores that field. On Universal deleting")
+		line(b, "it is enough. Do not drop `proxyTypes` from it instead: without the filter it sets a 5s")
+		line(b, "`streamIdleTimeout` on every sidecar.")
+		line(b, "")
+	}
 	if hasKind(entries, "MeshGlobalRateLimit") {
 		line(b, "After upgrading, Helm leaves the `meshglobalratelimits.kuma.io` CRD in place. Remove it with")
 		line(b, "`kubectl delete crd meshglobalratelimits.kuma.io`, and drop the `ratelimit.*` / `global.ratelimit.*`")
 		line(b, "Helm overrides.")
 		line(b, "")
 	}
+}
+
+func hasDefaultPolicy(entries []v3Deletion) bool {
+	for _, e := range entries {
+		if e.DefaultPolicy {
+			return true
+		}
+	}
+	return false
 }
 
 func hasKind(entries []v3Deletion, kind string) bool {

@@ -101,11 +101,13 @@
       - `tcp.maxConnectAttempts` → `tcp.maxConnectAttempt` (singular).
       - `http.retryOn` enum values are recased (`gateway_error` → `GatewayError`, `5xx` stays).
       - `http.retriableMethods` → extra `http.retryOn` entries (`GET` → `HttpMethodGet`).
+      - `http.retriableStatusCodes` → extra `http.retryOn` entries, one per code (`503` →
+        `"503"`). `MeshRetry` accepts any HTTP status code in `retryOn` on 2.14 and 3.0. The
+        `retriable_status_codes` condition is implied by the codes and dropped.
       - gRPC `retryOn` `cancelled` → `Canceled`.
       - `numRetries`, `perTryTimeout`, `backOff.*` keep their paths.
 
-      `http.retriableStatusCodes` has no `MeshRetry` equivalent. It is dropped with a warning;
-      use `retryOn` values such as `5xx` or `GatewayError` instead.
+      `retryOn: retriable_headers` has no `MeshRetry` equivalent and is dropped with a warning.
   v3:
     status: converted
     output: [MeshRetry]
@@ -515,11 +517,24 @@
       - `MeshSubset` refs with `kuma.io/service` tags and old `<name>_<ns>_svc_<port>`
         `MeshService` names are rewritten: top level to `Dataplane`, `to[]` to `MeshService`
         (labels when the policy and target namespaces differ).
+      - `spec.targetRef.proxyTypes` is reported (removed in 3.0, see
+        [Policy targeting](../topics/policy-targeting.md#what-kuma-migrator-does)). The 2.x default
+        `mesh-gateways-timeout-all-<mesh>` (`proxyTypes: [Gateway]`, `streamIdleTimeout: 5s`)
+        gets a delete-before-upgrading advisory.
   v3:
     status: rewritten
     output: [MeshTimeout]
     notes: |
       Same rewrites as v2, plus the rules every Mesh* policy gets under v3:
+
+      - `spec.targetRef.proxyTypes` is removed when that keeps the scope or only adds former
+        gateway proxies (`[Sidecar]`, both values, or a kind other than `Mesh`/`MeshSubset`).
+        `[Gateway]` alone is written to `_manual/`: without the field the policy selects every
+        proxy.
+      - The default `mesh-gateways-timeout-all-<mesh>` is not converted. On 3.0 it sets a 5s
+        `streamIdleTimeout` on every sidecar ([kumahq/kuma#18857](https://github.com/kumahq/kuma/issues/18857)). The original goes to
+        `_manual/` and is listed under **Delete Before Upgrading to 3.0**, with the
+        `skipCreatingInitialPolicies` step that keeps 2.14 Kubernetes from recreating it.
 
       - `name`/`namespace`/`mesh` on `MeshService`, `MeshExternalService`,
         `MeshMultiZoneService` and `MeshHTTPRoute` refs become labels
@@ -532,9 +547,9 @@
     - version: "2.10"
       change: "`rules[]` API added; `from[]` deprecated. `Dataplane` added as a top-level kind; `MeshSubset` deprecated."
     - version: "3.0"
-      change: "`from` removed. Real resources selected by labels only. Top-level `targetRef` limited to `Mesh` and `Dataplane`."
+      change: "`from` removed. Real resources selected by labels only. Top-level `targetRef` limited to `Mesh` and `Dataplane`. `targetRef.proxyTypes` removed; the default `mesh-gateways-timeout-all-<mesh>` then applies to every proxy."
   topics: [policy-targeting]
-  code: [pkg/migrator/rulesapi.go, pkg/migrator/convert.go, pkg/migrator/v3_policy.go]
+  code: [pkg/migrator/rulesapi.go, pkg/migrator/convert.go, pkg/migrator/v3_policy.go, pkg/migrator/v3_preflight.go]
 
 - kind: MeshCircuitBreaker
   group: mesh
@@ -566,22 +581,38 @@
   product: kuma
   summary: Retry settings for outbound HTTP, gRPC and TCP traffic.
   v2:
-    status: passthrough
+    status: rewritten
     output: [MeshRetry]
     notes: |
       Copied unchanged unless it has Subset-scenario refs (`MeshSubset` with service tags, old
       `_svc_` names), which are rewritten. A deprecated top-level kind is reported.
+
+      Legacy `Retry` field names in `to[].default` are rewritten. `MeshRetry` never had them:
+      2.x drops them silently, so the settings never applied, and 3.0 rejects the write as an
+      unknown field on the API server and `kumactl apply`; `kubectl apply` prunes it with a warning
+      ([UPGRADE](https://github.com/kumahq/kuma/blob/master/UPGRADE.md#resources-with-fields-that-are-not-in-the-schema-are-rejected)).
+
+      - `http.retriableStatusCodes` → `http.retryOn` entries, one per code (`"503"`).
+      - `http.retriableMethods` → `http.retryOn` entries (`GET` → `HttpMethodGet`).
+      - `tcp.maxConnectAttempts` → `tcp.maxConnectAttempt`. When both are set, the existing
+        `maxConnectAttempt` is kept.
+
+      The warning says these retries now take effect. A value that is not an HTTP status code
+      or method is dropped with a warning. `spec.targetRef.proxyTypes` is reported as for
+      [MeshTimeout](policy:MeshTimeout).
   v3:
     status: rewritten
     output: [MeshRetry]
     notes: |
-      Labels-only refs and control-plane label removal. Allowed `to[].targetRef.kind`: `Mesh`,
-      `MeshService`, `MeshExternalService`, `MeshMultiZoneService`, `MeshHTTPRoute`.
+      The same legacy field rewrite as v2, labels-only refs and control-plane label removal.
+      Allowed `to[].targetRef.kind`: `Mesh`, `MeshService`, `MeshExternalService`,
+      `MeshMultiZoneService`, `MeshHTTPRoute`. `spec.targetRef.proxyTypes` is handled as for
+      [MeshTimeout](policy:MeshTimeout).
   timeline:
     - version: "3.0"
-      change: Real resources selected by labels only. New meshes no longer get a default `MeshRetry`.
+      change: Real resources selected by labels only. New meshes no longer get a default `MeshRetry`. Unknown fields such as `retriableStatusCodes` are rejected on write.
   topics: [policy-targeting]
-  code: [pkg/migrator/v3_policy.go]
+  code: [pkg/migrator/v3_policy.go, pkg/migrator/v3_preflight.go]
 
 - kind: MeshHealthCheck
   group: mesh
@@ -1446,6 +1477,9 @@
       - `transparentProxying.reachableServices` is reported: in `Exclusive` mode the names must
         be MeshService display names, and 3.0 removes the field.
       - `reachableBackends.refs[]` using `name`/`namespace` are reported (3.0 selects by labels).
+      - Named entries in `transparentProxying.directAccessServices` are reported: 3.0 honours
+        only `*` and ignores names silently.
+      - Inbound protocol `kafka` (field or `kuma.io/protocol` tag) is reported: 3.0 rejects it.
   v3:
     status: rewritten
     output: [Dataplane]
@@ -1465,6 +1499,12 @@
         `kuma.io/service` value is `<name>_<ns>_svc_<port>`. Otherwise the MeshService port is
         not in the manifest: 3.0 rejects the Dataplane (`networking.outbound[0].backendRef:
         must be defined`), so it is written to `_manual/` with the `backendRef` to fill in.
+      - Inbound `protocol: kafka` → `tcp`. 3.0 accepts only `tcp`, `http`, `http2` and `grpc`
+        ([kumahq/kuma#17831](https://github.com/kumahq/kuma/pull/17831)). On 2.x Kafka is a TCP proxy plus a stats-only filter, so only the
+        Kafka stats are lost.
+      - `directAccessServices` with `*` and names → `["*"]` (the names were redundant). Names
+        without `*` are reported, not rewritten: 3.0 ignores them and the proxy loses direct
+        access to those services. Use `*` or drop direct access.
 
       Reported, not rewritten: `advertisedAddress`, `redirectPortInbound`/`redirectPortOutbound`
       (removed in 3.1), `ipFamilyMode`, and transparent proxying without `reachableBackends`
@@ -1473,9 +1513,9 @@
     - version: "2.9"
       change: "`transparentProxying.redirectPortInboundV6` removed."
     - version: "3.0"
-      change: "`inbound[].tags`, `outbound[].tags`, `advertisedAddress`, `networking.gateway`, `reachableServices` and `ipFamilyMode` removed; the protocol is no longer read from `kuma.io/protocol`; proxies without `reachableBackends` get no outbounds."
+      change: "`inbound[].tags`, `outbound[].tags`, `advertisedAddress`, `networking.gateway`, `reachableServices` and `ipFamilyMode` removed; the protocol is no longer read from `kuma.io/protocol`; proxies without `reachableBackends` get no outbounds. Protocol `kafka` rejected. Only `*` honoured in `directAccessServices`."
   topics: [dataplanes, meshservice]
-  code: [pkg/migrator/v3_dataplane.go, pkg/migrator/deprecation.go, pkg/config/config.go]
+  code: [pkg/migrator/v3_dataplane.go, pkg/migrator/deprecation.go, pkg/config/config.go, pkg/migrator/v3_preflight.go]
 
 - kind: MeshService
   group: resource
@@ -1490,6 +1530,7 @@
         MeshService on write (`spec.selector.dataplaneTags: unknown field`), and one already
         stored loses its selector and matches no proxies. Not rewritten on v2: on 2.14 a labels selector also matches
         same-named services synced from other zones.
+      - `ports[].appProtocol: kafka` is reported: 3.0 rejects it.
       - Names that are not RFC 1035 labels are reported.
   v3:
     status: rewritten
@@ -1503,6 +1544,9 @@
         field, so the MeshService is written to `_manual/`.
       - `identities[]` entries of `type: ServiceTag` removed; add `type: SpiffeID` entries if
         clients need them.
+      - `ports[].appProtocol: kafka` → `tcp`. 3.0 accepts only `tcp`, `http`, `http2` and `grpc`
+        ([kumahq/kuma#17831](https://github.com/kumahq/kuma/pull/17831)). On 2.x Kafka is a TCP proxy plus Envoy's `kafka_broker` filter,
+        which only emits stats, so the traffic handling does not change.
       - Control-plane-owned labels removed.
   timeline:
     - version: "2.8"
@@ -1510,9 +1554,9 @@
     - version: "2.10"
       change: Names that are not RFC 1035 labels deprecated.
     - version: "3.0"
-      change: "`dataplaneTags` removed; `identities` accepts SPIFFE IDs only; non-RFC 1035 names rejected."
+      change: "`dataplaneTags` removed; `identities` accepts SPIFFE IDs only; `appProtocol: kafka` rejected; non-RFC 1035 names rejected."
   topics: [meshservice]
-  code: [pkg/migrator/v3_scan.go, pkg/migrator/deprecation.go]
+  code: [pkg/migrator/v3_scan.go, pkg/migrator/deprecation.go, pkg/migrator/v3_preflight.go]
 
 - kind: MeshExternalService
   group: resource
@@ -1560,21 +1604,22 @@
     output: [MeshMultiZoneService]
     notes: |
       Copied unchanged. A name that is not a lowercase RFC 1035 label, or longer than 63
-      characters, is reported.
+      characters, is reported. `ports[].appProtocol: kafka` is reported: 3.0 rejects it.
   v3:
-    status: warned
+    status: rewritten
     output: [MeshMultiZoneService]
     notes: |
       Same name check (a hard error on 3.0). Control-plane-owned labels removed.
+      `ports[].appProtocol: kafka` → `tcp`, as for [MeshService](policy:MeshService).
   timeline:
     - version: "2.10"
       change: Names that are not RFC 1035 labels deprecated.
     - version: "2.14"
       change: Names longer than 63 characters deprecated.
     - version: "3.0"
-      change: Non-RFC 1035 names rejected. Cross-zone routing needs a `MeshZoneAddress`.
+      change: "Non-RFC 1035 names rejected. `appProtocol: kafka` rejected. Cross-zone routing needs a `MeshZoneAddress`."
   topics: [multizone, meshservice]
-  code: [pkg/migrator/validate.go, pkg/migrator/deprecation.go]
+  code: [pkg/migrator/validate.go, pkg/migrator/deprecation.go, pkg/migrator/v3_preflight.go]
 
 - kind: MeshOpenTelemetryBackend
   group: resource

@@ -70,7 +70,7 @@ and any input field no converter consumes is reported.
 |---|---|
 | `Timeout` | `connectTimeout` → `connectionTimeout`; `tcp.idleTimeout` → `idleTimeout`; no `grpc` section (folds into `http`) |
 | `CircuitBreaker` | `thresholds.*` → `connectionLimits.*`; the rest under `outlierDetection`; detectors renamed (`totalErrors` → `totalFailures`, `gatewayErrors` → `gatewayFailures`, `localErrors` → `localOriginFailures`, `standardDeviation` → `successRate`, `failure` → `failurePercentage`) |
-| `Retry` | `tcp.maxConnectAttempts` → `maxConnectAttempt`; `retryOn` values recased (`gateway_error` → `GatewayError`); `retriableMethods` → `retryOn: [HttpMethodGet, …]`; gRPC `cancelled` → `Canceled`; `retriableStatusCodes` has no equivalent (dropped, warned) |
+| `Retry` | `tcp.maxConnectAttempts` → `maxConnectAttempt`; `retryOn` values recased (`gateway_error` → `GatewayError`); `retriableMethods` → `retryOn: [HttpMethodGet, …]`; `retriableStatusCodes` → numeric `retryOn` entries (`"503"`, accepted by the [MeshRetry validator](https://github.com/kumahq/kuma/blob/master/pkg/plugins/policies/meshretry/api/v1alpha1/validator.go)); gRPC `cancelled` → `Canceled` |
 | `HealthCheck` | `http.requestHeadersToAdd` → `{add, set}` (`append` unset means `add`); header names lower-cased (warned); `tcp.send`/`receive` stay base64 |
 | `FaultInjection` | The single conf becomes a one-element `default.http[]`; `responseBandwidth.limit` units rewritten to `kbps`/`Mbps`/`Gbps` (`50 mbps` → `50Mbps`, warned) |
 | `RateLimit` | `http.{requests, interval}` → `local.http.requestRate.{num, interval}`; `onRateLimit.headers` names lower-cased (warned); emitted as `rules[]` (a specific `sources` selector is lost and warned) |
@@ -276,6 +276,7 @@ spec:
         retryOn:
         - GatewayError
         - ConnectFailure
+        - "503"
       tcp:
         maxConnectAttempt: 4
     targetRef:
@@ -288,8 +289,6 @@ type: MeshRetry
 The `TrafficRoute` is copied unchanged to `_manual/routing/TrafficRoute-route-all.yaml`, which no apply step uses, with an error:
 
 ```text
-⚠  Retry "web-retry": conf.http.retriableStatusCodes ([503]) has no MeshRetry equivalent and was
-   dropped — MeshRetry cannot retry on specific status codes. …
 ⚠  spec.targetRef Dataplane labels use 'app: web' as a best-guess pod label — verify this matches
    your actual pod labels before applying
 ✗  TrafficRoute requires manual migration to MeshHTTPRoute or MeshTCPRoute
@@ -315,6 +314,7 @@ spec:
         retryOn:
         - GatewayError
         - ConnectFailure
+        - "503"
       tcp:
         maxConnectAttempt: 4
     targetRef:

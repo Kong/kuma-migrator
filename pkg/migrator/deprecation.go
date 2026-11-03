@@ -59,6 +59,10 @@ import (
 //     v3: kind → Dataplane, labels["kuma.io/display-name"] → labels["app"])
 //   - Kong Mesh MeshOPA spec.default.agentConfig / appendPolicies[].rego legacy flat DataSource
 //     shape → SecureDataSource (auto-fix under v3)
+//   - spec.targetRef.proxyTypes removed in 3.0 (v3: dropped when safe, Gateway-only rejected,
+//     default mesh-gateways-timeout-all-<mesh> to delete), appProtocol kafka (v3: → tcp),
+//     named directAccessServices (warn; v3 reduces "*"+names to "*"), MeshRetry legacy Retry
+//     field names (both targets: → retryOn / maxConnectAttempt). See v3_preflight.go.
 //
 // Both Kubernetes format (kind/metadata) and Universal format (type/name) are supported.
 func ScanForDeprecations(raw []byte, target TargetVersion) (out []byte, warnings []string) {
@@ -121,6 +125,11 @@ func ScanForDeprecations(raw []byte, target TargetVersion) (out []byte, warnings
 	case "MeshService":
 		fix(fixMeshServicePortProtocol(obj, name))
 		fix(fixMeshService(obj, name, target))
+		fix(fixKafkaAppProtocol(obj, name, kind, target))
+	case "MeshMultiZoneService":
+		fix(fixKafkaAppProtocol(obj, name, kind, target))
+	case "MeshRetry":
+		fix(fixMeshRetryLegacyFields(obj, name))
 	case "Mesh":
 		warnings = append(warnings, warnMeshForbidExternalServiceAccess(obj, name)...)
 		warnings = append(warnings, warnMeshMtlsBackends(obj, name, target)...)
@@ -128,6 +137,9 @@ func ScanForDeprecations(raw []byte, target TargetVersion) (out []byte, warnings
 	case "Dataplane":
 		// Rewrites first (v3 only), so the warn-only checks below report what is left.
 		fix(fixDataplane(obj, name, target))
+		// After fixDataplane: under v3 the kuma.io/protocol tag is already in inbound[].protocol.
+		fix(fixDataplaneInboundKafka(obj, name, target))
+		fix(fixDataplaneDirectAccess(obj, name, target))
 		warnings = append(warnings, warnDataplaneRedirectPortInboundV6(obj, name)...)
 		warnings = append(warnings, warnDataplaneReachableServices(obj, name, target)...)
 		warnings = append(warnings, warnDataplaneInboundTags(obj, name, target)...)
@@ -172,6 +184,8 @@ func ScanForDeprecations(raw []byte, target TargetVersion) (out []byte, warnings
 		// Deprecated top-level spec.targetRef kinds (MeshSubset/MeshService/MeshServiceSubset
 		// → Dataplane; MeshHTTPRoute → spec.to[].targetRef).
 		warnings = append(warnings, warnDeprecatedTopLevelTargetRef(obj, name, kind, target)...)
+		// spec.targetRef.proxyTypes is removed in 3.0 (dropped under v3 when safe).
+		fix(fixProxyTypes(obj, name, kind, target))
 		if target.IsV3() {
 			// MeshOPA's targetRef is rewritten by fixMeshOPATargetRefForV3 above.
 			if kind != "MeshOPA" {
@@ -190,6 +204,7 @@ func ScanForDeprecations(raw []byte, target TargetVersion) (out []byte, warnings
 	// Pods and workload pod templates: reachable-services/backends annotation rewrites.
 	if knownWorkloadKinds[kind] {
 		fix(fixWorkloadReachableAnnotations(obj, name, kind, target))
+		fix(fixDirectAccessAnnotations(obj, name, kind, target))
 	}
 
 	// Annotation deprecations apply to any resource carrying metadata.annotations,

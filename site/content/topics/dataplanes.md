@@ -23,6 +23,8 @@ and traffic changes.
 | `networking.advertisedAddress` | Removed; other proxies use `networking.address` ([UPGRADE](https://github.com/kumahq/kuma/blob/master/UPGRADE.md#advertisedaddress-removed-from-dataplane-networking)) | Yes |
 | `transparentProxying.redirectPortInbound` / `redirectPortOutbound` | Deprecated; read from `kuma-dp --transparent-proxy` instead. Removed in 3.1 ([UPGRADE](https://github.com/kumahq/kuma/blob/master/UPGRADE.md#redirect-ports-and-ip-family-mode-removed-from-dataplane)) | — |
 | `transparentProxying.ipFamilyMode` | Removed | Yes |
+| `transparentProxying.directAccessServices`, `kuma.io/direct-access-services` | Only `*` is honoured; named services are ignored ([`direct_access_proxy_generator.go`](https://github.com/kumahq/kuma/blob/master/pkg/xds/generator/direct_access_proxy_generator.go)) | Yes: the proxy loses direct access to those services |
+| `inbound[].protocol: kafka` | Rejected: Kafka is no longer a protocol ([kumahq/kuma#17831](https://github.com/kumahq/kuma/pull/17831)) | — |
 | `probes`, `kuma.io/virtual-probes`, `kuma.io/virtual-probes-port` | Virtual probes removed; Application Probe Proxy only ([UPGRADE](https://github.com/kumahq/kuma/blob/master/UPGRADE.md#virtual-probes-removed)) | Yes on Universal |
 | `networking.gateway` (any type), `kuma.io/gateway` | Removed. See [Gateways](gateways.md) ([UPGRADE](https://github.com/kumahq/kuma/blob/master/UPGRADE.md#kumaiogateway-is-removed)) | Yes |
 | `kuma.io/ingress`, `kuma.io/egress` Pod annotations | Removed ([UPGRADE](https://github.com/kumahq/kuma/blob/master/UPGRADE.md#kumaioingress-and-kumaioegress-pod-annotations-removed)) | — |
@@ -53,6 +55,8 @@ them scanned.
 |---|---|---|
 | `inbound[].tags` | Nothing (inbound tags are required on 2.x) | Non-`kuma.io/` tags moved to `labels`; `kuma.io/service`/`kuma.io/protocol` dropped (reserved prefix); warned |
 | `kuma.io/protocol` inbound tag | — | Copied to `inbound[].protocol` |
+| `inbound[].protocol: kafka` (field or `kuma.io/protocol` tag) | Warning | Set to `tcp`; only the Kafka stats are lost |
+| Named `directAccessServices` entries, on the `Dataplane` or in the `kuma.io/direct-access-services` annotation | Warning | With `*` in the list: reduced to `*` (the names were redundant). Without `*`: warning, not rewritten. Use `*` or drop direct access |
 | `outbound[].tags` | — | Converted to `backendRef` when the `kuma.io/service` value decodes to name, namespace and port. Otherwise 3.0 rejects the `Dataplane` (`networking.outbound[0].backendRef: must be defined`), so it is written to `_manual/` with the `backendRef` to fill in |
 | `reachableServices` | Warning | Converted to `reachableBackends` refs with labels where the value decodes; warned otherwise |
 | `reachableBackends` refs with `name`/`namespace`, on the `Dataplane` or in the `kuma.io/reachable-backends` annotation | Warning | Rewritten to labels (v3 only: on 2.14 a label selector also matches same-named services from other zones) |

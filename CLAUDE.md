@@ -515,7 +515,10 @@ about every input leaf no move consumed. Highlights (full table in
   every detector renamed (`totalErrors`→`totalFailures`, `standardDeviation`→`successRate`, …)
 - `Retry`: `tcp.maxConnectAttempts`→`maxConnectAttempt` (singular), `retryOn` enum
   recased, `retriableMethods`→`retryOn: [HttpMethod*]`, grpc `cancelled`→`Canceled`;
-  `retriableStatusCodes` has **no equivalent** (dropped, warned)
+  `retriableStatusCodes` → numeric `retryOn` items (`"503"`; MeshRetry `validateHTTPRetryOn`
+  accepts any `net/http` status code on 2.14 and 3.0, and the plugin adds Envoy's
+  `retriable-status-codes`). `retryOn: retriable_status_codes` is implied by the codes and
+  dropped; `retriable_headers` has no equivalent (warned)
 - `HealthCheck`: `http.requestHeadersToAdd` → `{add,set}` split (`append` unset ⇒ `add`);
   header names lower-cased (`headerNames`; the common `HeaderName` schema is lower-case only,
   real manifests carry `Accept`/`Content-Type`)
@@ -593,6 +596,7 @@ every manifest-relevant entry is handled. The 3.0 work lives in dedicated files:
 | `v3_dataplane.go` | `networking.gateway` (any type) removed + tags → labels, inbound `kuma.io/protocol` tag → `inbound[].protocol`, inbound tags → labels, outbound `tags` → `backendRef`, `reachableServices` → `reachableBackends`, `reachableBackends` name refs → labels, `advertisedAddress`/redirect ports/`ipFamilyMode`/`probes` warnings |
 | `v3_scan.go` | `MeshService` `dataplaneTags` → `dataplaneLabels.matchLabels`, `identities[]` `ServiceTag` dropped, `MeshPassthrough` port + filter-chain conflict checks, `ZoneIngress`/`ZoneEgress` removed (+ `MeshZoneAddress` snippet; under v2 a forward-looking advisory naming the 2.14 mesh-scoped zone proxies, file labelled `SCANNED`), `ContainerPatch` probe port 9901 → 9902, pod-template annotation scanning (`podAnnotationSites`) |
 | `v3_kongmesh.go` | `AccessRole`/`AccessAudit` `rules[].types` renames, `when[]` qualifier cleanup without widening, `when[].targetRef` kind checks; delete-before-upgrade note per removed kind |
+| `v3_preflight.go` | Checks taken from kuma3-preflight: `spec.targetRef.proxyTypes` (any policy), `appProtocol: kafka` (MeshService, MeshMultiZoneService, Dataplane inbound), named `directAccessServices` (Dataplane + `kuma.io/direct-access-services` annotation), legacy `Retry` field names in `MeshRetry`. See **Deprecation Warnings** |
 
 Behaviour of the conversion paths under v3:
 - Legacy `TrafficPermission` errors (needs SPIFFE `rules[]`); legacy `FaultInjection` converts to
@@ -846,6 +850,37 @@ the TCPRoute caveat.
 - `MeshHTTPRoute` with no catch-all rule (empty `matches[]`, or an unconditional `PathPrefix: "/"` match) → advisory **under v3 only**, kuma#18268 (2026-09-01) changed unmatched requests from falling through to being answered with a `404` on that destination's HTTP ports (upstream's stated reason: *"This is what the Gateway API requires of an `HTTPRoute`, and it is what the GAMMA conformance suite asserts"*; on a gRPC destination the client sees `UNIMPLEMENTED`). It covers **every** HTTP port of the destination when `to[].targetRef` names a `MeshService` with no `sectionName` — easy to hit by accident when a `MeshHTTPRoute` exists only to anchor another policy (`MeshTimeout`/`MeshRetry`/`MeshAccessLog`) via a narrow match. Checked by `warnMeshHTTPRouteNoCatchAll` in `ScanForDeprecations` (`httpMatchesAreCatchAll`); `MeshHTTPRoute` is passthrough. A match without a path ranks as `PathPrefix /` on 3.0 but is not treated as catch-all.
 
 - `MeshHTTPRoute` `spec.to[].rules[].default.backendRefs[]` (kind `MeshService`) naming a `port`/`sectionName` the `MeshService` lacks → warn **under v3 only** (UPGRADE.md "A `MeshHTTPRoute` `backendRef` naming a port the destination lacks now fails closed": unresolved instead of falling through to another port; all-unresolved rule answers 500). Matching mirrors `MeshServiceResource.FindPortByName`: the ref string equals a port's `name` or its `port` number as a string; `targetPort` never matches. Needs `TransformOptions.MeshServicePorts` (`*MeshServicePortIndex`, built by `BuildTransformOptions`, keyed by mesh/namespace/display name); a `MeshService` missing from the input is noted **once per run** (`notedMissing` on the shared pointer). Runs in `TransformDocumentWithOptions`' post-pass (`warnRouteBackendRefPortsForV3`, `v3_routeports.go`), after the scan rewrote refs to labels. Mirror backendRefs are skipped.
+
+- `spec.targetRef.proxyTypes` (any policy, generic Mesh* block, `fixProxyTypes` in `v3_preflight.go`) →
+  removed in 3.0: no field in `api/common/v1alpha1/targetref.go` on master; Kubernetes prunes it,
+  the API server rejects it (`unknown field`). **Not in UPGRADE.md.** 2.14 honours it only for a
+  top-level `Mesh`/`MeshSubset` (`matchers/dataplane.go`, `isSupportedProxyType`); `Gateway` =
+  a Dataplane with `networking.gateway`. v2: advisory. v3: dropped when `[Sidecar]` (warned: former
+  gateways now selected; 3.0 cannot tell them apart), both values, empty, or a kind that ignored it.
+  `[Gateway]` alone → `RejectedByTargetError` (`proxyTypesRejectionReason` in `v3RejectionReasons`),
+  `_manual/`. Exception: the 2.x default `mesh-gateways-timeout-all-<mesh>` (`isDefaultGatewayMeshTimeout`:
+  MeshTimeout + that name prefix + `[Gateway]`, so its `-outbound` half matches too). On 3.0 it sets a
+  5s `streamIdleTimeout` on every sidecar (kumahq/kuma#18857, contradicts UPGRADE.md's "behaves as it
+  did before"). Under v3 `processFile` writes the **original** to `_manual/` without an error
+  (`DocChange.DeleteBeforeV3`), and the report lists it under "Delete Before Upgrading to 3.0" with
+  the `skipCreatingInitialPolicies` step (the 2.14 Kubernetes Mesh controller recreates deleted
+  defaults). Under v2 it is converted as usual plus a delete-before-upgrade advisory.
+- `appProtocol: kafka` on `MeshService`/`MeshMultiZoneService` `spec.ports[]` and Dataplane
+  `inbound[].protocol` (field, or the `kuma.io/protocol` tag under v2) → 3.0 accepts only
+  tcp/http/http2/grpc (kumahq/kuma#17831, `SupportedProtocols`). v3: rewritten to `tcp`
+  (`fixKafkaAppProtocol`, `fixDataplaneInboundKafka`, after `fixDataplane` copied the tag). Safe: on
+  2.14 kafka = TCP proxy + `kafka_broker` filter (`kafka_configurer.go`), stats only. v2: advisory.
+- Named `directAccessServices` (Dataplane `transparentProxying`, and the
+  `kuma.io/direct-access-services` annotation via `podAnnotationSites`) → 3.0 honours only `*`
+  (`direct_access_proxy_generator.go`), names silently ignored. Warn on both targets; under v3 a
+  list with `*` plus names is reduced to `*` (scope unchanged). Names-only are not rewritten (not
+  rejected either: the proto field stays). `fixDataplaneDirectAccess`, `fixDirectAccessAnnotations`.
+- `MeshRetry` `to[].default.http.retriableStatusCodes` / `retriableMethods` / `tcp.maxConnectAttempts`
+  (legacy `Retry` names, Kong/kong-mesh#11074) → **auto-fixed on both targets** (`fixMeshRetryLegacyFields`):
+  numeric `retryOn` items, `HttpMethod<Method>` items, `maxConnectAttempt` (an existing one wins).
+  2.x drops them silently; 3.0 rejects them on the API server / `kumactl apply` and `kubectl apply`
+  prunes them (UPGRADE.md "Resources with fields that are not in the schema are rejected"). The
+  warning says the retries now take effect.
 
 `ScanForDeprecations` normalises `kind` from `obj["type"]` when `obj["kind"]` is empty, so
 Universal-format resources (including `Dataplane`) are handled correctly.

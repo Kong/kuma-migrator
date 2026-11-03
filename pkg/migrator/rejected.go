@@ -112,10 +112,17 @@ func v3TopLevelChecked(kind string) bool {
 //   - a spec.to[] targetRef kind the policy's 3.0 validator does not list
 //     (warnV3ToTargetRefKinds).
 //   - removed fields the v3 rewrites could not convert (v3UnconvertedFieldReasons).
+//   - spec.targetRef.proxyTypes [Gateway] (proxyTypesRejectionReason): 3.0 removes
+//     the field and the policy would select every proxy.
 func v3RejectionReasons(obj map[string]interface{}, name, kind string) []string {
 	// Removed fields the v3 rewrites leave in place when the manifest lacks what
 	// the replacement needs. Checked first: a Universal Dataplane has no spec.
 	reasons := v3UnconvertedFieldReasons(obj, kind)
+	if strings.HasPrefix(kind, "Mesh") {
+		if r := proxyTypesRejectionReason(obj); r != "" {
+			reasons = append(reasons, r)
+		}
+	}
 
 	spec, ok := obj["spec"].(map[string]interface{})
 	if !ok {

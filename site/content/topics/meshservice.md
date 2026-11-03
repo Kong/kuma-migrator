@@ -22,6 +22,7 @@ naming is unconditional and the `meshServices` switch has no effect.
 | 3.0 | Policies select `MeshService` by `labels` only ([UPGRADE](https://github.com/kumahq/kuma/blob/master/UPGRADE.md#real-resource-policy-selection-now-uses-labels-only)) |
 | 3.0 | `MeshService` `spec.selector.dataplaneTags` removed: a write that still carries it is rejected (`spec.selector.dataplaneTags: unknown field`), and a stored one loses its selector and matches no proxies ([UPGRADE](https://github.com/kumahq/kuma/blob/master/UPGRADE.md#dataplanetags-removed-from-the-meshservice-selector)) |
 | 3.0 | `MeshService` `spec.identities[]` accepts SPIFFE IDs only (`type: ServiceTag` rejected) ([UPGRADE](https://github.com/kumahq/kuma/blob/master/UPGRADE.md#meshservicespecidentities-now-accepts-spiffe-ids-only)) |
+| 3.0 | `appProtocol` on `MeshService` and `MeshMultiZoneService` ports accepts only `tcp`, `http`, `http2` and `grpc`: Kafka is no longer a protocol ([kumahq/kuma#17831](https://github.com/kumahq/kuma/pull/17831)). On 2.x `kafka` was a TCP proxy plus Envoy's `kafka_broker` filter, which only emits stats |
 | 3.0 | Non-RFC 1035 names rejected ([UPGRADE](https://github.com/kumahq/kuma/blob/master/UPGRADE.md#names-of-mesh-zone-meshservice-meshexternalservice-and-meshmultizoneservice-must-be-rfc-1035-labels)) |
 | 3.0 | `reachableServices` removed; `reachableBackends` refs select by `labels` only; a transparent-proxy data plane without `reachableBackends` gets no outbounds ([UPGRADE](https://github.com/kumahq/kuma/blob/master/UPGRADE.md#data-plane-proxies-without-reachablebackends-get-no-outbounds)) |
 
@@ -63,6 +64,7 @@ namespace and port; a Universal value is used as the name.
 | `MeshService` `ports[].protocol` | Renamed to `appProtocol` | Same |
 | `MeshService` `selector.dataplaneTags` | Advisory | Rewritten to `dataplaneLabels.matchLabels`; a `kuma.io/`-prefixed tag is not converted (reserved label prefix), and the `MeshService` is written to `_manual/` because 3.0 rejects it |
 | `MeshService` `identities[]` `type: ServiceTag` | Advisory | Entry dropped |
+| `MeshService` / `MeshMultiZoneService` `ports[].appProtocol: kafka` | Advisory | Rewritten to `tcp`; only the Kafka stats are lost |
 | `Dataplane` `reachableServices` | Warning | Converted to `reachableBackends` refs with labels where the value decodes; warned otherwise |
 | `reachableBackends` ref by `name`/`namespace` | — | Rewritten to labels |
 | Non-RFC 1035 `Mesh`/`MeshService`/`MeshExternalService`/`MeshMultiZoneService` name | Warning | Warning |

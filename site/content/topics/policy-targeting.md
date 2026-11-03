@@ -21,6 +21,7 @@ is selected (labels only) and which labels you may set on the policy itself.
 | 3.0 | `from[]` removed from `MeshTimeout`, `MeshCircuitBreaker`, `MeshAccessLog`, `MeshRateLimit`, `MeshTLS`, `MeshTrafficPermission` ([UPGRADE](https://github.com/kumahq/kuma/blob/master/UPGRADE.md#from-removed-from-meshtimeout)) |
 | 3.0 | `Dataplane`, `MeshService`, `MeshExternalService`, `MeshMultiZoneService` and `MeshHTTPRoute` are selected by `labels` only in `spec.targetRef` and `spec.to[].targetRef`; `sectionName` stays ([UPGRADE](https://github.com/kumahq/kuma/blob/master/UPGRADE.md#real-resource-policy-selection-now-uses-labels-only)) |
 | 3.0 | Fields not in a policy's schema are rejected with `400` (`spec.from: unknown field`) by the API server and `kumactl apply`; `kubectl apply` prunes them with a warning ([UPGRADE](https://github.com/kumahq/kuma/blob/master/UPGRADE.md#resources-with-fields-that-are-not-in-the-schema-are-rejected)) |
+| 3.0 | `spec.targetRef.proxyTypes` removed (no field in [`targetref.go`](https://github.com/kumahq/kuma/blob/master/api/common/v1alpha1/targetref.go)). Kubernetes prunes it and the API server rejects it as an unknown field. A stored policy selects every proxy. The 2.x default `mesh-gateways-timeout-all-<mesh>` (`proxyTypes: [Gateway]`, `streamIdleTimeout: 5s`) then fails every sidecar response that is idle for 5s with `504` ([kumahq/kuma#18857](https://github.com/kumahq/kuma/issues/18857)) |
 | 3.0 | Control-plane-owned labels rejected when they differ from the computed value ([UPGRADE](https://github.com/kumahq/kuma/blob/master/UPGRADE.md#control-plane-owned-labels-are-rejected-when-they-differ-from-the-computed-value)) |
 | 3.0 | `kuma.io/` and `k8s.kuma.io/` are reserved label prefixes; unknown labels under them are rejected ([UPGRADE](https://github.com/kumahq/kuma/blob/master/UPGRADE.md#reserved-label-prefixes)) |
 
@@ -140,6 +141,10 @@ renames, splits or moves a policy (a split policy changes role, for example).
 | `from[]` on `MeshTimeout`/`MeshCircuitBreaker`/`MeshRateLimit`/`MeshAccessLog`/`MeshTLS` | `rules[]` (Rules scenario). A source that is not `kind: Mesh` is collapsed, with a warning | Same |
 | `rules[]` and `to[]` in one policy | Split into `<name>` and `<name>-outbound` | Same |
 | Control-plane-owned labels on the resource's own `metadata.labels` | Kept | Removed (`kuma.io/mesh` stays). Selectors are not touched |
+| `spec.targetRef.proxyTypes` `[Sidecar]` | Warning | Removed, with a warning: the policy now also selects the proxies that are gateways on 2.x, which 3.0 runs as ordinary `Dataplane`s |
+| `spec.targetRef.proxyTypes` with both values, an empty list, or on a kind other than `Mesh`/`MeshSubset` (2.x ignores it there) | Warning | Removed; the scope does not change |
+| `spec.targetRef.proxyTypes` `[Gateway]` | Warning | Error: written to `_manual/`. Without the field the policy selects every proxy; select the gateway `Dataplane`s by labels or delete the policy |
+| Default `MeshTimeout` `mesh-gateways-timeout-all-<mesh>` | Advisory: delete it right before the 3.0 upgrade | Not converted. The original goes to `_manual/` and is listed under **Delete Before Upgrading to 3.0**. Deleting it, not dropping `proxyTypes`, is the fix |
 
 A document that 3.0 would reject as written is never put in the apply tree: the run reports it as
 an error and writes it under `_manual/`, the same as a conversion that failed.
@@ -162,6 +167,8 @@ Code: [`convert.go`](https://github.com/Kong/kuma-migrator/blob/main/pkg/migrato
   the policy. Only Kuma-internal `_svc_` names are expanded (to `app: <name>`, warned).
 - **Re-target `MeshGateway` policies.** The delegated gateway's labels depend on how you deploy
   it. See [Gateways](gateways.md).
+- **Replace `proxyTypes: [Gateway]`.** 3.0 has no gateway proxy type. The gateway `Dataplane`s
+  are selected by their own labels, which are not in the policy.
 - **Prove that a label selector selects one resource.** Labels match every resource that
   carries them. Each rewrite is warned.
 
@@ -174,7 +181,11 @@ Code: [`convert.go`](https://github.com/Kong/kuma-migrator/blob/main/pkg/migrato
 3. Fix `to[]` entries the matrix rejects.
 4. For producer policies without a `kuma.io/zone` label, add `kuma.io/zone: <zone-name>` to the
    `to[]` label selectors the warning names.
-5. Apply the `v3` output, which strips control-plane-owned labels.
+5. Delete `mesh-gateways-timeout-all-<mesh>` in every mesh before the upgrade. On Kubernetes, first
+   add `MeshTimeout` (or `*`) to the Mesh's `spec.skipCreatingInitialPolicies`: the 2.14 Mesh
+   controller recreates the default on the next Mesh reconcile. 3.0 ignores that field. Rewrite
+   any other `proxyTypes: [Gateway]` policy to `kind: Dataplane` + the gateway's labels.
+6. Apply the `v3` output, which strips control-plane-owned labels.
 
 ## Example
 

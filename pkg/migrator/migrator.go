@@ -44,6 +44,11 @@ type DocChange struct {
 	// MeshMTLS is set for a Mesh document that carries spec.mtls (top-level
 	// mtls in Universal format). The Apply Checklist uses it under v3.
 	MeshMTLS bool
+	// DeleteBeforeV3 is set under v3 for a document of a kind 3.0 keeps that
+	// must still be deleted before the upgrade: the 2.x default
+	// mesh-gateways-timeout-all-<mesh> MeshTimeout. The original goes to
+	// ManualDir and the report lists it under "Delete Before Upgrading to 3.0".
+	DeleteBeforeV3 bool
 }
 
 // FileReport captures the transformation results for a single YAML file.
@@ -517,6 +522,14 @@ func processFile(inputPath, outputDir, cpModeDir, meshDir string, writeFile bool
 		var rejected *RejectedByTargetError
 		manualNoErr := false // a document went to ManualDir without an error
 		switch {
+		case v3 && isDefaultGatewayMeshTimeoutDoc(doc):
+			// The 2.x default gateway timeout selects every proxy on 3.0
+			// (kumahq/kuma#18857). It is deleted, not converted, whatever the
+			// transform returned: keep the original under ManualDir and list it
+			// for deletion.
+			dc.DeleteBeforeV3 = true
+			manualNoErr = true
+			outputDocs = append(outputDocs, outputDoc{raw: doc, change: changeIdx, manual: true})
 		case tErr != nil && errors.As(tErr, &rejected):
 			// The transform produced output, but the target control plane rejects
 			// it. Keep it out of the apply tree, like an errored conversion, but

@@ -347,7 +347,7 @@ conf:
 	missing(t, def, "tcp", "maxConnectAttempts")
 
 	retryOn := at(t, def, "http", "retryOn").([]interface{})
-	want := []string{"5xx", "GatewayError", "HttpMethodGet", "HttpMethodPost"}
+	want := []string{"5xx", "GatewayError", "HttpMethodGet", "HttpMethodPost", "500", "502"}
 	if len(retryOn) != len(want) {
 		t.Fatalf("http.retryOn = %v, want %v", retryOn, want)
 	}
@@ -364,12 +364,32 @@ conf:
 		t.Errorf("grpc.retryOn = %v, want [Canceled DeadlineExceeded]", grpcRetryOn)
 	}
 
-	// Both status-code paths are removals, not renames — they must be reported.
-	if !hasWarning(warnings, "retriableStatusCodes") {
-		t.Errorf("expected retriableStatusCodes drop warning, got: %v", warnings)
+	missing(t, def, "http", "retriableStatusCodes")
+
+	// retriableStatusCodes become numeric retryOn items; the retriable_status_codes
+	// condition is implied by them, so neither is reported as dropped.
+	if hasWarning(warnings, "retriableStatusCodes") || hasWarning(warnings, `"retriable_status_codes"`) {
+		t.Errorf("status codes are converted, not dropped; got: %v", warnings)
 	}
-	if !hasWarning(warnings, `retryOn value "retriable_status_codes"`) {
-		t.Errorf("expected retryOn value drop warning, got: %v", warnings)
+}
+
+func TestLegacyConf_Retry_StatusCodeConditionWithoutCodes(t *testing.T) {
+	_, warnings := transformOne(t, `
+type: Retry
+name: r1
+mesh: default
+destinations:
+  - match: {kuma.io/service: backend_demo_svc_3001}
+conf:
+  http:
+    retryOn: [retriable_status_codes, retriable_headers]
+    retriableStatusCodes: [999]
+`)
+	for _, want := range []string{`retryOn value "retriable_status_codes"`, `retryOn value "retriable_headers"`,
+		"retriableStatusCodes value 999 is not an HTTP status code"} {
+		if !hasWarning(warnings, want) {
+			t.Errorf("expected warning containing %q, got: %v", want, warnings)
+		}
 	}
 }
 
