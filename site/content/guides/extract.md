@@ -266,6 +266,8 @@ A control plane URL containing `api.konghq.com` is treated as Kong Konnect:
 
 - **Authentication.** `kumactl` stores a Konnect personal access token as a header
   (`Authorization: Bearer kpat_…`) instead of `authType: tokens`. `extract` reads both forms.
+  A system account token (`spat_…`) with read-only access is enough; see
+  [Konnect read-only access](konnect-access.md).
 - **Mode.** Konnect has no `/config` endpoint; it is always treated as a Global control plane.
 - **Fetching.** Meshes, zones and resources are read with direct authenticated HTTPS calls to
   the Konnect API, not through the `kumactl` binary.

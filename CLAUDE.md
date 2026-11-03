@@ -41,7 +41,20 @@ Project-unique material that is **not** in the KB stays under `./reference/`:
 kuma-migrator extract --kube-context <ctx>    --output-dir <dir> [--mesh <mesh>] [--output-format kubernetes|universal]
 kuma-migrator extract --kumactl-context <ctx> --output-dir <dir> [--mesh <mesh>] [--output-format kubernetes|universal]
 kuma-migrator migrate --input-dir <dir> --output-dir <dir>        [--mesh <mesh>] [--to-latest v2|v3] [--dry-run]
+kuma-migrator konnect token-script --region <r> [--scope mesh|org] [--control-plane <name>]... [--expires-in 336h] [-o file]
 ```
+
+`konnect token-script` (`cmd/konnect.go`, `pkg/konnect/tokenscript.go` + embedded
+`tokenscript.sh.tmpl`) prints a bash script for a Konnect **org admin**: create/reuse a system
+account, grant `Viewer` on `Mesh Control Planes` per control plane (`--scope mesh`, default) or
+add it to the predefined `Organization Admin (Read Only)` team (`--scope org`, the variant first
+sent to customers by hand), mint one expiring token, print the `kumactl config control-planes
+add` + `extract` commands and the revoke command. The tool never calls Konnect and never sees
+the admin PAT (`KONNECT_ADMIN_PAT`). Names are validated against `safeName` because they are
+written into the script. `tokenscript_test.go` runs the rendered script with bash/curl/jq
+against an `httptest` fake of the Konnect API. Not yet exercised against real Konnect: the
+`mesh` scope (Viewer role reading `/v1/mesh/control-planes/<id>/api/...`) is the documented
+role, but only the `org` scope was used with customers. Docs: `site/content/guides/konnect-access.md`.
 
 There is no separate `plan` command — `--dry-run` on `migrate` is what used to be `plan` (removed;
 see git history around the `--dry-run` flag's introduction). `migrator.Plan`/`migrator.Migrate` in

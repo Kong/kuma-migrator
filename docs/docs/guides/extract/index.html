@@ -41,12 +41,12 @@
 <div class="layout">
   <details class="nav-mobile">
     <summary>Guides menu</summary>
-    <div class="nav-group"><ul><li><a href="../">Overview</a></li><li><a href="../installation/">Installation</a></li><li><a href="../getting-started/">Getting started</a></li><li><a href="../upgrade-plans/">Upgrade plans</a></li><li><a href="../cli/">CLI reference</a></li><li><a href="./" class="active" aria-current="page">Extract</a></li><li><a href="../migrate/">Migrate</a></li><li><a href="../target-version/">Target versions (--to-latest)</a></li><li><a href="../apply/">Apply</a></li><li><a href="../output-and-reports/">Output and reports</a></li><li><a href="../examples/">Examples</a></li><li><a href="../architecture/">Architecture</a></li><li><a href="../notes/">Notes and caveats</a></li></ul></div>
+    <div class="nav-group"><ul><li><a href="../">Overview</a></li><li><a href="../installation/">Installation</a></li><li><a href="../getting-started/">Getting started</a></li><li><a href="../upgrade-plans/">Upgrade plans</a></li><li><a href="../cli/">CLI reference</a></li><li><a href="./" class="active" aria-current="page">Extract</a></li><li><a href="../konnect-access/">Konnect read-only access</a></li><li><a href="../migrate/">Migrate</a></li><li><a href="../target-version/">Target versions (--to-latest)</a></li><li><a href="../apply/">Apply</a></li><li><a href="../output-and-reports/">Output and reports</a></li><li><a href="../examples/">Examples</a></li><li><a href="../architecture/">Architecture</a></li><li><a href="../notes/">Notes and caveats</a></li></ul></div>
 
   </details>
   <aside class="sidebar" aria-label="Guides pages">
     <p class="sidebar-section"><a href="../">Guides</a></p>
-    <div class="nav-group"><ul><li><a href="../">Overview</a></li><li><a href="../installation/">Installation</a></li><li><a href="../getting-started/">Getting started</a></li><li><a href="../upgrade-plans/">Upgrade plans</a></li><li><a href="../cli/">CLI reference</a></li><li><a href="./" class="active" aria-current="page">Extract</a></li><li><a href="../migrate/">Migrate</a></li><li><a href="../target-version/">Target versions (--to-latest)</a></li><li><a href="../apply/">Apply</a></li><li><a href="../output-and-reports/">Output and reports</a></li><li><a href="../examples/">Examples</a></li><li><a href="../architecture/">Architecture</a></li><li><a href="../notes/">Notes and caveats</a></li></ul></div>
+    <div class="nav-group"><ul><li><a href="../">Overview</a></li><li><a href="../installation/">Installation</a></li><li><a href="../getting-started/">Getting started</a></li><li><a href="../upgrade-plans/">Upgrade plans</a></li><li><a href="../cli/">CLI reference</a></li><li><a href="./" class="active" aria-current="page">Extract</a></li><li><a href="../konnect-access/">Konnect read-only access</a></li><li><a href="../migrate/">Migrate</a></li><li><a href="../target-version/">Target versions (--to-latest)</a></li><li><a href="../apply/">Apply</a></li><li><a href="../output-and-reports/">Output and reports</a></li><li><a href="../examples/">Examples</a></li><li><a href="../architecture/">Architecture</a></li><li><a href="../notes/">Notes and caveats</a></li></ul></div>
 
   </aside>
   <main id="content">
@@ -438,7 +438,9 @@ behind the <code>kumactl</code> context lacks it. Check it with <code>kumactl ge
 <p>A control plane URL containing <code>api.konghq.com</code> is treated as Kong Konnect:</p>
 <ul>
 <li><strong>Authentication.</strong> <code>kumactl</code> stores a Konnect personal access token as a header
-(<code>Authorization: Bearer kpat_…</code>) instead of <code>authType: tokens</code>. <code>extract</code> reads both forms.</li>
+(<code>Authorization: Bearer kpat_…</code>) instead of <code>authType: tokens</code>. <code>extract</code> reads both forms.
+A system account token (<code>spat_…</code>) with read-only access is enough; see
+<a href="../konnect-access/">Konnect read-only access</a>.</li>
 <li><strong>Mode.</strong> Konnect has no <code>/config</code> endpoint; it is always treated as a Global control plane.</li>
 <li><strong>Fetching.</strong> Meshes, zones and resources are read with direct authenticated HTTPS calls to
 the Konnect API, not through the <code>kumactl</code> binary.</li>
@@ -467,7 +469,7 @@ file, for a control plane API with a self-signed certificate.</p>
     </article>
     <nav class="pager" aria-label="Previous and next page">
       <a class="prev" href="../cli/"><span>Previous</span>CLI reference</a>
-      <a class="next" href="../migrate/"><span>Next</span>Migrate</a>
+      <a class="next" href="../konnect-access/"><span>Next</span>Konnect read-only access</a>
     </nav>
   </main>
   <nav class="toc" aria-label="On this page">

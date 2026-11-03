@@ -14,6 +14,7 @@ YAML files and writes YAML files plus a report. Neither command writes to a cont
 | [`cmd/`](https://github.com/Kong/kuma-migrator/tree/main/cmd) | Flag parsing; calls into `pkg/` |
 | [`pkg/extractor`](https://github.com/Kong/kuma-migrator/tree/main/pkg/extractor) | `extract`: control plane discovery, mode detection, origin filtering, file layout |
 | [`pkg/migrator`](https://github.com/Kong/kuma-migrator/tree/main/pkg/migrator) | `migrate`: scenario detection, transforms, deprecation scan, report |
+| [`pkg/konnect`](https://github.com/Kong/kuma-migrator/tree/main/pkg/konnect) | `konnect token-script`: renders the read-only system account script |
 | [`pkg/resource`](https://github.com/Kong/kuma-migrator/tree/main/pkg/resource) | Kind → subfolder map shared by both commands |
 | [`pkg/config`](https://github.com/Kong/kuma-migrator/tree/main/pkg/config) | `~/.config/kuma-migrator.yaml`: skip lists, TLS setting |
 | [`pkg/ui`](https://github.com/Kong/kuma-migrator/tree/main/pkg/ui) | Console output |

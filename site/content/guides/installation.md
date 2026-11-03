@@ -91,7 +91,8 @@ The Homebrew cask is built from the same archives, and its `sha256` fields match
 
 For a Kong Mesh control plane, use the Kong Mesh build of `kumactl`. The Kuma OSS binary
 refuses to talk to a Kong Mesh control plane. Extraction from Konnect uses direct HTTPS calls
-and only reads the context from the `kumactl` config file.
+and only reads the context from the `kumactl` config file. For the token, see
+[Konnect read-only access](konnect-access.md).
 
 Check the installed version:
 

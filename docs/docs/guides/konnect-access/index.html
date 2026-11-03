@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Konnect read-only access – kuma-migrator docs</title>
+<meta name="description" content="Give kuma-migrator read access to a Konnect-hosted Mesh Global control plane with a short-lived system account token, without sharing an admin token.">
+<link rel="canonical" href="https://kong.github.io/kuma-migrator/docs/guides/konnect-access/">
+<link rel="icon" href="../../static/favicon.svg" type="image/svg+xml">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="kuma-migrator">
+<meta property="og:title" content="Konnect read-only access – kuma-migrator docs">
+<meta property="og:description" content="Give kuma-migrator read access to a Konnect-hosted Mesh Global control plane with a short-lived system account token, without sharing an admin token.">
+<meta property="og:url" content="https://kong.github.io/kuma-migrator/docs/guides/konnect-access/">
+<meta property="og:image" content="https://kong.github.io/kuma-migrator/assets/migration-overview.svg">
+<meta name="twitter:card" content="summary_large_image">
+
+<link rel="stylesheet" href="../../static/shared.css">
+<link rel="stylesheet" href="../../static/style.css">
+</head>
+<body data-root="../../">
+<a class="skip" href="#content">Skip to content</a>
+<header class="site-header">
+  <div class="bar">
+    <a class="brand" href="../../../"><img src="../../static/favicon.svg" width="28" height="28" alt=""><span>kuma-migrator</span></a>
+    <a class="docs-home" href="../../">Docs</a>
+    <nav class="top-nav" aria-label="Sections">
+      <a href="../" class="active" aria-current="true">Guides</a>
+      <a href="../../topics/">Topics</a>
+      <a href="../../policies/">Policies</a>
+      <a class="external" href="https://github.com/Kong/kuma-migrator">GitHub<svg class="ext-icon" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" focusable="false"><path d="M6 3H3.5A1.5 1.5 0 0 0 2 4.5v8A1.5 1.5 0 0 0 3.5 14h8a1.5 1.5 0 0 0 1.5-1.5V10M9 2h5v5M14 2 7 9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="visually-hidden"> (external site)</span></a>
+    </nav>
+    <!-- release-tag --><a class="release-badge" href="https://github.com/Kong/kuma-migrator/releases/latest" title="Latest release: v0.9.1">v0.9.1</a><!-- /release-tag -->
+    <div class="search">
+      <input id="search-input" type="search" placeholder="Search docs" aria-label="Search docs" autocomplete="off">
+      <ul id="search-results" hidden></ul>
+    </div>
+  </div>
+</header>
+
+<div class="layout">
+  <details class="nav-mobile">
+    <summary>Guides menu</summary>
+    <div class="nav-group"><ul><li><a href="../">Overview</a></li><li><a href="../installation/">Installation</a></li><li><a href="../getting-started/">Getting started</a></li><li><a href="../upgrade-plans/">Upgrade plans</a></li><li><a href="../cli/">CLI reference</a></li><li><a href="../extract/">Extract</a></li><li><a href="./" class="active" aria-current="page">Konnect read-only access</a></li><li><a href="../migrate/">Migrate</a></li><li><a href="../target-version/">Target versions (--to-latest)</a></li><li><a href="../apply/">Apply</a></li><li><a href="../output-and-reports/">Output and reports</a></li><li><a href="../examples/">Examples</a></li><li><a href="../architecture/">Architecture</a></li><li><a href="../notes/">Notes and caveats</a></li></ul></div>
+
+  </details>
+  <aside class="sidebar" aria-label="Guides pages">
+    <p class="sidebar-section"><a href="../">Guides</a></p>
+    <div class="nav-group"><ul><li><a href="../">Overview</a></li><li><a href="../installation/">Installation</a></li><li><a href="../getting-started/">Getting started</a></li><li><a href="../upgrade-plans/">Upgrade plans</a></li><li><a href="../cli/">CLI reference</a></li><li><a href="../extract/">Extract</a></li><li><a href="./" class="active" aria-current="page">Konnect read-only access</a></li><li><a href="../migrate/">Migrate</a></li><li><a href="../target-version/">Target versions (--to-latest)</a></li><li><a href="../apply/">Apply</a></li><li><a href="../output-and-reports/">Output and reports</a></li><li><a href="../examples/">Examples</a></li><li><a href="../architecture/">Architecture</a></li><li><a href="../notes/">Notes and caveats</a></li></ul></div>
+
+  </aside>
+  <main id="content">
+    <article class="doc">
+<p class="crumb"><a href="../">Guides</a></p>
+<h1>Konnect read-only access</h1>
+<p class="lede">Give kuma-migrator read access to a Konnect-hosted Mesh Global control plane with a short-lived system account token, without sharing an admin token.</p>
+<p><code>extract</code> reads a Konnect-hosted Global control plane with a bearer token. The person running
+<code>kuma-migrator</code> (a platform engineer, or Kong Professional Services) often has no access to the
+organization. Do not share an admin personal access token for this. An organization admin
+creates a <strong>system account</strong> with read-only access and hands over its token, which expires on
+its own.</p>
+<p><code>kuma-migrator konnect token-script</code> writes the script that does this. kuma-migrator does not
+call Konnect and never sees the admin token: the admin reads the script, runs it, and passes on
+the read-only token only.</p>
+<h2 id="generate-the-script">Generate the script</h2>
+<div class="code"><pre class="chroma" data-lang="bash"><code><span class="k-bin">kuma-migrator</span> <span class="k-sub">konnect</span> <span class="k-val">token-script</span> <span class="k-flag">--region</span> <span class="k-val">eu</span> <span class="k-flag">-o</span> <span class="k-val">konnect-readonly-token.sh</span>
+</code></pre></div>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--region</code></td>
+<td>required</td>
+<td>Konnect region of the Mesh control planes: <code>us</code>, <code>eu</code>, <code>au</code>, <code>me</code>, <code>in</code>, <code>sg</code></td>
+</tr>
+<tr>
+<td><code>--scope</code></td>
+<td><code>mesh</code></td>
+<td><code>mesh</code>: the <code>Viewer</code> role on Mesh control planes. <code>org</code>: membership of the predefined <strong>Organization Admin (Read Only)</strong> team</td>
+</tr>
+<tr>
+<td><code>--control-plane</code></td>
+<td>all in the region</td>
+<td>Mesh control plane to grant, by name. Repeatable. <code>--scope mesh</code> only</td>
+</tr>
+<tr>
+<td><code>--account-name</code></td>
+<td><code>kuma-migrator-readonly</code></td>
+<td>System account the script creates, or reuses when it exists</td>
+</tr>
+<tr>
+<td><code>--expires-in</code></td>
+<td><code>336h</code> (14 days)</td>
+<td>Token lifetime from the time you generate the script. Between <code>1h</code> and <code>8760h</code></td>
+</tr>
+<tr>
+<td><code>-o</code>, <code>--output</code></td>
+<td>stdout</td>
+<td>File to write</td>
+</tr>
+</tbody>
+</table></div>
+<p>Pick the narrowest scope that works:</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Scope</th>
+<th>Grants</th>
+<th>Use it when</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>mesh</code></td>
+<td><code>Viewer</code> on each selected Mesh control plane: read and list, nothing outside Mesh</td>
+<td>The token is only for <code>kuma-migrator extract</code></td>
+</tr>
+<tr>
+<td><code>org</code></td>
+<td>Read access to every Konnect resource: gateways, portals, teams, Mesh</td>
+<td>The same token also serves a Gateway or platform review</td>
+</tr>
+</tbody>
+</table></div>
+<h2 id="run-it-organization-admin">Run it (organization admin)</h2>
+<p>The admin needs <code>bash</code>, <code>curl</code>, <code>jq</code> and a personal access token from an organization admin
+account:</p>
+<div class="code"><pre class="chroma" data-lang="bash"><code><span class="nv">KONNECT_ADMIN_PAT</span><span class="o">=</span>kpat_... <span class="k-cmd">bash</span> konnect-readonly-token.sh
+</code></pre></div>
+<p>The script:</p>
+<ol>
+<li>creates the system account, or reuses the one with the same name;</li>
+<li>grants access: <code>Viewer</code> on each Mesh control plane (<code>--scope mesh</code>), or adds the account to
+<strong>Organization Admin (Read Only)</strong> (<code>--scope org</code>);</li>
+<li>mints one access token with the expiry chosen at generation time and prints it, once;</li>
+<li>prints the <code>kumactl</code> and <code>extract</code> commands for each Mesh control plane, and the command that
+revokes access.</li>
+</ol>
+<p>It stops at the first failed API call and prints the HTTP status and response. It mints no
+token if a control plane named with <code>--control-plane</code> does not exist. The admin token goes
+only to <code>global.api.konghq.com</code> and <code>&lt;region&gt;.api.konghq.com</code> and is never printed.</p>
+<p>Send the read-only token over a channel you trust, such as a password manager share. Do not
+paste it in a ticket or a chat channel.</p>
+<h2 id="use-the-token">Use the token</h2>
+<p>Register each Mesh control plane in <code>kumactl</code>, then extract. The script prints these commands
+with the control plane IDs filled in:</p>
+<div class="code"><pre class="chroma" data-lang="bash"><code><span class="k-cmd">export</span> <span class="nv">KONNECT_RO_TOKEN</span><span class="o">=</span>spat_...
+<span class="k-manual">kumactl</span> <span class="k-manual-b">config</span> <span class="k-manual-b">control-planes</span> <span class="k-manual-b">add</span> <span class="k-flag">--name</span> <span class="k-val">konnect-prod-global</span> <span class="se">\
+</span>  <span class="k-flag">--address</span> <span class="s2">"https://eu.api.konghq.com/v1/mesh/control-planes/</span><span class="nv">$CONTROL_PLANE_ID</span><span class="s2">/api"</span> <span class="se">\
+</span>  <span class="k-flag">--headers</span> <span class="s2">"authorization=Bearer </span><span class="nv">$KONNECT_RO_TOKEN</span><span class="s2">"</span>
+
+<span class="k-bin">kuma-migrator</span> <span class="k-sub">extract</span> <span class="k-flag">--kumactl-context</span> <span class="k-val">konnect-prod-global</span> <span class="se">\
+</span>  <span class="k-flag">--output-dir</span> <span class="k-val">./raw-policies</span>
+</code></pre></div>
+<p><code>extract</code> sends only <code>GET</code> requests. For how it reads Konnect, see <a href="../extract/#konnect">Extract</a>.
+For the rest of the run, see the <a href="../getting-started/#konnect">Konnect walkthrough</a>.</p>
+<h2 id="revoke-access">Revoke access</h2>
+<p>When the extract is done, the admin deletes the system account. This revokes its tokens too:</p>
+<div class="code"><pre class="chroma" data-lang="bash"><code><span class="k-cmd">curl</span> <span class="k-flag">-X</span> <span class="k-val">DELETE</span> <span class="s2">"https://global.api.konghq.com/v3/system-accounts/</span><span class="nv">$SYSTEM_ACCOUNT_ID</span><span class="s2">"</span> <span class="se">\
+</span>  <span class="k-flag">-H</span> <span class="s2">"Authorization: Bearer </span><span class="nv">$KONNECT_ADMIN_PAT</span><span class="s2">"</span>
+</code></pre></div>
+<p>The script prints this command with the account ID filled in. Without it, the token stops
+working at its expiry date and the account stays in the organization.</p>
+<h2 id="without-the-cli">Without the CLI</h2>
+<p>The script calls three Konnect APIs. To do the same by hand or in Terraform:</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Step</th>
+<th>API call</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Create the account</td>
+<td><code>POST https://global.api.konghq.com/v3/system-accounts</code></td>
+</tr>
+<tr>
+<td><code>--scope mesh</code></td>
+<td><code>POST /v3/system-accounts/&lt;id&gt;/assigned-roles</code> with <code>role_name: Viewer</code>, <code>entity_type_name: Mesh Control Planes</code>, <code>entity_id: &lt;control plane ID&gt;</code>, <code>entity_region: &lt;region&gt;</code></td>
+</tr>
+<tr>
+<td><code>--scope org</code></td>
+<td><code>POST /v3/teams/&lt;Organization Admin (Read Only) team ID&gt;/system-accounts</code> with the account ID</td>
+</tr>
+<tr>
+<td>Mint the token</td>
+<td><code>POST /v3/system-accounts/&lt;id&gt;/access-tokens</code> with <code>name</code> and <code>expires_at</code></td>
+</tr>
+</tbody>
+</table></div>
+<p>Konnect documents the roles in
+<a href="https://developer.konghq.com/konnect-platform/teams-and-roles/#mesh-control-planes">Teams and roles</a>.
+The same system account model gives zones their <code>Connector</code> token.</p>
+
+    </article>
+    <nav class="pager" aria-label="Previous and next page">
+      <a class="prev" href="../extract/"><span>Previous</span>Extract</a>
+      <a class="next" href="../migrate/"><span>Next</span>Migrate</a>
+    </nav>
+  </main>
+  <nav class="toc" aria-label="On this page">
+    <p class="toc-title">On this page</p>
+    <ul><li class="toc-l2"><a href="#generate-the-script">Generate the script</a></li><li class="toc-l2"><a href="#run-it-organization-admin">Run it (organization admin)</a></li><li class="toc-l2"><a href="#use-the-token">Use the token</a></li><li class="toc-l2"><a href="#revoke-access">Revoke access</a></li><li class="toc-l2"><a href="#without-the-cli">Without the CLI</a></li></ul>
+  </nav>
+</div>
+<footer class="site-footer">
+  <p>
+    <a href="../../../">kuma-migrator</a> ·
+    <a href="https://github.com/Kong/kuma-migrator">Source</a> ·
+    <a href="https://github.com/Kong/kuma-migrator/releases">Releases</a> ·
+    <a href="https://github.com/Kong/kuma-migrator/issues">Issues</a> ·
+    <a href="https://github.com/Kong/kuma-migrator/blob/main/site/content/guides/konnect-access.md">View source of this page</a>
+  </p>
+  <p>Apache-2.0 licensed. Part of Kong's <a href="https://konghq.com/products/kong-mesh">Kong Mesh</a> tooling.</p>
+</footer>
+<script src="../../static/search-index.js"></script>
+<script src="../../static/search.js"></script>
+<script src="../../static/copy.js"></script>
+</body>
+</html>

@@ -18,6 +18,10 @@ kuma-migrator extract  --kube-context <ctx> | --kumactl-context <ctx>
 kuma-migrator migrate  --input-dir <dir> --output-dir <dir>
                        [--mesh <name>] [--to-latest v2|v3] [--dry-run]
 
+kuma-migrator konnect token-script --region <region>
+                       [--scope mesh|org] [--control-plane <name>]...
+                       [--account-name <name>] [--expires-in <duration>] [-o <file>]
+
 kuma-migrator version
 kuma-migrator completion <bash|zsh|fish|powershell>
 ```
@@ -68,6 +72,22 @@ Error: invalid --to-latest value "v4": want "v2" or "v3"
 ```
 
 See [Migrate](migrate.md) and [Target versions](target-version.md).
+
+## konnect token-script
+
+Writes the bash script a Konnect organization admin runs to create a read-only system account
+and print a short-lived token for `extract`. It does not call Konnect.
+
+| Flag | Short | Required | Default | Description |
+|---|---|---|---|---|
+| `--region` | | yes | | Konnect region: `us`, `eu`, `au`, `me`, `in`, `sg` |
+| `--scope` | | no | `mesh` | `mesh` (`Viewer` on Mesh control planes) or `org` (Organization Admin (Read Only) team) |
+| `--control-plane` | | no | all in the region | Mesh control plane name. Repeatable. `--scope mesh` only |
+| `--account-name` | | no | `kuma-migrator-readonly` | System account to create or reuse |
+| `--expires-in` | | no | `336h` | Token lifetime, `1h` to `8760h` |
+| `--output` | `-o` | no | stdout | File to write the script to |
+
+See [Konnect read-only access](konnect-access.md).
 
 ## version and completion
 

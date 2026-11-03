@@ -41,12 +41,12 @@
 <div class="layout">
   <details class="nav-mobile">
     <summary>Guides menu</summary>
-    <div class="nav-group"><ul><li><a href="../">Overview</a></li><li><a href="../installation/">Installation</a></li><li><a href="./" class="active" aria-current="page">Getting started</a></li><li><a href="../upgrade-plans/">Upgrade plans</a></li><li><a href="../cli/">CLI reference</a></li><li><a href="../extract/">Extract</a></li><li><a href="../migrate/">Migrate</a></li><li><a href="../target-version/">Target versions (--to-latest)</a></li><li><a href="../apply/">Apply</a></li><li><a href="../output-and-reports/">Output and reports</a></li><li><a href="../examples/">Examples</a></li><li><a href="../architecture/">Architecture</a></li><li><a href="../notes/">Notes and caveats</a></li></ul></div>
+    <div class="nav-group"><ul><li><a href="../">Overview</a></li><li><a href="../installation/">Installation</a></li><li><a href="./" class="active" aria-current="page">Getting started</a></li><li><a href="../upgrade-plans/">Upgrade plans</a></li><li><a href="../cli/">CLI reference</a></li><li><a href="../extract/">Extract</a></li><li><a href="../konnect-access/">Konnect read-only access</a></li><li><a href="../migrate/">Migrate</a></li><li><a href="../target-version/">Target versions (--to-latest)</a></li><li><a href="../apply/">Apply</a></li><li><a href="../output-and-reports/">Output and reports</a></li><li><a href="../examples/">Examples</a></li><li><a href="../architecture/">Architecture</a></li><li><a href="../notes/">Notes and caveats</a></li></ul></div>
 
   </details>
   <aside class="sidebar" aria-label="Guides pages">
     <p class="sidebar-section"><a href="../">Guides</a></p>
-    <div class="nav-group"><ul><li><a href="../">Overview</a></li><li><a href="../installation/">Installation</a></li><li><a href="./" class="active" aria-current="page">Getting started</a></li><li><a href="../upgrade-plans/">Upgrade plans</a></li><li><a href="../cli/">CLI reference</a></li><li><a href="../extract/">Extract</a></li><li><a href="../migrate/">Migrate</a></li><li><a href="../target-version/">Target versions (--to-latest)</a></li><li><a href="../apply/">Apply</a></li><li><a href="../output-and-reports/">Output and reports</a></li><li><a href="../examples/">Examples</a></li><li><a href="../architecture/">Architecture</a></li><li><a href="../notes/">Notes and caveats</a></li></ul></div>
+    <div class="nav-group"><ul><li><a href="../">Overview</a></li><li><a href="../installation/">Installation</a></li><li><a href="./" class="active" aria-current="page">Getting started</a></li><li><a href="../upgrade-plans/">Upgrade plans</a></li><li><a href="../cli/">CLI reference</a></li><li><a href="../extract/">Extract</a></li><li><a href="../konnect-access/">Konnect read-only access</a></li><li><a href="../migrate/">Migrate</a></li><li><a href="../target-version/">Target versions (--to-latest)</a></li><li><a href="../apply/">Apply</a></li><li><a href="../output-and-reports/">Output and reports</a></li><li><a href="../examples/">Examples</a></li><li><a href="../architecture/">Architecture</a></li><li><a href="../notes/">Notes and caveats</a></li></ul></div>
 
   </aside>
   <main id="content">
@@ -67,7 +67,8 @@ stays with you, and the report tells you exactly what to run.</p>
 <li><strong>kuma-migrator installed.</strong> Homebrew, a release archive or a source build: see
 <a href="../installation/">Installation</a>.</li>
 <li><strong>Read access to the control plane.</strong> A <code>kubectl</code> context for Kubernetes, a <code>kumactl</code>
-context for Universal and Konnect. The tool only reads.</li>
+context for Universal and Konnect. The tool only reads. No Konnect admin rights? Get a
+<a href="../konnect-access/">read-only token</a>.</li>
 <li><strong>A target version.</strong> <code>--to-latest v2</code> (the default) keeps you on the latest 2.x line,
 <code>--to-latest v3</code> prepares the move to 3.0. See <a href="../target-version/">Target versions</a>.</li>
 </ul>
@@ -320,7 +321,10 @@ scanned for the 3.0 type changes, and enterprise CA backends (<code>vault</code>
 it, <code>extract</code> continues in unknown mode: no origin filter and the Kubernetes skip list.</p>
 <h3 id="konnect">Konnect</h3>
 <p>Konnect hosts the Global control plane. Copy the <code>kumactl config control-planes add</code> command
-from the Konnect UI for the mesh control plane; it stores a personal access token as a header:</p>
+from the Konnect UI for the mesh control plane; it stores a personal access token as a header.
+If you are not an admin of the organization, ask one to run the script from
+<code>kuma-migrator konnect token-script</code> and use the read-only token it prints: see
+<a href="../konnect-access/">Konnect read-only access</a>.</p>
 <div class="code"><pre class="chroma" data-lang="bash"><code><span class="k-manual">kumactl</span> <span class="k-manual-b">config</span> <span class="k-manual-b">control-planes</span> <span class="k-manual-b">add</span> <span class="se">\
 </span>  <span class="k-flag">--name</span> <span class="k-val">konnect-global-prod</span> <span class="se">\
 </span>  <span class="k-flag">--address</span> <span class="s2">"https://</span><span class="nv">$KONNECT_REGION</span><span class="s2">.api.konghq.com/v1/mesh/control-planes/</span><span class="nv">$CONTROL_PLANE_ID</span><span class="s2">/api"</span> <span class="se">\

@@ -109,6 +109,7 @@ Full documentation: **[kong.github.io/kuma-migrator/docs](https://kong.github.io
 | [Upgrade plans](https://kong.github.io/kuma-migrator/docs/guides/upgrade-plans/) | Upgrade paths, which target to use, the sequence for 3.0, rollback |
 | [CLI reference](https://kong.github.io/kuma-migrator/docs/guides/cli/) | Every command, flag, and the config file |
 | [Extract](https://kong.github.io/kuma-migrator/docs/guides/extract/) | CP-mode rules, output layout, Konnect, Universal vs Kubernetes format |
+| [Konnect read-only access](https://kong.github.io/kuma-migrator/docs/guides/konnect-access/) | A read-only system account token for Konnect, from `kuma-migrator konnect token-script` |
 | [Migrate](https://kong.github.io/kuma-migrator/docs/guides/migrate/) | Dry run, output layout, Gateway API placement |
 | [Target versions](https://kong.github.io/kuma-migrator/docs/guides/target-version/) | `--to-latest` and the checks that change with it |
 | [Apply](https://kong.github.io/kuma-migrator/docs/guides/apply/) | Apply order, and cleaning up changed kinds |

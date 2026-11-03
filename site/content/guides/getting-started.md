@@ -23,7 +23,8 @@ stays with you, and the report tells you exactly what to run.
 - **kuma-migrator installed.** Homebrew, a release archive or a source build: see
   [Installation](installation.md).
 - **Read access to the control plane.** A `kubectl` context for Kubernetes, a `kumactl`
-  context for Universal and Konnect. The tool only reads.
+  context for Universal and Konnect. The tool only reads. No Konnect admin rights? Get a
+  [read-only token](konnect-access.md).
 - **A target version.** `--to-latest v2` (the default) keeps you on the latest 2.x line,
   `--to-latest v3` prepares the move to 3.0. See [Target versions](target-version.md).
 
@@ -308,7 +309,10 @@ it, `extract` continues in unknown mode: no origin filter and the Kubernetes ski
 ### Konnect
 
 Konnect hosts the Global control plane. Copy the `kumactl config control-planes add` command
-from the Konnect UI for the mesh control plane; it stores a personal access token as a header:
+from the Konnect UI for the mesh control plane; it stores a personal access token as a header.
+If you are not an admin of the organization, ask one to run the script from
+`kuma-migrator konnect token-script` and use the read-only token it prints: see
+[Konnect read-only access](konnect-access.md).
 
 ```bash
 kumactl config control-planes add \

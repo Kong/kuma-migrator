@@ -23,6 +23,7 @@ kinds, see the [topics](../topics/_index.md).
 |---|---|
 | [CLI reference](cli.md) | Every command, flag and configuration file setting |
 | [Extract](extract.md) | Reading a control plane: connection modes, control plane modes, origin filtering, layout |
+| [Konnect read-only access](konnect-access.md) | A short-lived read-only token for a Konnect-hosted Global, created by an org admin with a generated script |
 | [Migrate](migrate.md) | `--dry-run`, the real run, input and output layout, scenarios |
 | [Target versions](target-version.md) | `--to-latest v2` and `v3`: what each rewrites, warns about or refuses |
 | [Apply](apply.md) | The Apply Checklist, apply order, removing originals, the `_manual/` subtree |

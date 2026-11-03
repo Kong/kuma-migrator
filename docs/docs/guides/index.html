@@ -41,12 +41,12 @@
 <div class="layout">
   <details class="nav-mobile">
     <summary>Guides menu</summary>
-    <div class="nav-group"><ul><li><a href="./" class="active" aria-current="page">Overview</a></li><li><a href="installation/">Installation</a></li><li><a href="getting-started/">Getting started</a></li><li><a href="upgrade-plans/">Upgrade plans</a></li><li><a href="cli/">CLI reference</a></li><li><a href="extract/">Extract</a></li><li><a href="migrate/">Migrate</a></li><li><a href="target-version/">Target versions (--to-latest)</a></li><li><a href="apply/">Apply</a></li><li><a href="output-and-reports/">Output and reports</a></li><li><a href="examples/">Examples</a></li><li><a href="architecture/">Architecture</a></li><li><a href="notes/">Notes and caveats</a></li></ul></div>
+    <div class="nav-group"><ul><li><a href="./" class="active" aria-current="page">Overview</a></li><li><a href="installation/">Installation</a></li><li><a href="getting-started/">Getting started</a></li><li><a href="upgrade-plans/">Upgrade plans</a></li><li><a href="cli/">CLI reference</a></li><li><a href="extract/">Extract</a></li><li><a href="konnect-access/">Konnect read-only access</a></li><li><a href="migrate/">Migrate</a></li><li><a href="target-version/">Target versions (--to-latest)</a></li><li><a href="apply/">Apply</a></li><li><a href="output-and-reports/">Output and reports</a></li><li><a href="examples/">Examples</a></li><li><a href="architecture/">Architecture</a></li><li><a href="notes/">Notes and caveats</a></li></ul></div>
 
   </details>
   <aside class="sidebar" aria-label="Guides pages">
     <p class="sidebar-section"><a href="./">Guides</a></p>
-    <div class="nav-group"><ul><li><a href="./" class="active" aria-current="page">Overview</a></li><li><a href="installation/">Installation</a></li><li><a href="getting-started/">Getting started</a></li><li><a href="upgrade-plans/">Upgrade plans</a></li><li><a href="cli/">CLI reference</a></li><li><a href="extract/">Extract</a></li><li><a href="migrate/">Migrate</a></li><li><a href="target-version/">Target versions (--to-latest)</a></li><li><a href="apply/">Apply</a></li><li><a href="output-and-reports/">Output and reports</a></li><li><a href="examples/">Examples</a></li><li><a href="architecture/">Architecture</a></li><li><a href="notes/">Notes and caveats</a></li></ul></div>
+    <div class="nav-group"><ul><li><a href="./" class="active" aria-current="page">Overview</a></li><li><a href="installation/">Installation</a></li><li><a href="getting-started/">Getting started</a></li><li><a href="upgrade-plans/">Upgrade plans</a></li><li><a href="cli/">CLI reference</a></li><li><a href="extract/">Extract</a></li><li><a href="konnect-access/">Konnect read-only access</a></li><li><a href="migrate/">Migrate</a></li><li><a href="target-version/">Target versions (--to-latest)</a></li><li><a href="apply/">Apply</a></li><li><a href="output-and-reports/">Output and reports</a></li><li><a href="examples/">Examples</a></li><li><a href="architecture/">Architecture</a></li><li><a href="notes/">Notes and caveats</a></li></ul></div>
 
   </aside>
   <main id="content">
@@ -98,6 +98,10 @@ kinds, see the <a href="../topics/">topics</a>.</p>
 <td>Reading a control plane: connection modes, control plane modes, origin filtering, layout</td>
 </tr>
 <tr>
+<td><a href="konnect-access/">Konnect read-only access</a></td>
+<td>A short-lived read-only token for a Konnect-hosted Global, created by an org admin with a generated script</td>
+</tr>
+<tr>
 <td><a href="migrate/">Migrate</a></td>
 <td><code>--dry-run</code>, the real run, input and output layout, scenarios</td>
 </tr>
@@ -145,6 +149,7 @@ kinds, see the <a href="../topics/">topics</a>.</p>
   <a class="card" href="upgrade-plans/"><h3>Upgrade plans</h3><p>Plan a Kuma or Kong Mesh upgrade with kuma-migrator, from the next 2.x minor to 3.0, and read the report sections that drive it.</p></a>
   <a class="card" href="cli/"><h3>CLI reference</h3><p>Every command, flag and configuration file setting of kuma-migrator.</p></a>
   <a class="card" href="extract/"><h3>Extract</h3><p>Pull resources out of a running Kuma or Kong Mesh control plane, and the control plane mode rules that decide what is kept.</p></a>
+  <a class="card" href="konnect-access/"><h3>Konnect read-only access</h3><p>Give kuma-migrator read access to a Konnect-hosted Mesh Global control plane with a short-lived system account token, without sharing an admin token.</p></a>
   <a class="card" href="migrate/"><h3>Migrate</h3><p>Preview the migration with --dry-run, write the migrated manifests, and the output layout they land in.</p></a>
   <a class="card" href="target-version/"><h3>Target versions</h3><p>Why the 2.x and 3.0 lines need different output, and what --to-latest v3 rewrites, warns about or refuses.</p></a>
   <a class="card" href="apply/"><h3>Apply</h3><p>The order to apply the migrated manifests in, why the order matters, and how to remove the originals afterwards.</p></a>

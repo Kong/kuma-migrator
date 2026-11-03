@@ -12,6 +12,7 @@ The documentation moved to <https://kong.github.io/kuma-migrator/docs/>. Its sou
 | [Upgrade plans](https://kong.github.io/kuma-migrator/docs/guides/upgrade-plans/) | Upgrade paths, which target to use, the sequence for 3.0, rollback |
 | [CLI reference](https://kong.github.io/kuma-migrator/docs/guides/cli/) | Every command, flag and the configuration file |
 | [Extract](https://kong.github.io/kuma-migrator/docs/guides/extract/) | Control plane modes, origin filtering, output layout, Konnect, Universal |
+| [Konnect read-only access](https://kong.github.io/kuma-migrator/docs/guides/konnect-access/) | A read-only system account token for Konnect, from `kuma-migrator konnect token-script` |
 | [Migrate](https://kong.github.io/kuma-migrator/docs/guides/migrate/) | `--dry-run`, the real run, input and output layout |
 | [Target versions](https://kong.github.io/kuma-migrator/docs/guides/target-version/) | `--to-latest v2\|v3` and what changes with it |
 | [Apply](https://kong.github.io/kuma-migrator/docs/guides/apply/) | Apply order, removing originals, the `_manual/` subtree |
