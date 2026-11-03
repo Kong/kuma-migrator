@@ -626,6 +626,16 @@ against `KumactlArg` at v2.14.5: `healthcheck`, `zoneegress`, `proxytemplate` ar
   (the 2.7+ form), not `MeshService`.
 - The Subset scenario is map-based (`transformScenarioSubset`), so Universal input keeps
   `type`/`name`/`mesh`. Any generated doc with an empty kind/type or name is an error.
+- Mesh `metrics` → `MeshMetric` keeps what the legacy backend published (`mesh.go`
+  `prometheusTLSForMeshMetric` / `prometheusSidecarForMeshMetric` /
+  `prometheusAggregateToApplications`): `sidecar.profiles.appendProfiles: [All]` +
+  `includeUnused: !envoy.usedOnly` (a MeshMetric without a sidecar section publishes Basic and
+  used-only, `EnvoyMetricsFilter` / kuma-dp `ProfileMutatorGenerator`), `aggregate[]` →
+  `applications[]`, `tls.mode: delegated` → `ProvidedTLS`. When the legacy endpoint required a
+  mesh client cert (mesh `mtls.enabledBackend` set, `skipMTLS` false, mode unset or
+  `activeMTLSBackend`): v3 → `ActiveMTLSBackend` (3.0 semantics match), v2 → plaintext + warning
+  (2.14 `ActiveMTLSBackend` is plaintext, `ProvidedTLS` server-only). `envoy.filterRegex` is
+  warned, not mapped (Envoy stat names ≠ Prometheus names). Found via kong-mesh-v3-readiness #102.
 - Mesh `logging`/`tracing` produce **no** companion: on 2.x a TrafficLog/TrafficTrace activates a
   backend, and its conversion carries the backend inline. `LegacyObservabilityIndex` (pre-pass)
   names which backends were in use. `metrics` produces a `MeshMetric` for `enabledBackend` only.
@@ -657,6 +667,31 @@ order is required: on 2.14 a `MeshIdentity` in a mesh that is not `Exclusive` st
 `test/e2e/results/questions.md`). The v3 `Mesh` files are applied only after the upgrade. `MeshOpenTelemetryBackend` lands in a
 `backends/` subfolder applied before policies. `tool=kumactl` + `environment=kubernetes` (not
 Konnect) gets `kubectl` commands (`resolveContextTool`). `MeshGatewayConfig` is a v3 removed kind.
+
+**Zone pinning of generated MeshService label refs (v3):** `meshServiceRefLabels(name, ns, zone)`
+adds `kuma.io/zone` for Dataplane outbound tags → `backendRef` (the outbound's own `kuma.io/zone`
+tag wins, else the Dataplane's `kuma.io/zone` label via `dataplaneZone`), `reachableServices` →
+refs, and `reachableBackends` name refs (`kind: MeshService` only; MES/MMZS names already resolve
+across zones). Reason: 3.0 normalises a backendRef to labels and binds the oldest match in any
+zone (`pkg/xds/context/backendref_normalization.go`); 2.x resolved the name in the proxy's zone.
+Zone unknown (no label, pod annotations) → `zoneUnknownNote`. `stripControlPlaneLabels` runs
+last, so the Dataplane's zone label is still readable.
+
+**Apply before the Global upgrade (v3):** `needsApplyBeforeV3Upgrade` (`v3_preupgrade.go`) marks
+`MeshOPA` / `MeshExternalService` outputs carrying a `SecureDataSource` into
+`FileReport.PreUpgradeRelPaths`; the checklist adds "upgrade every CP to 2.14.6+, then apply these"
+before "Upgrade the Global" (`preUpgradeApplyDirs`, per-file commands). 3.0 rejects the flat shape,
+there is no KDS converter, and a zone below 2.14.6 drops the new fields (Kong/kong-mesh#10968,
+kumahq/kuma#18867). The files are listed again in the post-upgrade apply step (idempotent).
+The readiness tool's notes say "2.14 reads only flat": true for 2.14.0–2.14.5 only.
+
+**MeshIdentity advisory** (`warnMeshMtlsBackends`): `builtin` (and self-signed `provided`) needs
+`bundled.insecureAllowSelfSigned: true`, else Validate fails "self-signed certificates are not
+allowed" (`providers/bundled/bundled.go`). Cross-zone: a Bundled MeshIdentity gives each zone its
+own CA/trust domain and MeshTrust KDS flags are `GlobalToZones | ZoneToGlobal`, so a zone's
+MeshTrust never reaches peer zones; create one MeshTrust per zone on the Global, or share CA +
+trust domain. Diagram: `docs/img/meshtrust-cross-zone.svg`, page
+`site/content/topics/mtls-identity.md#trust-across-zones`.
 
 **Judgement calls worth knowing:**
 - `healthyPanicThreshold` under v3 (legacy `HealthCheck` via `splitHealthyPanicThreshold`, any

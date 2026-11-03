@@ -22,10 +22,33 @@ type oldMetricsBackend struct {
 }
 
 type oldPrometheusConf struct {
-	SkipMTLS bool              `json:"skipMTLS"`
-	Port     int               `json:"port,omitempty"`
-	Path     string            `json:"path"`
-	Tags     map[string]string `json:"tags,omitempty"`
+	SkipMTLS  bool                     `json:"skipMTLS"`
+	Port      int                      `json:"port,omitempty"`
+	Path      string                   `json:"path"`
+	Tags      map[string]string        `json:"tags,omitempty"`
+	TLS       *oldPrometheusTLS        `json:"tls,omitempty"`
+	Envoy     *oldPrometheusEnvoy      `json:"envoy,omitempty"`
+	Aggregate []oldPrometheusAggregate `json:"aggregate,omitempty"`
+}
+
+// oldPrometheusTLS is Mesh.metrics conf.tls. Mode is a string in practice
+// (activeMTLSBackend, delegated, disabled); the schema also allows the enum
+// number, kept raw so an unexpected value is reported instead of guessed.
+type oldPrometheusTLS struct {
+	Mode json.RawMessage `json:"mode,omitempty"`
+}
+
+type oldPrometheusEnvoy struct {
+	FilterRegex string `json:"filterRegex,omitempty"`
+	UsedOnly    *bool  `json:"usedOnly,omitempty"`
+}
+
+type oldPrometheusAggregate struct {
+	Name    string `json:"name,omitempty"`
+	Port    int    `json:"port,omitempty"`
+	Path    string `json:"path,omitempty"`
+	Address string `json:"address,omitempty"`
+	Enabled *bool  `json:"enabled,omitempty"`
 }
 
 type oldMeshTracingSection struct {
@@ -196,7 +219,7 @@ func TransformMeshWithOptions(raw []byte, opts TransformOptions) ([][]byte, []st
 		b, _ := json.Marshal(rawMetrics)
 		var m oldMeshMetricsSection
 		if err := json.Unmarshal(b, &m); err == nil {
-			crds, w := metricsToMeshMetric(m, cm)
+			crds, w := metricsToMeshMetric(m, cm, meshMTLSEnabled(spec), target)
 			companions = append(companions, crds...)
 			warnings = append(warnings, w...)
 		}
@@ -312,10 +335,12 @@ func TransformMeshWithOptions(raw []byte, opts TransformOptions) ([][]byte, []st
 // MeshMetric. Only metrics.enabledBackend is active on 2.x: the other entries in
 // metrics.backends are declarations, and a Mesh without enabledBackend exposes
 // no metrics, so neither produces a MeshMetric.
-func metricsToMeshMetric(m oldMeshMetricsSection, cm companionMeta) ([][]byte, []string) {
+func metricsToMeshMetric(m oldMeshMetricsSection, cm companionMeta, mtlsEnabled bool, target TargetVersion) ([][]byte, []string) {
 	meshName := cm.Mesh
 	var warnings []string
 	var backends []map[string]interface{}
+	var sidecar map[string]interface{}
+	var applications []map[string]interface{}
 
 	if m.EnabledBackend == "" {
 		if len(m.Backends) == 0 {
@@ -357,16 +382,21 @@ func metricsToMeshMetric(m oldMeshMetricsSection, cm companionMeta) ([][]byte, [
 			if conf.Path != "" {
 				promConf["path"] = conf.Path
 			}
+			tlsMode, tlsWarnings := prometheusTLSForMeshMetric(meshName, conf, mtlsEnabled, target)
+			if tlsMode != "" {
+				promConf["tls"] = map[string]interface{}{"mode": tlsMode}
+			}
+			warnings = append(warnings, tlsWarnings...)
 			backends = append(backends, map[string]interface{}{
 				"type":       "Prometheus",
 				"prometheus": promConf,
 			})
 
-			if conf.SkipMTLS {
-				warnings = append(warnings,
-					"MeshMetric: 'skipMTLS' from Mesh.spec.metrics.conf has no direct equivalent in MeshMetric — "+
-						"review your TLS configuration for the metrics endpoint")
-			}
+			var sw []string
+			sidecar, sw = prometheusSidecarForMeshMetric(meshName, conf.Envoy)
+			warnings = append(warnings, sw...)
+			applications = prometheusAggregateToApplications(conf.Aggregate)
+
 			if len(conf.Tags) > 0 {
 				warnings = append(warnings,
 					"MeshMetric: 'tags' from Mesh.spec.metrics.conf (used for securing metrics with TrafficPermission) "+
@@ -387,9 +417,14 @@ func metricsToMeshMetric(m oldMeshMetricsSection, cm companionMeta) ([][]byte, [
 	if w := ValidateResourceName(outName, "MeshMetric"); w != "" {
 		warnings = append(warnings, w)
 	}
-	crd := buildObservabilityCRD("MeshMetric", outName, cm, map[string]interface{}{
-		"backends": backends,
-	})
+	def := map[string]interface{}{"backends": backends}
+	if sidecar != nil {
+		def["sidecar"] = sidecar
+	}
+	if len(applications) > 0 {
+		def["applications"] = applications
+	}
+	crd := buildObservabilityCRD("MeshMetric", outName, cm, def)
 	b, err := yaml.Marshal(crd)
 	if err != nil {
 		warnings = append(warnings, fmt.Sprintf("MeshMetric marshal error: %v", err))
@@ -609,4 +644,124 @@ func extractMeshMeta(obj map[string]interface{}) (name, namespace string) {
 		}
 	}
 	return name, namespace
+}
+
+// ---- Mesh.metrics → MeshMetric details -----------------------------------------
+
+// meshMTLSEnabled reports whether the Mesh turns mTLS on: mtls.enabledBackend set.
+// spec is the Mesh spec (or the document itself for Universal input).
+func meshMTLSEnabled(spec map[string]interface{}) bool {
+	mtls, _ := spec["mtls"].(map[string]interface{})
+	enabled, _ := mtls["enabledBackend"].(string)
+	return enabled != ""
+}
+
+// prometheusTLSForMeshMetric maps Mesh.metrics conf.tls / skipMTLS to a
+// MeshMetric prometheus.tls.mode ("" = leave unset, which is Disabled).
+//
+// On 2.x the legacy endpoint required a client certificate from the mesh CA
+// when mesh mTLS was on, skipMTLS was false and tls.mode was activeMTLSBackend
+// (the default). No MeshMetric mode does that on 2.x: ActiveMTLSBackend gives a
+// plaintext endpoint before 3.0 and ProvidedTLS is server TLS only. On 3.0,
+// ActiveMTLSBackend requires a client certificate the mesh trusts, the same
+// requirement in the new identity model (kuma UPGRADE.md, "MeshMetric
+// ActiveMTLSBackend requires a client certificate").
+func prometheusTLSForMeshMetric(meshName string, conf oldPrometheusConf, mtlsEnabled bool, target TargetVersion) (string, []string) {
+	mode := "activeMTLSBackend"
+	if conf.TLS != nil && len(conf.TLS.Mode) > 0 {
+		var s string
+		if err := json.Unmarshal(conf.TLS.Mode, &s); err != nil {
+			return "", []string{fmt.Sprintf(
+				"Mesh %q: spec.metrics conf.tls.mode %s is not a mode name; the MeshMetric has no TLS. "+
+					"Set prometheus.tls.mode by hand (Disabled, ProvidedTLS or ActiveMTLSBackend).",
+				meshName, string(conf.TLS.Mode))}
+		}
+		mode = s
+	}
+	switch strings.ToLower(mode) {
+	case "disabled":
+		return "", nil
+	case "delegated":
+		return "ProvidedTLS", []string{fmt.Sprintf(
+			"Mesh %q: spec.metrics conf.tls.mode: delegated became MeshMetric prometheus.tls.mode: "+
+				"ProvidedTLS. The data plane serves the certificate you provide to kuma-dp, as before; "+
+				"check that every data plane still has it.", meshName)}
+	case "activemtlsbackend":
+	default:
+		return "", []string{fmt.Sprintf(
+			"Mesh %q: spec.metrics conf.tls.mode %q is unknown; the MeshMetric has no TLS. Set "+
+				"prometheus.tls.mode by hand.", meshName, mode)}
+	}
+	if !mtlsEnabled || conf.SkipMTLS {
+		// The legacy endpoint was plaintext: no mesh mTLS, or skipMTLS.
+		return "", nil
+	}
+	if target.IsV3() {
+		return "ActiveMTLSBackend", []string{fmt.Sprintf(
+			"Mesh %q: the metrics endpoint required a mesh client certificate (mesh mTLS on, skipMTLS "+
+				"false), so the MeshMetric sets prometheus.tls.mode: ActiveMTLSBackend. On 3.0 that mode "+
+				"requires a client certificate the mesh trusts, with a SPIFFE ID, from any address other "+
+				"than the data plane's own or loopback. 3.0 has no direct access mTLS, so a Prometheus "+
+				"that scraped through its own sidecar must use https with its own client certificate. "+
+				"On a zone still on 2.x the same mode serves plaintext: apply this MeshMetric once the "+
+				"zones run 3.0, or accept plaintext metrics until then.", meshName)}
+	}
+	return "", []string{fmt.Sprintf(
+		"Mesh %q: the metrics endpoint required a mesh client certificate (mesh mTLS on, skipMTLS "+
+			"false). No MeshMetric TLS mode keeps that check on 2.x: ActiveMTLSBackend serves plaintext "+
+			"before 3.0 and ProvidedTLS is server TLS only. The generated MeshMetric serves plaintext "+
+			"metrics on the Prometheus port. Restrict access to that port another way (network policy, "+
+			"firewall), or keep Mesh.spec.metrics until 3.0 and convert with --to-latest v3, where "+
+			"ActiveMTLSBackend checks client certificates again.", meshName)}
+}
+
+// prometheusSidecarForMeshMetric keeps the set of Envoy metrics the legacy
+// backend published. A MeshMetric without a sidecar section publishes the Basic
+// profile and only metrics Envoy has updated; Mesh.metrics published all of
+// them, unused ones included unless envoy.usedOnly was true.
+func prometheusSidecarForMeshMetric(meshName string, envoy *oldPrometheusEnvoy) (map[string]interface{}, []string) {
+	usedOnly := envoy != nil && envoy.UsedOnly != nil && *envoy.UsedOnly
+	sidecar := map[string]interface{}{
+		"profiles": map[string]interface{}{
+			"appendProfiles": []interface{}{map[string]interface{}{"name": "All"}},
+		},
+		"includeUnused": !usedOnly,
+	}
+	var warnings []string
+	if envoy != nil && envoy.FilterRegex != "" {
+		warnings = append(warnings, fmt.Sprintf(
+			"Mesh %q: spec.metrics conf.envoy.filterRegex %q was not converted. Envoy matched it against "+
+				"its own stat names (cluster.x.upstream_rq), and MeshMetric selectors match Prometheus names "+
+				"(envoy_cluster_upstream_rq), so the regex cannot be reused as is. The MeshMetric publishes "+
+				"every metric; add sidecar.profiles.include / exclude selectors to narrow it.",
+			meshName, envoy.FilterRegex))
+	}
+	return sidecar, warnings
+}
+
+// prometheusAggregateToApplications maps conf.aggregate (application endpoints
+// kuma-dp scraped and merged) to MeshMetric default.applications. Entries with
+// enabled: false were not scraped and are dropped.
+func prometheusAggregateToApplications(aggs []oldPrometheusAggregate) []map[string]interface{} {
+	var apps []map[string]interface{}
+	for _, a := range aggs {
+		if a.Enabled != nil && !*a.Enabled {
+			continue
+		}
+		if a.Port == 0 {
+			continue
+		}
+		app := map[string]interface{}{"port": a.Port}
+		if a.Name != "" {
+			app["name"] = a.Name
+		}
+		if a.Path != "" {
+			app["path"] = a.Path
+		}
+		if a.Address != "" {
+			app["address"] = a.Address
+		}
+		apps = append(apps, app)
+	}
+	return apps
 }

@@ -440,7 +440,7 @@ func fixReachableAnnotationsAt(anns map[string]interface{}, kind, name, where, n
 	}
 
 	docChanged := false
-	if c, notes := fixReachableBackendRefsForV3(refs, ns); c {
+	if c, notes := fixReachableBackendRefsForV3(refs, ns, ""); c {
 		docChanged = true
 		warnings = append(warnings, fmt.Sprintf(
 			"%s %q: %s annotation %s refs select by labels only in 3.0 — the pod converter rejects name and "+
@@ -455,7 +455,7 @@ func fixReachableAnnotationsAt(anns map[string]interface{}, kind, name, where, n
 				services = append(services, s)
 			}
 		}
-		newRefs, rest := convertReachableServices(services)
+		newRefs, rest := convertReachableServices(services, "")
 		if len(newRefs) > 0 {
 			refs = appendReachableRefs(refs, newRefs)
 			docChanged = true

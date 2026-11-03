@@ -49,7 +49,7 @@ func fixDataplane(obj map[string]interface{}, name string, target TargetVersion)
 	run(fixDataplaneOutboundTagsForV3(obj, name))
 	run(fixDataplaneReachableServicesForV3(obj, name))
 	if refs := dataplaneReachableBackendRefs(obj); refs != nil {
-		c, notes := fixReachableBackendRefsForV3(refs, dataplaneNamespace(obj))
+		c, notes := fixReachableBackendRefsForV3(refs, dataplaneNamespace(obj), dataplaneZone(obj))
 		if c {
 			warnings = append(warnings, fmt.Sprintf(
 				"Dataplane %q: transparentProxying.reachableBackends.refs[] selects by labels only in 3.0 — "+
@@ -194,13 +194,35 @@ func decodeServiceTagPort(value string) (name, namespace string, port int, ok bo
 	return name, namespace, port, true
 }
 
-// meshServiceRefLabels is the 3.0 labels selector for a MeshService name/namespace.
-func meshServiceRefLabels(name, namespace string) map[string]interface{} {
+// meshServiceRefLabels is the 3.0 labels selector for a MeshService name/namespace,
+// pinned to zone when it is known. 2.x resolved a MeshService name in the proxy's
+// own zone; on 3.0 a labels selector without kuma.io/zone also matches the
+// same-named MeshServices synced from other zones, and an outbound binds the
+// oldest match (kuma pkg/xds/context/backendref_normalization.go).
+func meshServiceRefLabels(name, namespace, zone string) map[string]interface{} {
 	labels := map[string]interface{}{labelDisplayName: name}
 	if namespace != "" {
 		labels[labelK8sNamespace] = namespace
 	}
+	if zone != "" {
+		labels[zoneLabel] = zone
+	}
 	return labels
+}
+
+// dataplaneZone is the Dataplane's own zone: its kuma.io/zone label, set by a
+// zone control plane. Empty when the Dataplane was extracted without it.
+func dataplaneZone(obj map[string]interface{}) string {
+	zone, _ := objLabels(obj)[zoneLabel].(string)
+	return zone
+}
+
+// zoneUnknownNote is appended when a MeshService label ref was written without
+// kuma.io/zone because the proxy's zone is not in the input.
+func zoneUnknownNote(where string) string {
+	return fmt.Sprintf(" The proxy's zone is not in the input, so %s carry no %s label: on 3.0 they also "+
+		"match same-named MeshServices from other zones, and an outbound binds the oldest one. Add "+
+		"`%s: <this proxy's zone>` to each.", where, zoneLabel, zoneLabel)
 }
 
 func inboundList(net map[string]interface{}) []map[string]interface{} {
@@ -459,6 +481,8 @@ func fixDataplaneOutboundTagsForV3(obj map[string]interface{}, name string) (boo
 	}
 	outs, _ := net["outbound"].([]interface{})
 	changed := false
+	ownZone := dataplaneZone(obj)
+	zoneMissing := false
 	var converted, manual, subsets, redundant []string
 	for i, o := range outs {
 		om, ok := o.(map[string]interface{})
@@ -478,9 +502,14 @@ func fixDataplaneOutboundTagsForV3(obj map[string]interface{}, name string) (boo
 			continue
 		}
 		svc, _ := tags["kuma.io/service"].(string)
+		// A kuma.io/zone tag pinned the outbound to one zone: keep it as the label.
+		zone := ownZone
+		if z, ok := tags[zoneLabel].(string); ok && z != "" {
+			zone = z
+		}
 		var extra []string
 		for _, k := range sortedMapKeys(tags) {
-			if k != "kuma.io/service" {
+			if k != "kuma.io/service" && k != zoneLabel {
 				extra = append(extra, fmt.Sprintf("%s=%v", k, tags[k]))
 			}
 		}
@@ -491,14 +520,17 @@ func fixDataplaneOutboundTagsForV3(obj map[string]interface{}, name string) (boo
 				msName = "<MeshService name>"
 			}
 			manual = append(manual, fmt.Sprintf(
-				"%s: replace tags with `backendRef: {kind: MeshService, name: %s, port: <MeshService port>}`",
-				where, msName))
+				"%s: replace tags with `backendRef: {kind: MeshService, labels: {%s: %s, %s: <namespace>, %s: <zone>}, port: <MeshService port>}`",
+				where, labelDisplayName, msName, labelK8sNamespace, zoneLabel))
 			continue
 		}
 		om["backendRef"] = map[string]interface{}{
 			"kind":   "MeshService",
-			"labels": meshServiceRefLabels(msName, msNS),
+			"labels": meshServiceRefLabels(msName, msNS, zone),
 			"port":   msPort,
+		}
+		if zone == "" {
+			zoneMissing = true
 		}
 		delete(om, "tags")
 		changed = true
@@ -515,6 +547,12 @@ func fixDataplaneOutboundTagsForV3(obj map[string]interface{}, name string) (boo
 		if len(subsets) > 0 {
 			msg += " The extra tags selected a subset that a backendRef cannot express and were dropped: " +
 				strings.Join(subsets, "; ") + "."
+		}
+		if zoneMissing {
+			msg += zoneUnknownNote("the generated backendRef labels")
+		} else {
+			msg += fmt.Sprintf(" Each backendRef is pinned with %s (the proxy's zone, or the outbound's own "+
+				"zone tag), as 2.x resolved the service in that zone.", zoneLabel)
 		}
 		warnings = append(warnings, msg)
 	}
@@ -551,7 +589,7 @@ func dataplaneReachableBackendRefs(obj map[string]interface{}) []interface{} {
 // convertReachableServices splits reachableServices entries into 3.0
 // reachableBackends refs (decodable <name>_<ns>_svc_<port> values) and the
 // entries it cannot convert.
-func convertReachableServices(services []string) (refs []interface{}, rest []string) {
+func convertReachableServices(services []string, zone string) (refs []interface{}, rest []string) {
 	for _, s := range services {
 		n, ns, port, ok := decodeServiceTagPort(s)
 		if !ok {
@@ -560,7 +598,7 @@ func convertReachableServices(services []string) (refs []interface{}, rest []str
 		}
 		refs = append(refs, map[string]interface{}{
 			"kind":   "MeshService",
-			"labels": meshServiceRefLabels(n, ns),
+			"labels": meshServiceRefLabels(n, ns, zone),
 			"port":   port,
 		})
 	}
@@ -619,7 +657,7 @@ func fixDataplaneReachableServicesForV3(obj map[string]interface{}, name string)
 	for _, s := range raw {
 		services = append(services, fmt.Sprint(s))
 	}
-	refs, rest := convertReachableServices(services)
+	refs, rest := convertReachableServices(services, dataplaneZone(obj))
 	if len(refs) == 0 {
 		return false, nil
 	}
@@ -654,9 +692,10 @@ func fixDataplaneReachableServicesForV3(obj map[string]interface{}, name string)
 // defaultNS fills k8s.kuma.io/namespace for a name-only ref when the owning
 // resource's namespace is known: 2.14 resolved a name-only ref in the proxy's own
 // namespace, while a display-name-only label matches every namespace.
-func fixReachableBackendRefsForV3(refs []interface{}, defaultNS string) (bool, []string) {
+func fixReachableBackendRefsForV3(refs []interface{}, defaultNS, zone string) (bool, []string) {
 	changed := false
 	var notes []string
+	zoneMissing := false
 	for i, r := range refs {
 		m, ok := r.(map[string]interface{})
 		if !ok {
@@ -692,10 +731,26 @@ func fixReachableBackendRefsForV3(refs []interface{}, defaultNS string) (bool, [
 				labels[labelK8sNamespace] = ns
 			}
 		}
+		if k, _ := m["kind"].(string); k == "MeshService" && refName != "" {
+			if _, exists := labels[zoneLabel]; !exists {
+				if zone != "" {
+					labels[zoneLabel] = zone
+				} else {
+					zoneMissing = true
+				}
+			}
+		}
 		m["labels"] = labels
 		delete(m, "name")
 		delete(m, "namespace")
 		changed = true
+	}
+	if zone != "" && changed {
+		notes = append(notes, fmt.Sprintf("MeshService refs pinned to the proxy's zone (%s: %s), where 2.x "+
+			"resolved them.", zoneLabel, zone))
+	}
+	if zoneMissing {
+		notes = append(notes, strings.TrimSpace(zoneUnknownNote("the rewritten MeshService refs")))
 	}
 	return changed, notes
 }

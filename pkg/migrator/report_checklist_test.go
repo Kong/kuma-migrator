@@ -465,3 +465,53 @@ func TestProcessFile_RejectedByTargetOnlyListedDocsGoToManual(t *testing.T) {
 		t.Errorf("rejected doc must go to %s/: %q", ManualDir, dc.ManualRelPath)
 	}
 }
+
+// ---- MeshOPA / MeshExternalService SecureDataSource before the Global upgrade
+
+const meshOPAFlatDataSource = `apiVersion: kuma.io/v1alpha1
+kind: MeshOPA
+metadata:
+  name: opa
+  namespace: kong-mesh-system
+  labels:
+    kuma.io/mesh: default
+spec:
+  targetRef:
+    kind: Mesh
+  default:
+    appendPolicies:
+      - rego:
+          inlineString: |
+            package envoy.authz
+            default allow = true
+`
+
+func TestV3Checklist_MeshOPABeforeGlobalUpgrade(t *testing.T) {
+	noUserConfig(t)
+	in, out := t.TempDir(), t.TempDir()
+	writeTree(t, in, map[string]string{
+		"p-global-ctx/.kuma-migrator.json":              `{"tool":"kubectl","context":"p","cpMode":"global","environment":"kubernetes"}`,
+		"p-global-ctx/mesh-default/zero-trust/opa.yaml": meshOPAFlatDataSource,
+	})
+	_, md := renderApply(t, in, out, TargetV3)
+	cl := section(t, md, "## Apply Checklist")
+	file := filepath.Join(out, "p-global-ctx/mesh-default/zero-trust/MeshOPA-kong-mesh-system-opa.yaml")
+	mustOrder(t, cl,
+		"Upgrade every control plane to Kong Mesh 2.14.6 or later",
+		file,
+		"Upgrade the Global Control Plane",
+	)
+}
+
+func TestV2Checklist_NoPreUpgradeStep(t *testing.T) {
+	noUserConfig(t)
+	in, out := t.TempDir(), t.TempDir()
+	writeTree(t, in, map[string]string{
+		"p-global-ctx/.kuma-migrator.json":              `{"tool":"kubectl","context":"p","cpMode":"global","environment":"kubernetes"}`,
+		"p-global-ctx/mesh-default/zero-trust/opa.yaml": meshOPAFlatDataSource,
+	})
+	_, md := renderApply(t, in, out, TargetV2)
+	if strings.Contains(md, "2.14.6 or later, then apply") {
+		t.Error("v2 output keeps the flat shape; no pre-upgrade step expected")
+	}
+}

@@ -859,7 +859,10 @@ func warnMeshMtlsBackends(obj map[string]interface{}, name string, target Target
 			" Backend(s) %s are type builtin: the control plane generated the CA and stores it in the "+
 				"<mesh>.ca-builtin-cert-<backend> / <mesh>.ca-builtin-key-<backend> Secrets. A MeshIdentity "+
 				"with spec.provider.type: Bundled and autogenerate mints a new CA; to keep the current one, "+
-				"reference those Secrets from spec.provider.bundled.ca.certificate / privateKey.",
+				"reference those Secrets from spec.provider.bundled.ca.certificate / privateKey. Either way "+
+				"the CA is self-signed, so set spec.provider.bundled.insecureAllowSelfSigned: true: without "+
+				"it the MeshIdentity fails validation (\"self-signed certificates are not allowed\") and "+
+				"never becomes ready, and once spec.mtls is gone the mesh serves plaintext.",
 			strings.Join(classes.builtin, ", "))
 		if target.IsV3() {
 			msg += " The upgrade does not delete the ca-builtin Secrets; delete them yourself once no " +
@@ -871,8 +874,19 @@ func warnMeshMtlsBackends(obj map[string]interface{}, name string, target Target
 			" Backend(s) %s are type provided: the CA certificate and key are the DataSources in "+
 				"conf.cert / conf.key, which you own. To keep that CA, reference the same material from "+
 				"spec.provider.bundled.ca.certificate / privateKey of a Bundled MeshIdentity "+
-				"(SecureDataSource shape: type Secret with secretRef, or type InsecureInline).",
+				"(SecureDataSource shape: type Secret with secretRef, or type InsecureInline). If that CA "+
+				"is self-signed (a root rather than an intermediate), also set "+
+				"spec.provider.bundled.insecureAllowSelfSigned: true, or the MeshIdentity never becomes ready.",
 			strings.Join(classes.provided, ", "))
+	}
+	if len(classes.builtin)+len(classes.provided) > 0 {
+		msg += " If this mesh spans several zones: on 2.x every zone used the one mesh CA from the " +
+			"Global. A Bundled MeshIdentity gives each zone its own CA and trust domain " +
+			"(<mesh>.<zone>.mesh.local), and the MeshTrust a zone creates for it is synced to the Global " +
+			"only, never to the other zones, so cross-zone mTLS fails verification. Before switching " +
+			"proxies to the MeshIdentity, either create on the Global one MeshTrust per zone with that " +
+			"zone's CA bundle and trust domain (the Global syncs it to every zone), or give every zone " +
+			"the same CA and trust domain (spec.provider.bundled.ca plus spec.spiffeID.trustDomain)."
 	}
 	if len(classes.other) > 0 {
 		msg += fmt.Sprintf(
@@ -1840,7 +1854,9 @@ func warnMeshOPALegacyDataSource(obj map[string]interface{}, name string, target
 	return []string{fmt.Sprintf(
 		"MeshOPA %q: spec.default.%s use the legacy flat DataSource shape (secret/inline/inlineString), "+
 			"which works in 2.14 but is removed in 3.0 in favour of the discriminated SecureDataSource "+
-			"type (type + insecureInline.value / secretRef). Rewrite before upgrading to 3.0.",
+			"type (type + insecureInline.value / secretRef). Kong Mesh 2.14.6 and later accept both shapes: "+
+			"upgrade every control plane to 2.14.6, rewrite the MeshOPA there (--to-latest v3 does it), then "+
+			"upgrade the Global to 3.0. Below 2.14.6 the new shape is dropped and the MeshOPA fails to load.",
 		name, strings.Join(fields, ", spec.default."))}
 }
 

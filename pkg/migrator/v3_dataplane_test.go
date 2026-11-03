@@ -271,11 +271,55 @@ networking:
 		t.Errorf("tags next to a backendRef must be removed:\n%s", out)
 	}
 	j := joined(ws)
-	for _, want := range []string{"Auto-converted to backendRef", "version=v2", "name: redis, port: <MeshService port>",
-		"already set backendRef"} {
+	for _, want := range []string{"Auto-converted to backendRef", "version=v2", "kuma.io/display-name: redis",
+		"already set backendRef", "proxy's zone is not in the input"} {
 		if !strings.Contains(j, want) {
 			t.Errorf("expected %q in warnings, got: %v", want, ws)
 		}
+	}
+}
+
+func TestFixDataplaneOutboundTags_V3ZonePinned(t *testing.T) {
+	in := `type: Dataplane
+mesh: default
+name: web-01
+labels:
+  kuma.io/zone: east
+networking:
+  address: 192.168.0.1
+  outbound:
+    - port: 3000
+      tags:
+        kuma.io/service: postgres_db_svc_5432
+    - port: 3001
+      tags:
+        kuma.io/service: redis_db_svc_6379
+        kuma.io/zone: west
+  transparentProxying:
+    reachableBackends:
+      refs:
+        - kind: MeshService
+          name: api
+          namespace: shop
+        - kind: MeshExternalService
+          name: stripe
+`
+	obj, out, ws := scanObj(t, in, TargetV3)
+	if z := digPath(t, obj, "networking", "outbound", 0, "backendRef", "labels", zoneLabel); z != "east" {
+		t.Errorf("outbound 0 must be pinned to the proxy's zone east, got %v:\n%s", z, out)
+	}
+	if z := digPath(t, obj, "networking", "outbound", 1, "backendRef", "labels", zoneLabel); z != "west" {
+		t.Errorf("outbound 1 must keep its own kuma.io/zone tag west, got %v:\n%s", z, out)
+	}
+	refs := digPath(t, obj, "networking", "transparentProxying", "reachableBackends", "refs").([]interface{})
+	if z := digPath(t, refs[0], "labels", zoneLabel); z != "east" {
+		t.Errorf("MeshService reachable ref must be pinned to east, got %v", z)
+	}
+	if z := digPath(t, refs[1], "labels", zoneLabel); z != nil {
+		t.Errorf("MeshExternalService names resolve across zones already; no zone label expected, got %v", z)
+	}
+	if strings.Contains(joined(ws), "proxy's zone is not in the input") {
+		t.Errorf("zone is known; no missing-zone note expected: %v", ws)
 	}
 }
 

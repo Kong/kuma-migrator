@@ -1,6 +1,7 @@
 package migrator
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -88,6 +89,11 @@ metadata:
   name: default
   namespace: kong-mesh-system
 spec:
+  mtls:
+    enabledBackend: ca-1
+    backends:
+      - name: ca-1
+        type: builtin
   metrics:
     enabledBackend: prom
     backends:
@@ -100,25 +106,178 @@ spec:
           tags:
             kuma.io/service: dataplane-metrics
 `
-	_, warnings, err := TransformMesh([]byte(input))
+	docs, warnings, err := TransformMesh([]byte(input))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	foundSkipMTLS := false
 	foundTags := false
 	for _, w := range warnings {
-		if strings.Contains(w, "skipMTLS") {
-			foundSkipMTLS = true
+		if strings.Contains(w, "client certificate") {
+			t.Errorf("skipMTLS: true kept a plaintext endpoint; no TLS warning expected, got %q", w)
 		}
 		if strings.Contains(w, "tags") {
 			foundTags = true
 		}
 	}
-	if !foundSkipMTLS {
-		t.Error("expected warning about skipMTLS")
-	}
 	if !foundTags {
 		t.Error("expected warning about tags")
+	}
+	if prom := meshMetricPrometheus(t, docs); prom["tls"] != nil {
+		t.Errorf("skipMTLS: true must not set a TLS mode, got %v", prom["tls"])
+	}
+}
+
+// meshMetricPrometheus returns default.backends[0].prometheus of the MeshMetric in docs.
+func meshMetricPrometheus(t *testing.T, docs [][]byte) map[string]interface{} {
+	t.Helper()
+	def := meshMetricDefault(t, docs)
+	backends, _ := def["backends"].([]interface{})
+	if len(backends) == 0 {
+		t.Fatal("MeshMetric has no backends")
+	}
+	b, _ := backends[0].(map[string]interface{})
+	prom, _ := b["prometheus"].(map[string]interface{})
+	return prom
+}
+
+func meshMetricDefault(t *testing.T, docs [][]byte) map[string]interface{} {
+	t.Helper()
+	for _, d := range docs {
+		var obj map[string]interface{}
+		if err := yaml.Unmarshal(d, &obj); err != nil {
+			t.Fatal(err)
+		}
+		if obj["kind"] != "MeshMetric" && obj["type"] != "MeshMetric" {
+			continue
+		}
+		spec, _ := obj["spec"].(map[string]interface{})
+		def, _ := spec["default"].(map[string]interface{})
+		return def
+	}
+	t.Fatal("no MeshMetric generated")
+	return nil
+}
+
+func TestTransformMesh_MetricsTLS(t *testing.T) {
+	const tmpl = `
+apiVersion: kuma.io/v1alpha1
+kind: Mesh
+metadata:
+  name: default
+spec:
+%s  metrics:
+    enabledBackend: prom
+    backends:
+      - name: prom
+        type: prometheus
+        conf:
+          port: 5670
+%s`
+	mtls := "  mtls:\n    enabledBackend: ca-1\n    backends:\n      - name: ca-1\n        type: builtin\n"
+	cases := []struct {
+		name     string
+		mtls     string
+		conf     string
+		target   TargetVersion
+		wantMode string
+		wantWarn string
+	}{
+		{"mtls default mode v2: plaintext, warned", mtls, "", TargetV2, "", "No MeshMetric TLS mode keeps that check on 2.x"},
+		{"mtls default mode v3: ActiveMTLSBackend", mtls, "", TargetV3, "ActiveMTLSBackend", "requires a client certificate the mesh trusts"},
+		{"mtls explicit activeMTLSBackend v3", mtls, "          tls:\n            mode: activeMTLSBackend\n", TargetV3, "ActiveMTLSBackend", "SPIFFE"},
+		{"no mtls: plaintext before and after", "", "", TargetV3, "", ""},
+		{"skipMTLS", mtls, "          skipMTLS: true\n", TargetV3, "", ""},
+		{"disabled", mtls, "          tls:\n            mode: disabled\n", TargetV2, "", ""},
+		{"delegated → ProvidedTLS", mtls, "          tls:\n            mode: delegated\n", TargetV2, "ProvidedTLS", "ProvidedTLS"},
+		{"unknown mode", mtls, "          tls:\n            mode: bogus\n", TargetV2, "", "is unknown"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			in := fmt.Sprintf(tmpl, tc.mtls, tc.conf)
+			docs, warnings, err := TransformMeshForTarget([]byte(in), tc.target)
+			if err != nil {
+				t.Fatal(err)
+			}
+			prom := meshMetricPrometheus(t, docs)
+			gotMode := ""
+			if tlsm, ok := prom["tls"].(map[string]interface{}); ok {
+				gotMode, _ = tlsm["mode"].(string)
+			}
+			if gotMode != tc.wantMode {
+				t.Errorf("tls.mode = %q, want %q", gotMode, tc.wantMode)
+			}
+			joined := strings.Join(warnings, "\n")
+			if tc.wantWarn != "" && !strings.Contains(joined, tc.wantWarn) {
+				t.Errorf("warnings lack %q:\n%s", tc.wantWarn, joined)
+			}
+			if tc.wantWarn == "" && strings.Contains(joined, "client certificate") {
+				t.Errorf("unexpected TLS warning:\n%s", joined)
+			}
+		})
+	}
+}
+
+func TestTransformMesh_MetricsSidecarAndAggregate(t *testing.T) {
+	in := `
+type: Mesh
+name: default
+metrics:
+  enabledBackend: prom
+  backends:
+    - name: prom
+      type: prometheus
+      conf:
+        envoy:
+          usedOnly: true
+          filterRegex: "cluster\\..*"
+        aggregate:
+          - name: app
+            port: 8080
+            path: /stats
+          - name: off
+            port: 9090
+            enabled: false
+`
+	docs, warnings, err := TransformMesh([]byte(in))
+	if err != nil {
+		t.Fatal(err)
+	}
+	def := meshMetricDefault(t, docs)
+	sidecar, _ := def["sidecar"].(map[string]interface{})
+	if sidecar["includeUnused"] != false {
+		t.Errorf("usedOnly: true should give includeUnused: false, got %v", sidecar["includeUnused"])
+	}
+	profiles, _ := sidecar["profiles"].(map[string]interface{})
+	ap, _ := profiles["appendProfiles"].([]interface{})
+	if len(ap) != 1 || ap[0].(map[string]interface{})["name"] != "All" {
+		t.Errorf("appendProfiles = %v, want [All]", ap)
+	}
+	apps, _ := def["applications"].([]interface{})
+	if len(apps) != 1 || apps[0].(map[string]interface{})["name"] != "app" {
+		t.Errorf("applications = %v, want only the enabled one", apps)
+	}
+	if !strings.Contains(strings.Join(warnings, "\n"), "filterRegex") {
+		t.Error("expected a filterRegex warning")
+	}
+}
+
+func TestTransformMesh_MetricsDefaultsKeepAllMetrics(t *testing.T) {
+	in := `
+type: Mesh
+name: default
+metrics:
+  enabledBackend: prom
+  backends:
+    - name: prom
+      type: prometheus
+`
+	docs, _, err := TransformMesh([]byte(in))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sidecar, _ := meshMetricDefault(t, docs)["sidecar"].(map[string]interface{})
+	if sidecar["includeUnused"] != true {
+		t.Errorf("legacy default published unused metrics; includeUnused = %v, want true", sidecar["includeUnused"])
 	}
 }
 

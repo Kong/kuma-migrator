@@ -206,6 +206,14 @@ func TransformOPAPolicy(raw []byte, target TargetVersion) ([][]byte, []string, e
 // The legacy type (kuma.system.v1alpha1.DataSource) is a oneof of secret,
 // inline (base64) and inlineString. The 2.x MeshOPA rego/agentConfig fields accept
 // the same three keys, so the value is copied unchanged; under a v3 target
+// meshOPAApplyOrderNote says when a rewritten MeshOPA is applied. Kong Mesh
+// 2.14.6 is the first release that reads the SecureDataSource shape
+// (Kong/kong-mesh#10968); 3.0 reads only that shape and nothing converts it over
+// KDS, so a 2.x zone below 2.14.6 cannot load a MeshOPA synced from a 3.0 Global.
+const meshOPAApplyOrderNote = "Apply it on Kong Mesh 2.14.6 or later, on every control plane, before " +
+	"upgrading the Global to 3.0 (the Apply Checklist has a step for it): earlier 2.14 patches drop the " +
+	"new fields, the MeshOPA fails to load and its proxies stop receiving configuration."
+
 // fixMeshOPADataSourcesForV3 then rewrites it to SecureDataSource (decoding inline).
 //
 // An entry with none of the three keys returns nil and a warning: emitting an
@@ -666,7 +674,7 @@ func fixMeshOPADataSourcesForV3(obj map[string]interface{}, name string) (bool, 
 			warnings = append(warnings, fmt.Sprintf(
 				"MeshOPA %q: spec.default.agentConfig was rewritten from the legacy flat DataSource "+
 					"shape to SecureDataSource (3.0 removes the old shape; a MeshOPA still using it is "+
-					"rejected at write time) — auto-corrected.",
+					"rejected at write time). "+meshOPAApplyOrderNote,
 				name))
 		} else if errNote != "" {
 			warnings = append(warnings, fmt.Sprintf("MeshOPA %q: spec.default.agentConfig: %s.", name, errNote))
@@ -690,7 +698,7 @@ func fixMeshOPADataSourcesForV3(obj map[string]interface{}, name string) (bool, 
 				warnings = append(warnings, fmt.Sprintf(
 					"MeshOPA %q: spec.default.appendPolicies[%d].rego was rewritten from the legacy flat "+
 						"DataSource shape to SecureDataSource (3.0 removes the old shape; a MeshOPA still "+
-						"using it is rejected at write time) — auto-corrected.",
+						"using it is rejected at write time). "+meshOPAApplyOrderNote,
 					name, i))
 			} else if errNote != "" {
 				warnings = append(warnings, fmt.Sprintf(

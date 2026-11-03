@@ -1,6 +1,7 @@
 package migrator
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -1334,6 +1335,31 @@ spec:
 		if found != tc.wantWarn {
 			t.Errorf("key %q: got warn=%v, want %v (%s); warnings: %v",
 				tc.key, found, tc.wantWarn, tc.rationale, warnings)
+		}
+	}
+}
+
+func TestScanForDeprecations_MeshMtlsSelfSignedAndCrossZone(t *testing.T) {
+	const tmpl = `apiVersion: kuma.io/v1alpha1
+kind: Mesh
+metadata:
+  name: default
+spec:
+  mtls:
+    enabledBackend: ca-1
+    backends:
+      - name: ca-1
+        type: %s
+`
+	for _, typ := range []string{"builtin", "provided"} {
+		for _, target := range []TargetVersion{TargetV2, TargetV3} {
+			_, warnings := ScanForDeprecations([]byte(fmt.Sprintf(tmpl, typ)), target)
+			j := strings.Join(warnings, "\n")
+			for _, want := range []string{"insecureAllowSelfSigned: true", "one MeshTrust per zone", "synced to the Global only"} {
+				if !strings.Contains(j, want) {
+					t.Errorf("%s/%s: advisory lacks %q:\n%s", typ, target, want, j)
+				}
+			}
 		}
 	}
 }

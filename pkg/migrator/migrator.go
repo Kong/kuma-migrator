@@ -74,6 +74,10 @@ type FileReport struct {
 	// Helm or `kubectl create` made). Set by runMigration once every input file
 	// is read.
 	ReplaceRelPaths []string
+	// PreUpgradeRelPaths is the subset of OutputRelPaths a v3 checklist applies
+	// on 2.14.6+ before the Global upgrade: MeshOPA / MeshExternalService
+	// documents in the SecureDataSource shape (needsApplyBeforeV3Upgrade).
+	PreUpgradeRelPaths []string
 	// outputDocs[i] is the identity and content of OutputRelPaths[i].
 	outputDocs []keyedDoc
 	// inputDocs are the identities and contents of the file's input documents.
@@ -688,6 +692,9 @@ func processFile(inputPath, outputDir, cpModeDir, meshDir string, writeFile bool
 			} else {
 				fr.OutputRelPaths = append(fr.OutputRelPaths, relSlash)
 				fr.outputDocs = append(fr.outputDocs, keyedDoc{key: resourceKey(cpModeDir, doc), raw: doc})
+				if opts.Target.IsV3() && needsApplyBeforeV3Upgrade(doc) {
+					fr.PreUpgradeRelPaths = append(fr.PreUpgradeRelPaths, relSlash)
+				}
 				if isUniversalShape(doc) {
 					fr.UniversalOutput = true
 				}

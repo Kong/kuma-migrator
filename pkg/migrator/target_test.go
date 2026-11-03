@@ -639,11 +639,11 @@ spec:
 	}
 
 	joined3 := strings.Join(v3, "\n")
-	if !strings.Contains(joined3, "auto-corrected") {
-		t.Errorf("expected auto-corrected warnings under v3, got: %v", v3)
+	if !strings.Contains(joined3, "rewritten from the legacy flat") || !strings.Contains(joined3, "2.14.6") {
+		t.Errorf("expected rewrite warnings naming 2.14.6 under v3, got: %v", v3)
 	}
 	// The forward-looking advisory must not ALSO fire once the fix has run.
-	if strings.Contains(joined3, "SecureDataSource type (type + insecureInline.value / secretRef). Rewrite before upgrading") {
+	if strings.Contains(joined3, "SecureDataSource type (type + insecureInline.value / secretRef). Kong Mesh 2.14.6") {
 		t.Errorf("v2-style advisory must not fire on an already-fixed v3 document, got: %v", v3)
 	}
 }

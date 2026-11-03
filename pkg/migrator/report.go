@@ -858,6 +858,28 @@ func writeApplyChecklist(b *strings.Builder, r *MigrationReport, isPlan bool) {
 		n++
 	}
 
+	if v3 {
+		if pre := preUpgradeApplyDirs(r); len(pre) > 0 {
+			linef(b, "**%d. Upgrade every control plane to Kong Mesh 2.14.6 or later, then apply these `MeshOPA` / `MeshExternalService` files**, still on 2.x and before the Global upgrade:", n)
+			line(b, "   They use the 3.0 `SecureDataSource` shape. 3.0 rejects the old shape and nothing converts it")
+			line(b, "   in transit, so once the Global runs 3.0 a zone receives these resources only in the new")
+			line(b, "   shape. A zone below 2.14.6 drops the new fields: `MeshOPA` fails to load and its proxies stop")
+			line(b, "   receiving configuration, and `MeshExternalService` loses its TLS verification settings.")
+			line(b, "   2.14.6 reads both shapes. Apply a resource created on a zone on that zone. The later")
+			line(b, "   apply step lists these files again; applying them twice is harmless.")
+			line(b, "")
+			var prevCPDir string
+			for _, d := range pre {
+				if d.CPModeDir != prevCPDir {
+					prevCPDir = d.CPModeDir
+					writeContextHeader(b, d)
+				}
+				writeApplyFileCommands(b, d, r.OutputDir)
+			}
+			n++
+		}
+	}
+
 	linef(b, "**%d. Upgrade the Global Control Plane** to the target Kuma / Kong Mesh version.", n)
 	line(b, "")
 	n++
@@ -1205,6 +1227,52 @@ func writeApplyDirCommands(b *strings.Builder, d applyDirInfo, outputDir string)
 			if !d.Replace[f] {
 				linef(b, "   kubectl apply -f %s", filepath.Join(outputDir, f))
 			}
+		}
+	}
+	line(b, "   ```")
+	line(b, "")
+}
+
+// preUpgradeApplyDirs is collectApplyDirs narrowed to FileReport.PreUpgradeRelPaths.
+func preUpgradeApplyDirs(r *MigrationReport) []applyDirInfo {
+	pre := map[string]bool{}
+	for _, fr := range r.Files {
+		for _, p := range fr.PreUpgradeRelPaths {
+			pre[p] = true
+		}
+	}
+	if len(pre) == 0 {
+		return nil
+	}
+	var out []applyDirInfo
+	for _, d := range collectApplyDirs(r) {
+		var files []string
+		for _, f := range d.Files {
+			if pre[f] {
+				files = append(files, f)
+			}
+		}
+		if len(files) > 0 {
+			d.Files = files
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
+// writeApplyFileCommands writes one apply command per file of d (never the
+// whole directory), with kubectl replace for files in d.Replace.
+func writeApplyFileCommands(b *strings.Builder, d applyDirInfo, outputDir string) {
+	line(b, "   ```bash")
+	for _, f := range d.Files {
+		full := filepath.Join(outputDir, f)
+		switch {
+		case d.Tool == "kumactl":
+			linef(b, "   kumactl apply -f %s", full)
+		case d.Replace[f]:
+			linef(b, "   kubectl replace -f %s --save-config", full)
+		default:
+			linef(b, "   kubectl apply -f %s", full)
 		}
 	}
 	line(b, "   ```")
